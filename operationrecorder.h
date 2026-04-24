@@ -22,6 +22,7 @@
 #include <QTextStream>
 #include <QAbstractSocket>
 #include <QTcpSocket>
+#include <QTcpServer>
 #ifndef QT_NO_SSL
 #include <QSslSocket>
 #endif
@@ -209,6 +210,11 @@ public:
     void sendAllRecordsToServer();
 
     /**
+     * @brief 设置是否记录本地操作（默认关闭，仅记录TCP入站数据）
+     */
+    void setRecordLocalOperations(bool enabled) { m_recordLocalOperations = enabled; }
+
+    /**
      * 使用示例:
      * @code
      * recorder.setTcpServer("192.168.1.100", 12346);
@@ -236,6 +242,10 @@ private slots:
     void onTcpError(QAbstractSocket::SocketError socketError);
     void onTcpDataWritten(qint64 bytes);
     void onReconnectTimeout();
+    void onReceiverNewConnection();
+    void onReceiverDataReady();
+    void onReceiverDisconnected();
+    void onReceiverError(QAbstractSocket::SocketError socketError);
 
 private:
     static constexpr int kMaxTcpQueueSize = 2000;
@@ -268,6 +278,15 @@ private:
     void sendQueuedRecords();
     void connectTcpSocket();
     void disconnectTcpSocket();
+    void setupTcpReceiver();
+    void appendTcpRecord(const OperationRecord &record);
+    void saveLocalSnapshot();
+
+    bool m_recordLocalOperations = false;
+    QTcpServer *m_tcpReceiverServer = nullptr;
+    QTcpSocket *m_tcpReceiverClient = nullptr;
+    quint16 m_tcpReceiverPort = 12347;
+    QString m_localSnapshotFile;
 };
 
 #endif // OPERATIONRECORDER_H

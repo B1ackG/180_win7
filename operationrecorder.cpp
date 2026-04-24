@@ -12,6 +12,10 @@
 #include <QSslConfiguration>
 #include <QSslCertificate>
 #endif
+#include <QNetworkInterface>
+#include <QJsonDocument>
+#include <QJsonParseError>
+#include <QTimer>
 
 namespace {
 QStringList parseCsvList(const QString &raw)
@@ -55,6 +59,11 @@ OperationRecorder::OperationRecorder(QObject *parent)
     m_reconnectTimer = new QTimer(this);
     m_reconnectTimer->setInterval(5000); // 5秒重连间隔
     connect(m_reconnectTimer, &QTimer::timeout, this, &OperationRecorder::onReconnectTimeout);
+
+    // 初始化 TCP 接收器（用于接收外部记录推送）
+    m_tcpReceiverServer = new QTcpServer(this);
+    connect(m_tcpReceiverServer, &QTcpServer::newConnection, this, &OperationRecorder::onReceiverNewConnection);
+    m_localSnapshotFile = +QCoreApplication::applicationDirPath() + "/records_snapshot.json";
 }
 
 void OperationRecorder::loadSecuritySettings()
@@ -178,6 +187,11 @@ OperationRecorder::~OperationRecorder()
 
 void OperationRecorder::addRecord(const OperationRecord &record)
 {
+    if (!m_recordLocalOperations) {
+        // 如果不记录本地操作，忽略由 UI 调用的 addRecord
+        return;
+    }
+
     // 限制记录数量
     if (m_records.size() >= m_maxRecords) {
         m_records.removeFirst();
@@ -190,8 +204,6 @@ void OperationRecorder::addRecord(const OperationRecord &record)
     if (m_tcpEnabled) {
         sendRecordToServer(record);
     }
-
-    //qDebug() << "记录操作:" << record.toString();
 }
 
 void OperationRecorder::clear()
@@ -241,6 +253,111 @@ bool OperationRecorder::loadFromFile(const QString &filename)
     }
 
     return true;
+}
+
+// ===== TCP 接收相关实现 =====
+void OperationRecorder::onReceiverNewConnection()
+{
+    if (m_tcpReceiverClient) {
+        m_tcpReceiverClient->disconnectFromHost();
+        m_tcpReceiverClient->deleteLater();
+        m_tcpReceiverClient = nullptr;
+    }
+
+    m_tcpReceiverClient = m_tcpReceiverServer->nextPendingConnection();
+    if (!m_tcpReceiverClient) return;
+
+    connect(m_tcpReceiverClient, &QTcpSocket::readyRead, this, &OperationRecorder::onReceiverDataReady);
+    connect(m_tcpReceiverClient, &QTcpSocket::disconnected, this, &OperationRecorder::onReceiverDisconnected);
+    connect(m_tcpReceiverClient, QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::errorOccurred),
+            this, &OperationRecorder::onReceiverError);
+
+    OperationRecord rec;
+    rec.timestamp = QDateTime::currentDateTime();
+    rec.pageName = "系统";
+    rec.controlName = "TCP接收器";
+    rec.controlType = "Network";
+    rec.operation = "client_connected";
+    rec.oldValue = "";
+    rec.newValue = m_tcpReceiverClient->peerAddress().toString();
+    appendTcpRecord(rec);
+}
+
+void OperationRecorder::onReceiverDataReady()
+{
+    if (!m_tcpReceiverClient) return;
+    QByteArray data = m_tcpReceiverClient->readAll();
+    if (data.isEmpty()) return;
+
+    // 可能包含多条以换行分隔的 JSON
+    const QString dataStr = QString::fromUtf8(data);
+    const QStringList lines = dataStr.split('\n', Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        QJsonParseError err;
+        QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8(), &err);
+        if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+            qWarning() << "接收记录JSON解析失败:" << err.errorString();
+            continue;
+        }
+        QJsonObject obj = doc.object();
+        OperationRecord record;
+        if (obj.contains("timestamp"))
+            record.timestamp = QDateTime::fromString(obj["timestamp"].toString(), Qt::ISODate);
+        else
+            record.timestamp = QDateTime::currentDateTime();
+        record.pageName = obj.value("pageName").toString();
+        record.controlName = obj.value("controlName").toString();
+        record.controlType = obj.value("controlType").toString();
+        record.operation = obj.value("operation").toString();
+        record.oldValue = obj.value("oldValue").toVariant();
+        record.newValue = obj.value("newValue").toVariant();
+
+        appendTcpRecord(record);
+    }
+}
+
+void OperationRecorder::appendTcpRecord(const OperationRecord &record)
+{
+    if (m_records.size() >= m_maxRecords) m_records.removeFirst();
+    m_records.append(record);
+    emit recordAdded(record);
+    saveLocalSnapshot();
+}
+
+void OperationRecorder::onReceiverDisconnected()
+{
+    OperationRecord rec;
+    rec.timestamp = QDateTime::currentDateTime();
+    rec.pageName = "系统";
+    rec.controlName = "TCP接收器";
+    rec.controlType = "Network";
+    rec.operation = "client_disconnected";
+    rec.oldValue = "";
+    rec.newValue = "";
+    appendTcpRecord(rec);
+
+    if (m_tcpReceiverClient) {
+        m_tcpReceiverClient->deleteLater();
+        m_tcpReceiverClient = nullptr;
+    }
+}
+
+void OperationRecorder::onReceiverError(QAbstractSocket::SocketError socketError)
+{
+    Q_UNUSED(socketError)
+    qWarning() << "TCP接收器错误:" << (m_tcpReceiverClient ? m_tcpReceiverClient->errorString() : QString());
+}
+
+void OperationRecorder::saveLocalSnapshot()
+{
+    QJsonArray arr;
+    for (const auto &r : m_records) arr.append(r.toJson());
+    QJsonDocument doc(arr);
+    QFile f(m_localSnapshotFile);
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(doc.toJson(QJsonDocument::Compact));
+        f.close();
+    }
 }
 
 bool OperationRecorder::exportToText(const QString &filename)

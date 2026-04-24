@@ -642,37 +642,6 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
          </property>
         </widget>
        </item>
-       <item>
-        <widget class="QToolButton" name="TBtn_SixAxies">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-           <horstretch>1</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="font">
-          <font>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>六自由度平台</string>
-         </property>
-         <property name="icon">
-          <iconset resource="res.qrc">
-           <normaloff>:/Picture/home2.png</normaloff>:/Picture/home2.png</iconset>
-         </property>
-         <property name="iconSize">
-          <size>
-           <width>22</width>
-           <height>22</height>
-          </size>
-         </property>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonTextBesideIcon</enum>
-         </property>
-        </widget>
-       </item>
       </layout>
      </widget>
     </item>
@@ -770,22 +739,6 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
          <bool>true</bool>
         </property>
        </widget>
-       <widget class="TechSliderEdit" name="TechSliderEdit_Robot_RobotSpeed" native="true">
-        <property name="geometry">
-         <rect>
-          <x>540</x>
-          <y>115</y>
-          <width>520</width>
-          <height>80</height>
-         </rect>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>520</width>
-          <height>80</height>
-         </size>
-        </property>
-       </widget>
        <widget class="TechPushButton" name="techBtn_AGV_Park">
         <property name="geometry">
          <rect>
@@ -797,62 +750,6 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
         </property>
         <property name="text">
          <string>开启驻车</string>
-        </property>
-       </widget>
-       <widget class="TechSliderEdit" name="SEdit_AGV_Angle" native="true">
-        <property name="geometry">
-         <rect>
-          <x>540</x>
-          <y>270</y>
-          <width>520</width>
-          <height>75</height>
-         </rect>
-        </property>
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>520</width>
-          <height>70</height>
-         </size>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>16777215</width>
-          <height>75</height>
-         </size>
-        </property>
-       </widget>
-       <widget class="TechSliderEdit" name="SEdit_AGV_MoveSpeed" native="true">
-        <property name="geometry">
-         <rect>
-          <x>540</x>
-          <y>195</y>
-          <width>520</width>
-          <height>75</height>
-         </rect>
-        </property>
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>520</width>
-          <height>70</height>
-         </size>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>16777215</width>
-          <height>75</height>
-         </size>
         </property>
        </widget>
        <widget class="TechSpeedGauge" name="AGV_speedGauge" native="true">
@@ -876,16 +773,6 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
         </property>
         <property name="text">
          <string>避障开启</string>
-        </property>
-       </widget>
-       <widget class="SteeringModeSelector" name="steeringModeSelector" native="true">
-        <property name="geometry">
-         <rect>
-          <x>690</x>
-          <y>360</y>
-          <width>460</width>
-          <height>110</height>
-         </rect>
         </property>
        </widget>
        <widget class="QWidget" name="widget_5" native="true">
@@ -953,214 +840,91 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        <widget class="QWidget" name="quickWidget_Inclinometer_X" native="true">
         <property name="geometry">
          <rect>
-          <x>660</x>
+          <x>680</x>
           <y>490</y>
           <width>170</width>
           <height>60</height>
          </rect>
         </property>
        </widget>
-       <widget class="QGroupBox" name="groupBox_StepMove">
+       <widget class="QWidget" name="widget_SixAxies_1" native="true">
         <property name="geometry">
          <rect>
-          <x>1170</x>
-          <y>-1</y>
-          <width>91</width>
-          <height>441</height>
+          <x>740</x>
+          <y>110</y>
+          <width>150</width>
+          <height>150</height>
          </rect>
         </property>
-        <property name="title">
-         <string>步进控制</string>
+       </widget>
+       <widget class="QWidget" name="widget_SixAxies_3" native="true">
+        <property name="geometry">
+         <rect>
+          <x>1080</x>
+          <y>110</y>
+          <width>150</width>
+          <height>150</height>
+         </rect>
         </property>
-        <layout class="QVBoxLayout" name="verticalLayout_StepMove">
-         <item>
-          <widget class="QWidget" name="widget_StepTargetList" native="true">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-             <horstretch>0</horstretch>
-             <verstretch>1</verstretch>
-            </sizepolicy>
-           </property>
-           <layout class="QVBoxLayout" name="verticalLayout_StepTargetList">
-            <property name="spacing">
-             <number>8</number>
-            </property>
-            <property name="leftMargin">
-             <number>4</number>
-            </property>
-            <property name="topMargin">
-             <number>2</number>
-            </property>
-            <property name="rightMargin">
-             <number>4</number>
-            </property>
-            <property name="bottomMargin">
-             <number>2</number>
-            </property>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetAxis1">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>轴1</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-              <property name="checked">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetAxis2">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>轴2</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetAxis3">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>轴3</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetAxis4">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>轴4</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetAgv">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>底盘</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="label_StepValue">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="text">
-            <string>步进值</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QWidget" name="widget_StepValueInput" native="true">
-           <layout class="QHBoxLayout" name="horizontalLayout_StepValueInput">
-            <property name="spacing">
-             <number>6</number>
-            </property>
-            <property name="leftMargin">
-             <number>4</number>
-            </property>
-            <property name="topMargin">
-             <number>2</number>
-            </property>
-            <property name="rightMargin">
-             <number>4</number>
-            </property>
-            <property name="bottomMargin">
-             <number>2</number>
-            </property>
-            <item>
-             <widget class="QLineEdit" name="lineEdit_StepValue">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="minimumSize">
-               <size>
-                <width>64</width>
-                <height>44</height>
-               </size>
-              </property>
-              <property name="text">
-               <string>1</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="placeholderText">
-               <string>输入步进值</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-        </layout>
+       </widget>
+       <widget class="QWidget" name="widget_SixAxies_5" native="true">
+        <property name="geometry">
+         <rect>
+          <x>910</x>
+          <y>290</y>
+          <width>150</width>
+          <height>150</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QWidget" name="widget_SixAxies_4" native="true">
+        <property name="geometry">
+         <rect>
+          <x>740</x>
+          <y>290</y>
+          <width>150</width>
+          <height>150</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QWidget" name="widget_SixAxies_6" native="true">
+        <property name="geometry">
+         <rect>
+          <x>1080</x>
+          <y>290</y>
+          <width>150</width>
+          <height>150</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QWidget" name="widget_SixAxies_2" native="true">
+        <property name="geometry">
+         <rect>
+          <x>910</x>
+          <y>110</y>
+          <width>150</width>
+          <height>150</height>
+         </rect>
+        </property>
        </widget>
        <zorder>lab_Overall</zorder>
        <zorder>widget_test3</zorder>
        <zorder>widget_test4</zorder>
        <zorder>widget_test2</zorder>
        <zorder>widget_test1</zorder>
-       <zorder>TechSliderEdit_Robot_RobotSpeed</zorder>
        <zorder>techBtn_AGV_Park</zorder>
-       <zorder>SEdit_AGV_Angle</zorder>
-       <zorder>SEdit_AGV_MoveSpeed</zorder>
        <zorder>AGV_speedGauge</zorder>
        <zorder>techBtn_AGV_OA</zorder>
-       <zorder>steeringModeSelector</zorder>
        <zorder>widget_5</zorder>
        <zorder>quickWidget_RobotTotalPower</zorder>
        <zorder>quickWidget_Inclinometer_Y</zorder>
        <zorder>quickWidget_Inclinometer_X</zorder>
-       <zorder>groupBox_StepMove</zorder>
+       <zorder>widget_SixAxies_1</zorder>
+       <zorder>widget_SixAxies_3</zorder>
+       <zorder>widget_SixAxies_5</zorder>
+       <zorder>widget_SixAxies_4</zorder>
+       <zorder>widget_SixAxies_6</zorder>
+       <zorder>widget_SixAxies_2</zorder>
       </widget>
       <widget class="QWidget" name="page_HistoryRecord">
        <widget class="QQuickWidget" name="quickWidget_HistoryList">
@@ -1187,66 +951,6 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        </widget>
       </widget>
       <widget class="QWidget" name="page_SixAxies">
-       <widget class="QWidget" name="widget_SixAxies_2" native="true">
-        <property name="geometry">
-         <rect>
-          <x>580</x>
-          <y>120</y>
-          <width>150</width>
-          <height>150</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_SixAxies_3" native="true">
-        <property name="geometry">
-         <rect>
-          <x>790</x>
-          <y>120</y>
-          <width>150</width>
-          <height>150</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_SixAxies_4" native="true">
-        <property name="geometry">
-         <rect>
-          <x>360</x>
-          <y>300</y>
-          <width>150</width>
-          <height>150</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_SixAxies_5" native="true">
-        <property name="geometry">
-         <rect>
-          <x>580</x>
-          <y>300</y>
-          <width>150</width>
-          <height>150</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_SixAxies_6" native="true">
-        <property name="geometry">
-         <rect>
-          <x>790</x>
-          <y>300</y>
-          <width>150</width>
-          <height>150</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_SixAxies_1" native="true">
-        <property name="geometry">
-         <rect>
-          <x>360</x>
-          <y>120</y>
-          <width>150</width>
-          <height>150</height>
-         </rect>
-        </property>
-       </widget>
        <widget class="QLabel" name="lab_Overall_2">
         <property name="geometry">
          <rect>
@@ -1514,21 +1218,9 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
    <container>1</container>
   </customwidget>
   <customwidget>
-   <class>TechSliderEdit</class>
-   <extends>QWidget</extends>
-   <header location="global">techslideredit.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
    <class>TechPushButton</class>
    <extends>QPushButton</extends>
    <header location="global">techpushbutton.h</header>
-  </customwidget>
-  <customwidget>
-   <class>SteeringModeSelector</class>
-   <extends>QWidget</extends>
-   <header>steeringmodeselector.h</header>
-   <container>1</container>
   </customwidget>
   <customwidget>
    <class>BatteryWidget</class>

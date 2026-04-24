@@ -29,6 +29,8 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <QToolTip>
 #include <QButtonGroup>
 #include <QGuiApplication>
+#include <QRandomGenerator>
+#include <QScreen>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -345,12 +347,14 @@ void MainWindow::setupNavigationConnections()
         return;
     }
 
+    QToolButton *sixAxiesBtn = findChild<QToolButton*>("TBtn_SixAxies");
+
     // 导航按钮互斥：同一时刻仅保留一个页面入口为激活态。
     const QList<QToolButton*> navButtons = {
         ui->TBtn_HomePage,
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord,
-        ui->TBtn_SixAxies
+        sixAxiesBtn
     };
     for (QToolButton *btn : navButtons) {
         if (!btn) {
@@ -369,12 +373,14 @@ void MainWindow::setupNavigationConnections()
         updateNavButtonStyles(nullptr);
     });
 
-    connect(ui->TBtn_SixAxies, &QPushButton::clicked, [this]() {
-        if (ui->page_SixAxies) {
-            ui->StackedWidget->setCurrentWidget(ui->page_SixAxies);
-        }
-        ui->TBtn_SixAxies->setChecked(true);
-    });
+    if (sixAxiesBtn) {
+        connect(sixAxiesBtn, &QPushButton::clicked, [this, sixAxiesBtn]() {
+            if (ui->page_SixAxies) {
+                ui->StackedWidget->setCurrentWidget(ui->page_SixAxies);
+            }
+            sixAxiesBtn->setChecked(true);
+        });
+    }
 
     // 旧模板按钮 Btn_Switch* 已移除，页面切换统一由左侧工具按钮负责。
 }
@@ -7694,8 +7700,8 @@ void MainWindow::updateStepMoveGroupBoxState()
 
     const bool isFirstPage = ui->StackedWidget && ui->StackedWidget->currentIndex() == 0;
     const bool shouldDisable = (!isStepMode && isFirstPage);
-    if (ui->groupBox_StepMove) {
-        ui->groupBox_StepMove->setEnabled(!shouldDisable);
+    if (QGroupBox *stepGroup = findChild<QGroupBox*>("groupBox_StepMove")) {
+        stepGroup->setEnabled(!shouldDisable);
     }
 
     QGroupBox *sixAxisGroup = findChild<QGroupBox*>("groupBox_SixAxies_StepMove");

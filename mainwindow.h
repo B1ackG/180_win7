@@ -44,9 +44,11 @@
 #include <QCheckBox>
 #include <QGroupBox>
 #include <QProgressBar>
+#include <QListWidget>
 #include <QQuickWidget>
 #include <QQuickItem>
 #include <QQmlContext>
+#include <QSocketNotifier>
 #include <QSet>
 #include <QHash>
 #include "poseprovider.h"

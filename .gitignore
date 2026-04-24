@@ -1,0 +1,25 @@
+# Qt intermediate files
+*.o
+*.obj
+Makefile*
+moc_*
+ui_*
+qrc_*
+.qmake.stash
+build/
+build_*/
+
+.qtc_clangd/
+build_log.txt
+
+# Project specific
+ModbusTCPAssistant
+*.user
+*.user.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Automatically added by Assistant
+*.pro.user

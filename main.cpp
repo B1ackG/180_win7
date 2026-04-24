@@ -6,6 +6,7 @@
 #include <QSplashScreen>
 #include <QPixmap>
 #include <QElapsedTimer>
+#include <QScreen>
 #include <QMessageBox>
 #include <QSettings>
 #include <QFile>
