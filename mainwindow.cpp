@@ -450,6 +450,12 @@ void MainWindow::setupRecordAndPermissionConnections()
     });
 
     connect(m_recorder, &OperationRecorder::recordAdded, this, [this](const OperationRecord &record) {
+        const bool isTcpSessionEvent = (record.operation == "client_connected")
+            || (record.operation == "client_disconnected");
+        if (isTcpSessionEvent) {
+            return;
+        }
+
         updateRecordDisplay();
         
         // 使用 mapping 转换显示内容
@@ -1726,6 +1732,12 @@ void MainWindow::setupRecordUI()
 
     // 连接信号
     connect(m_recorder, &OperationRecorder::recordAdded, this, [this](const OperationRecord &record) {
+        const bool isTcpSessionEvent = (record.operation == "client_connected")
+            || (record.operation == "client_disconnected");
+        if (isTcpSessionEvent) {
+            return;
+        }
+
         if (m_historyListQml && m_historyListQml->rootObject()) {
             QMetaObject::invokeMethod(m_historyListQml->rootObject(), "addRecord",
                 Q_ARG(QVariant, record.timestamp.toString("hh:mm:ss")),

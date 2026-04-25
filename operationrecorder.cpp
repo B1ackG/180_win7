@@ -16,6 +16,7 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QTimer>
+#include <QCoreApplication>
 
 namespace {
 QStringList parseCsvList(const QString &raw)
@@ -63,7 +64,8 @@ OperationRecorder::OperationRecorder(QObject *parent)
     // 初始化 TCP 接收器（用于接收外部记录推送）
     m_tcpReceiverServer = new QTcpServer(this);
     connect(m_tcpReceiverServer, &QTcpServer::newConnection, this, &OperationRecorder::onReceiverNewConnection);
-    m_localSnapshotFile = +QCoreApplication::applicationDirPath() + "/records_snapshot.json";
+    m_localSnapshotFile = QCoreApplication::applicationDirPath() + "/records_snapshot.json";
+    setupTcpReceiver();
 }
 
 void OperationRecorder::loadSecuritySettings()
@@ -255,6 +257,83 @@ bool OperationRecorder::loadFromFile(const QString &filename)
     return true;
 }
 
+void OperationRecorder::setupTcpReceiver()
+{
+    if (!m_tcpReceiverServer) {
+        return;
+    }
+
+    if (m_tcpReceiverServer->isListening()) {
+        return;
+    }
+
+    if (!m_tcpReceiverServer->listen(QHostAddress::Any, m_tcpReceiverPort)) {
+        qWarning() << "TCP接收器监听失败:" << m_tcpReceiverServer->errorString()
+                   << "端口:" << m_tcpReceiverPort;
+        return;
+    }
+
+    OperationRecord rec;
+    rec.timestamp = QDateTime::currentDateTime();
+    rec.pageName = "系统";
+    rec.controlName = "TCP接收器";
+    rec.controlType = "Network";
+    rec.operation = "listening";
+    rec.oldValue = "";
+    rec.newValue = QString("0.0.0.0:%1").arg(m_tcpReceiverPort);
+    appendTcpRecord(rec);
+}
+
+bool OperationRecorder::decodeRecordLine(const QByteArray &lineBytes, OperationRecord *recordOut) const
+{
+    if (!recordOut) {
+        return false;
+    }
+
+    QJsonParseError err;
+    const QJsonDocument incomingDoc = QJsonDocument::fromJson(lineBytes, &err);
+    if (err.error != QJsonParseError::NoError || !incomingDoc.isObject()) {
+        return false;
+    }
+
+    QJsonObject recordObj = incomingDoc.object();
+
+    // 兼容发送端签名封包：{"payload":"base64-json","ts":"...","nonce":"...","sig":"..."}
+    if (recordObj.contains("payload")) {
+        const QByteArray payloadB64 = recordObj.value("payload").toString().toUtf8();
+        const QByteArray payload = QByteArray::fromBase64(payloadB64);
+        QJsonParseError payloadErr;
+        const QJsonDocument payloadDoc = QJsonDocument::fromJson(payload, &payloadErr);
+        if (payloadErr.error != QJsonParseError::NoError || !payloadDoc.isObject()) {
+            return false;
+        }
+        recordObj = payloadDoc.object();
+    }
+
+    OperationRecord record;
+    if (recordObj.contains("timestamp")) {
+        record.timestamp = QDateTime::fromString(recordObj.value("timestamp").toString(), Qt::ISODate);
+    }
+    if (!record.timestamp.isValid()) {
+        record.timestamp = QDateTime::currentDateTime();
+    }
+
+    record.pageName = recordObj.value("pageName").toString();
+    record.controlName = recordObj.value("controlName").toString();
+    record.controlType = recordObj.value("controlType").toString();
+    record.operation = recordObj.value("operation").toString();
+    record.oldValue = recordObj.value("oldValue").toVariant();
+    record.newValue = recordObj.value("newValue").toVariant();
+
+    // 兼容缺字段报文，避免记录空行到界面
+    if (record.controlName.isEmpty() && record.operation.isEmpty() && record.pageName.isEmpty()) {
+        return false;
+    }
+
+    *recordOut = record;
+    return true;
+}
+
 // ===== TCP 接收相关实现 =====
 void OperationRecorder::onReceiverNewConnection()
 {
@@ -271,6 +350,7 @@ void OperationRecorder::onReceiverNewConnection()
     connect(m_tcpReceiverClient, &QTcpSocket::disconnected, this, &OperationRecorder::onReceiverDisconnected);
     connect(m_tcpReceiverClient, QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::errorOccurred),
             this, &OperationRecorder::onReceiverError);
+    m_tcpReceiverBuffer.clear();
 
     OperationRecord rec;
     rec.timestamp = QDateTime::currentDateTime();
@@ -286,33 +366,25 @@ void OperationRecorder::onReceiverNewConnection()
 void OperationRecorder::onReceiverDataReady()
 {
     if (!m_tcpReceiverClient) return;
-    QByteArray data = m_tcpReceiverClient->readAll();
+    const QByteArray data = m_tcpReceiverClient->readAll();
     if (data.isEmpty()) return;
 
-    // 可能包含多条以换行分隔的 JSON
-    const QString dataStr = QString::fromUtf8(data);
-    const QStringList lines = dataStr.split('\n', Qt::SkipEmptyParts);
-    for (const QString &line : lines) {
-        QJsonParseError err;
-        QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8(), &err);
-        if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-            qWarning() << "接收记录JSON解析失败:" << err.errorString();
-            continue;
-        }
-        QJsonObject obj = doc.object();
-        OperationRecord record;
-        if (obj.contains("timestamp"))
-            record.timestamp = QDateTime::fromString(obj["timestamp"].toString(), Qt::ISODate);
-        else
-            record.timestamp = QDateTime::currentDateTime();
-        record.pageName = obj.value("pageName").toString();
-        record.controlName = obj.value("controlName").toString();
-        record.controlType = obj.value("controlType").toString();
-        record.operation = obj.value("operation").toString();
-        record.oldValue = obj.value("oldValue").toVariant();
-        record.newValue = obj.value("newValue").toVariant();
+    m_tcpReceiverBuffer.append(data);
 
-        appendTcpRecord(record);
+    int newlinePos = m_tcpReceiverBuffer.indexOf('\n');
+    while (newlinePos >= 0) {
+        const QByteArray rawLine = m_tcpReceiverBuffer.left(newlinePos).trimmed();
+        m_tcpReceiverBuffer.remove(0, newlinePos + 1);
+
+        if (!rawLine.isEmpty()) {
+            OperationRecord record;
+            if (decodeRecordLine(rawLine, &record)) {
+                appendTcpRecord(record);
+            } else {
+                qWarning() << "接收记录JSON解析失败，原始数据:" << QString::fromUtf8(rawLine.left(200));
+            }
+        }
+        newlinePos = m_tcpReceiverBuffer.indexOf('\n');
     }
 }
 
@@ -340,6 +412,7 @@ void OperationRecorder::onReceiverDisconnected()
         m_tcpReceiverClient->deleteLater();
         m_tcpReceiverClient = nullptr;
     }
+    m_tcpReceiverBuffer.clear();
 }
 
 void OperationRecorder::onReceiverError(QAbstractSocket::SocketError socketError)

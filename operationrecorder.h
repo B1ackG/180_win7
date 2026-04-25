@@ -27,6 +27,7 @@
 #include <QSslSocket>
 #endif
 #include <QTimer>
+#include <QByteArray>
 
 #define WIN7_IP "192.168.1.70"
 #define WIN7_PORT 12345
@@ -279,13 +280,15 @@ private:
     void connectTcpSocket();
     void disconnectTcpSocket();
     void setupTcpReceiver();
+    bool decodeRecordLine(const QByteArray &lineBytes, OperationRecord *recordOut) const;
     void appendTcpRecord(const OperationRecord &record);
     void saveLocalSnapshot();
 
     bool m_recordLocalOperations = false;
     QTcpServer *m_tcpReceiverServer = nullptr;
     QTcpSocket *m_tcpReceiverClient = nullptr;
-    quint16 m_tcpReceiverPort = 12347;
+    QByteArray m_tcpReceiverBuffer;
+    quint16 m_tcpReceiverPort = WIN7_PORT;
     QString m_localSnapshotFile;
 };
 
