@@ -62,5 +62,7 @@
         <file>Picture/permission.png</file>
         <file>Picture/history.png</file>
         <file>Picture/sixAxiesOverAll.png</file>
+        <file>Picture/624_Overall.png</file>
+        <file>Picture/624_SixAxies.png</file>
     </qresource>
 </RCC>

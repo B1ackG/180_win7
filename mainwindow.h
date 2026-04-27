@@ -675,6 +675,7 @@ private:
     QMap<QString, TechArcGauge*> m_arcGauges;
     QMap<QString, QVector<TechSliderLabel*>> m_pageSliders;
     QToolButton *m_btnStepMove = nullptr;
+    QToolButton *m_btnMoveMode = nullptr;
     QButtonGroup *m_stepTargetGroup = nullptr;
     QButtonGroup *m_sixAxisStepTargetGroup = nullptr;
     QLineEdit *m_stepValueEdit = nullptr;

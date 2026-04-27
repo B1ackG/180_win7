@@ -297,6 +297,16 @@ void MainWindow::scheduleStartupTasks()
 {
     // 移除 3 秒硬延迟，改为在 onModbusConnected 中按需启动任务
     // 或在特定子系统准备就绪后立即执行
+    if (isFeatureEnabled("input_devices", "input.matrix_key")) {
+        QTimer::singleShot(1200, this, [this]() {
+            if (!m_keyManager || m_keyManager->isRunning()) {
+                return;
+            }
+            qWarning() << "检测到矩阵按键监听未运行，触发一次启动重试";
+            setupKeyManager();
+        });
+    }
+
     qDebug() << "启动延迟任务已调度（将由 Modbus 连接信号驱动）";
 }
 
@@ -394,7 +404,7 @@ void MainWindow::checkUI()
 
 void MainWindow::initializeUI()
 {
-    setFixedSize(1280, 800);
+    setFixedSize(1920, 1080);
 }
 
 void MainWindow::updateNavButtonStyles(QPushButton *activeBtn)

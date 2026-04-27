@@ -33,9 +33,6 @@ bool MatrixKeyThreadManager::start(const QString &device)
         // 将监控器移动到工作线程
         m_monitor->moveToThread(m_workerThread);
 
-        // 连接线程相关信号
-        connect(m_workerThread, &QThread::started, m_monitor, &MatrixKeyMonitor::startMonitoring);
-
         // 连接键盘信号到主线程
         connect(m_monitor, &MatrixKeyMonitor::keyPressed,
                 this, &MatrixKeyThreadManager::keyPressed, Qt::QueuedConnection);
@@ -49,6 +46,22 @@ bool MatrixKeyThreadManager::start(const QString &device)
 
         // 启动线程
         m_workerThread->start();
+
+        bool monitorStarted = false;
+        if (!QMetaObject::invokeMethod(m_monitor,
+                                       "startMonitoring",
+                                       Qt::BlockingQueuedConnection,
+                                       Q_RETURN_ARG(bool, monitorStarted))) {
+            qWarning() << "无法调用 MatrixKeyMonitor::startMonitoring";
+            stop();
+            return false;
+        }
+
+        if (!monitorStarted) {
+            qWarning() << "矩阵按键监控启动失败，已停止线程";
+            stop();
+            return false;
+        }
 
         qDebug() << "矩阵按键线程启动成功，线程ID:" << m_workerThread;
         return true;

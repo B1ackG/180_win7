@@ -410,38 +410,45 @@ void MainWindow::setupRecordAndPermissionConnections()
         }
     });
 
-    ui->TBtn_MoveMode->setText("未选择模式");
-
-    connect(ui->TBtn_MoveMode, &QPushButton::clicked, [=]() {
-        if (m_moveModeUnknown) {
-            m_moveModeUnknown = false;
-            m_isJointMode = true; // 首次默认进入关节模式
-        } else {
-            m_isJointMode = !m_isJointMode;
-        }
-
-        if (m_isJointMode) {
-            writeToMainDevice(525, 2);
-            ui->TBtn_MoveMode->setText("关节模式");
-            QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
-            if (moveModeLabel) {
-                moveModeLabel->setText("关节模式");
-                moveModeLabel->setStyleSheet("color: #55ff55; font-weight: bold; font-size: 11px;");
+    m_btnMoveMode = findChild<QToolButton*>("TBtn_MoveMode");
+    if (m_btnMoveMode) {
+        m_btnMoveMode->setText("未选择模式");
+        connect(m_btnMoveMode, &QPushButton::clicked, [=]() {
+            if (m_moveModeUnknown) {
+                m_moveModeUnknown = false;
+                m_isJointMode = true; // 首次默认进入关节模式
+            } else {
+                m_isJointMode = !m_isJointMode;
             }
-            showNotification("已切换至关节模式");
-        } else {
-            writeToMainDevice(525, 1);
-            ui->TBtn_MoveMode->setText("坐标模式");
-            QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
-            if (moveModeLabel) {
-                moveModeLabel->setText("坐标模式");
-                moveModeLabel->setStyleSheet("color: #ffaa00; font-weight: bold; font-size: 11px;");
-            }
-            showNotification("已切换至坐标模式");
-        }
 
-        updateFunctionSwitchVisuals();
-    });
+            if (m_isJointMode) {
+                writeToMainDevice(525, 2);
+                m_btnMoveMode->setText("关节模式");
+                QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
+                if (moveModeLabel) {
+                    moveModeLabel->setText("关节模式");
+                    moveModeLabel->setStyleSheet("color: #55ff55; font-weight: bold; font-size: 11px;");
+                }
+                showNotification("已切换至关节模式");
+            } else {
+                writeToMainDevice(525, 1);
+                m_btnMoveMode->setText("坐标模式");
+                QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
+                if (moveModeLabel) {
+                    moveModeLabel->setText("坐标模式");
+                    moveModeLabel->setStyleSheet("color: #ffaa00; font-weight: bold; font-size: 11px;");
+                }
+                showNotification("已切换至坐标模式");
+            }
+
+            updateFunctionSwitchVisuals();
+        });
+    } else {
+        qWarning() << "未找到TBtn_MoveMode按钮";
+        m_btnMoveMode = new QToolButton(this);
+        m_btnMoveMode->setObjectName("TBtn_MoveMode_Fallback");
+        m_btnMoveMode->hide();
+    }
     connect(ui->TBtn_PermissionPage, &QPushButton::clicked, [this]() {
         if (ui->page_Permission) {
             ui->StackedWidget->setCurrentWidget(ui->page_Permission);
@@ -498,8 +505,16 @@ void MainWindow::setupControlConnections()
                 updateStepTargetButtonsState();
             });
 
-    connect(ui->TBtn_Stepmove, &QToolButton::clicked,
-            this, &MainWindow::onStepMoveButtonClicked);
+    m_btnStepMove = findChild<QToolButton*>("TBtn_Stepmove");
+    if (m_btnStepMove) {
+        connect(m_btnStepMove, &QToolButton::clicked,
+                this, &MainWindow::onStepMoveButtonClicked);
+    } else {
+        qWarning() << "未找到TBtn_Stepmove按钮";
+        m_btnStepMove = new QToolButton(this);
+        m_btnStepMove->setObjectName("TBtn_Stepmove_Fallback");
+        m_btnStepMove->hide();
+    }
 
     m_controlModeBtn = findChild<QToolButton*>("TBtn_ControlMode");
     if (m_controlModeBtn) {
@@ -507,6 +522,9 @@ void MainWindow::setupControlConnections()
                 this, &MainWindow::onControlModeClicked);
     } else {
         qWarning() << "未找到TBtn_ControlMode按钮";
+        m_controlModeBtn = new QToolButton(this);
+        m_controlModeBtn->setObjectName("TBtn_ControlMode_Fallback");
+        m_controlModeBtn->hide();
     }
 
     m_btnForceControl = findChild<TechPushButton*>("btn_ForceControl");
@@ -568,9 +586,9 @@ void MainWindow::setupStyles()
 
     // 顶部分组与按钮基础风格统一由 .ui 样式表维护，便于 Qt Creator 中可视化调整。
     if (ui) {
-        if (ui->TBtn_Stepmove) ui->TBtn_Stepmove->setCheckable(false);
-        if (ui->TBtn_MoveMode) ui->TBtn_MoveMode->setCheckable(false);
-        if (ui->TBtn_ControlMode) ui->TBtn_ControlMode->setCheckable(false);
+        if (m_btnStepMove) m_btnStepMove->setCheckable(false);
+        if (m_btnMoveMode) m_btnMoveMode->setCheckable(false);
+        if (m_controlModeBtn) m_controlModeBtn->setCheckable(false);
         updateFunctionSwitchVisuals();
     }
 
@@ -698,27 +716,27 @@ void MainWindow::updateFunctionSwitchVisuals()
 
     // 点动/步进：增强颜色对比，状态一眼可分
     if (m_stepModeUnknown) {
-        applyModeStyle(ui->TBtn_Stepmove, unknownBg, unknownBorder);
+        applyModeStyle(m_btnStepMove, unknownBg, unknownBorder);
     } else if (m_stepModeEnabled) {
-        applyModeStyle(ui->TBtn_Stepmove, "rgba(30, 148, 84, 0.90)", "#a9ffd0");
+        applyModeStyle(m_btnStepMove, "rgba(30, 148, 84, 0.90)", "#a9ffd0");
     } else {
-        applyModeStyle(ui->TBtn_Stepmove, "rgba(172, 108, 26, 0.90)", "#ffd7a1");
+        applyModeStyle(m_btnStepMove, "rgba(172, 108, 26, 0.90)", "#ffd7a1");
     }
 
     // 关节/坐标：未选择与步进按钮保持同灰色
     if (m_moveModeUnknown) {
-        applyModeStyle(ui->TBtn_MoveMode, unknownBg, unknownBorder);
+        applyModeStyle(m_btnMoveMode, unknownBg, unknownBorder);
     } else if (m_isJointMode) {
-        applyModeStyle(ui->TBtn_MoveMode, "rgba(32, 140, 86, 0.88)", "#9dffd3");
+        applyModeStyle(m_btnMoveMode, "rgba(32, 140, 86, 0.88)", "#9dffd3");
     } else {
-        applyModeStyle(ui->TBtn_MoveMode, "rgba(166, 104, 24, 0.88)", "#ffd29a");
+        applyModeStyle(m_btnMoveMode, "rgba(166, 104, 24, 0.88)", "#ffd29a");
     }
 
     // 有线/无线：白/黄差异
     if (m_controlMode == WIRED_MODE) {
-        applyModeStyle(ui->TBtn_ControlMode, "rgba(30, 126, 150, 0.90)", "#a8f0ff");
+        applyModeStyle(m_controlModeBtn, "rgba(30, 126, 150, 0.90)", "#a8f0ff");
     } else {
-        applyModeStyle(ui->TBtn_ControlMode, "rgba(158, 122, 16, 0.88)", "#ffe28f");
+        applyModeStyle(m_controlModeBtn, "rgba(158, 122, 16, 0.88)", "#ffe28f");
     }
 }
 
@@ -2756,8 +2774,8 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
     QString pageName = m_pageNames.value(currentPage, "未知");
     const bool isRobotPage = (currentPage == 0 || pageName == "机械臂" || pageName == "page_Robot");
     const bool isSixAxisPage = (currentPage == 3 || pageName == "六自由度" || pageName == "page_SixAxies");
-    const bool isJointModeByUiText = (ui && ui->TBtn_MoveMode
-                                      && ui->TBtn_MoveMode->text().trimmed() == "关节模式");
+    const bool isJointModeByUiText = (ui && m_btnMoveMode
+                                      && m_btnMoveMode->text().trimmed() == "关节模式");
     const bool isJointModeForExternal = (m_isJointMode || isJointModeByUiText);
     const bool isSixAxisSpecialKey = (isSixAxisPage && (keyNumber == 13 || keyNumber == 14));
 
@@ -3553,8 +3571,8 @@ void MainWindow::onModbusConnected()
             timeoutRecord.operation = "startup_mode_read_timeout";
             timeoutRecord.oldValue = "等待读取125/126";
             timeoutRecord.newValue = QString("20秒超时，步进=%1，运动=%2")
-                                         .arg(ui && ui->TBtn_Stepmove ? ui->TBtn_Stepmove->text() : "未知")
-                                         .arg(ui && ui->TBtn_MoveMode ? ui->TBtn_MoveMode->text() : "未知");
+                                         .arg(ui && m_btnStepMove ? m_btnStepMove->text() : "未知")
+                                         .arg(ui && m_btnMoveMode ? m_btnMoveMode->text() : "未知");
             m_recorder->addRecord(timeoutRecord);
         }
     });
@@ -3793,12 +3811,12 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
 
     const bool allowUiStateSync = m_uiStateSyncEnabled;
 
-    if (allowUiStateSync && address == 125 && ui && ui->TBtn_Stepmove) {
+    if (allowUiStateSync && address == 125 && ui && m_btnStepMove) {
         if (value == 2) {
             m_stepModeUnknown = false;
             m_stepModeEnabled = true;
-            ui->TBtn_Stepmove->setText("步进模式");
-            ui->TBtn_Stepmove->setToolTip("当前模式：步进模式");
+            m_btnStepMove->setText("步进模式");
+            m_btnStepMove->setToolTip("当前模式：步进模式");
             QLabel *runModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarRunModeLabel") : nullptr;
             if (runModeLabel) {
                 runModeLabel->setText("步进模式");
@@ -3807,8 +3825,8 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
         } else if (value == 1) {
             m_stepModeUnknown = false;
             m_stepModeEnabled = false;
-            ui->TBtn_Stepmove->setText("点动模式");
-            ui->TBtn_Stepmove->setToolTip("当前模式：点动模式");
+            m_btnStepMove->setText("点动模式");
+            m_btnStepMove->setToolTip("当前模式：点动模式");
             QLabel *runModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarRunModeLabel") : nullptr;
             if (runModeLabel) {
                 runModeLabel->setText("点动模式");
@@ -3816,8 +3834,8 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
             }
         } else {
             m_stepModeUnknown = true;
-            ui->TBtn_Stepmove->setText("未选择模式");
-            ui->TBtn_Stepmove->setToolTip("当前模式：未选择模式");
+            m_btnStepMove->setText("未选择模式");
+            m_btnStepMove->setToolTip("当前模式：未选择模式");
             QLabel *runModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarRunModeLabel") : nullptr;
             if (runModeLabel) {
                 runModeLabel->setText("步进未选择");
@@ -3829,11 +3847,11 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
         updateStepTargetButtonsState();
     }
 
-    if (allowUiStateSync && address == 126 && ui && ui->TBtn_MoveMode) {
+    if (allowUiStateSync && address == 126 && ui && m_btnMoveMode) {
         if (value == 2) {
             m_moveModeUnknown = false;
             m_isJointMode = true;
-            ui->TBtn_MoveMode->setText("关节模式");
+            m_btnMoveMode->setText("关节模式");
             QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
             if (moveModeLabel) {
                 moveModeLabel->setText("关节模式");
@@ -3842,7 +3860,7 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
         } else if (value == 1) {
             m_moveModeUnknown = false;
             m_isJointMode = false;
-            ui->TBtn_MoveMode->setText("坐标模式");
+            m_btnMoveMode->setText("坐标模式");
             QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
             if (moveModeLabel) {
                 moveModeLabel->setText("坐标模式");
@@ -3850,7 +3868,7 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
             }
         } else {
             m_moveModeUnknown = true;
-            ui->TBtn_MoveMode->setText("未选择模式");
+            m_btnMoveMode->setText("未选择模式");
             QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
             if (moveModeLabel) {
                 moveModeLabel->setText("运动未选择");
@@ -7485,8 +7503,8 @@ void MainWindow::onStepMoveButtonClicked()
 
     if (m_stepModeEnabled) {
         // 切换到步进模式
-        ui->TBtn_Stepmove->setText("步进模式");
-        ui->TBtn_Stepmove->setToolTip("当前模式：步进模式");
+        m_btnStepMove->setText("步进模式");
+        m_btnStepMove->setToolTip("当前模式：步进模式");
 
         // 给501寄存器写入2
         writeToMainDevice(501, 2);
@@ -7504,8 +7522,8 @@ void MainWindow::onStepMoveButtonClicked()
 
     } else {
         // 切换到点动模式
-        ui->TBtn_Stepmove->setText("点动模式");
-        ui->TBtn_Stepmove->setToolTip("当前模式：点动模式");
+        m_btnStepMove->setText("点动模式");
+        m_btnStepMove->setToolTip("当前模式：点动模式");
 
         // 更新状态栏显示
         QLabel *runModeLabel = ui->statusBar->findChild<QLabel*>("statusBarRunModeLabel");
@@ -7706,8 +7724,8 @@ void MainWindow::updateStepMoveGroupBoxState()
     }
 
     bool isStepMode = (!m_stepModeUnknown && m_stepModeEnabled);
-    if (!isStepMode && ui->TBtn_Stepmove) {
-        isStepMode = (ui->TBtn_Stepmove->text().trimmed() == "步进模式");
+    if (!isStepMode && m_btnStepMove) {
+        isStepMode = (m_btnStepMove->text().trimmed() == "步进模式");
     }
 
     const bool isFirstPage = ui->StackedWidget && ui->StackedWidget->currentIndex() == 0;
@@ -7776,6 +7794,11 @@ void MainWindow::setupStepMoveControl()
     }
 
     m_btnStepMove = findChild<QToolButton*>("TBtn_Stepmove");
+    if (!m_btnStepMove) {
+        m_btnStepMove = new QToolButton(this);
+        m_btnStepMove->setObjectName("TBtn_Stepmove_Fallback");
+        m_btnStepMove->hide();
+    }
 
     QToolButton *axis1Btn = findChild<QToolButton*>("btnStepTargetAxis1");
     QToolButton *axis2Btn = findChild<QToolButton*>("btnStepTargetAxis2");

@@ -17,7 +17,9 @@
 #include <QObject>
 #include <QSocketNotifier>
 #include <QMutex>
+#ifdef Q_OS_LINUX
 #include <linux/input.h>
+#endif
 #include <QTimer>
 #include <QEventLoop>
 #include <QHash>
@@ -54,7 +56,7 @@ public:
      * @return true 表示监控已成功启动
      * @warning 若设备路径无效或权限不足则会返回 false 并发出 `errorOccurred()`。
      */
-    bool startMonitoring();  // 开始监控
+    Q_INVOKABLE bool startMonitoring();  // 开始监控
 
     /**
      * 使用示例:

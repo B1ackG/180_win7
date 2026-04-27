@@ -8,10 +8,6 @@
 #include <QCryptographicHash>
 #include <QMessageAuthenticationCode>
 #include <QFile>
-#ifndef QT_NO_SSL
-#include <QSslConfiguration>
-#include <QSslCertificate>
-#endif
 #include <QNetworkInterface>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -42,11 +38,7 @@ OperationRecorder::OperationRecorder(QObject *parent)
     , m_reconnectTimer(nullptr)
 {
     // 初始化TCP传输
-#ifndef QT_NO_SSL
-    m_tcpSocket = new QSslSocket(this);
-#else
     m_tcpSocket = new QTcpSocket(this);
-#endif
     loadSecuritySettings();
 
     // 连接TCP信号
@@ -73,14 +65,6 @@ void OperationRecorder::loadSecuritySettings()
     QSettings settings("config.ini", QSettings::IniFormat);
     settings.beginGroup("OperationLogTransport");
 
-    const QByteArray tlsEnv = qgetenv("AGV_LOG_TLS");
-    if (!tlsEnv.isEmpty()) {
-        const QByteArray normalized = tlsEnv.trimmed().toLower();
-        m_tcpUseTls = (normalized == "1" || normalized == "true" || normalized == "on");
-    } else {
-        m_tcpUseTls = settings.value("tls_enabled", true).toBool();
-    }
-
     const QByteArray allowedHostsEnv = qgetenv("AGV_LOG_ALLOWED_HOSTS");
     if (!allowedHostsEnv.isEmpty()) {
         m_allowedHosts = parseCsvList(QString::fromUtf8(allowedHostsEnv));
@@ -94,35 +78,6 @@ void OperationRecorder::loadSecuritySettings()
     } else {
         m_signingKey = settings.value("signing_key", "").toByteArray();
     }
-
-#ifndef QT_NO_SSL
-    if (QSslSocket *sslSocket = qobject_cast<QSslSocket *>(m_tcpSocket)) {
-        QSslConfiguration sslConfig = sslSocket->sslConfiguration();
-        sslConfig.setPeerVerifyMode(QSslSocket::VerifyPeer);
-
-        const QByteArray caEnv = qgetenv("AGV_LOG_TLS_CA_FILE");
-        const QString caPath = caEnv.isEmpty()
-            ? settings.value("tls_ca_file", "").toString()
-            : QString::fromUtf8(caEnv);
-        if (!caPath.trimmed().isEmpty()) {
-            QFile caFile(caPath.trimmed());
-            if (caFile.open(QIODevice::ReadOnly)) {
-                const QList<QSslCertificate> certs = QSslCertificate::fromData(caFile.readAll(), QSsl::Pem);
-                if (!certs.isEmpty()) {
-                    sslConfig.setCaCertificates(certs);
-                }
-            }
-        }
-
-        sslSocket->setSslConfiguration(sslConfig);
-    } else {
-        // 理论上仅在运行时SSL类型不匹配时触发，回退纯TCP保证可用性。
-        m_tcpUseTls = false;
-    }
-#else
-    // 目标Qt未启用SSL时，自动回退纯TCP。
-    m_tcpUseTls = false;
-#endif
     settings.endGroup();
 }
 
@@ -137,14 +92,14 @@ bool OperationRecorder::validateTransportPolicy(QString *reason) const
         return false;
     }
 
-    if (!m_tcpUseTls && m_signingKey.isEmpty()) {
+    if (m_signingKey.isEmpty()) {
         if (reason) {
-            *reason = QStringLiteral("TLS关闭时必须配置签名密钥(AGV_LOG_SIGNING_KEY)");
+            *reason = QStringLiteral("必须配置签名密钥(AGV_LOG_SIGNING_KEY)");
         }
         return false;
     }
 
-    if (!m_tcpUseTls && m_signingKey.size() < kMinSigningKeyLength) {
+    if (m_signingKey.size() < kMinSigningKeyLength) {
         if (reason) {
             *reason = QStringLiteral("签名密钥长度过短，至少需要16字节");
         }
@@ -361,6 +316,7 @@ void OperationRecorder::onReceiverNewConnection()
     rec.oldValue = "";
     rec.newValue = m_tcpReceiverClient->peerAddress().toString();
     appendTcpRecord(rec);
+    emit tcpConnectionStatusChanged(true);
 }
 
 void OperationRecorder::onReceiverDataReady()
@@ -413,12 +369,14 @@ void OperationRecorder::onReceiverDisconnected()
         m_tcpReceiverClient = nullptr;
     }
     m_tcpReceiverBuffer.clear();
+    emit tcpConnectionStatusChanged(false);
 }
 
 void OperationRecorder::onReceiverError(QAbstractSocket::SocketError socketError)
 {
     Q_UNUSED(socketError)
     qWarning() << "TCP接收器错误:" << (m_tcpReceiverClient ? m_tcpReceiverClient->errorString() : QString());
+    emit tcpConnectionStatusChanged(false);
 }
 
 void OperationRecorder::saveLocalSnapshot()
@@ -630,16 +588,7 @@ void OperationRecorder::connectTcpSocket()
 
     m_transportPolicyBlocked = false;
 
-    qDebug() << "连接日志服务器:" << m_tcpServerIp << ":" << m_tcpServerPort << "TLS:" << m_tcpUseTls;
-#ifndef QT_NO_SSL
-    if (m_tcpUseTls) {
-        QSslSocket *sslSocket = qobject_cast<QSslSocket*>(m_tcpSocket);
-        if (sslSocket) {
-            sslSocket->connectToHostEncrypted(m_tcpServerIp, m_tcpServerPort);
-            return;
-        }
-    }
-#endif
+    qDebug() << "连接日志服务器:" << m_tcpServerIp << ":" << m_tcpServerPort;
     m_tcpSocket->connectToHost(m_tcpServerIp, m_tcpServerPort);
 }
 
@@ -662,8 +611,6 @@ void OperationRecorder::onTcpConnected()
     m_transportPolicyBlocked = false;
     m_lastTransportPolicyError.clear();
     m_lastTransportPolicyErrorMs = 0;
-    emit tcpConnectionStatusChanged(true);
-
     // 停止重连定时器
     if (m_reconnectTimer && m_reconnectTimer->isActive()) {
         m_reconnectTimer->stop();
@@ -678,7 +625,6 @@ void OperationRecorder::onTcpConnected()
 void OperationRecorder::onTcpDisconnected()
 {
     qDebug() << "TCP服务器连接断开";
-    emit tcpConnectionStatusChanged(false);
 
     // 如果TCP传输已启用，启动重连定时器
     if (m_tcpEnabled) {

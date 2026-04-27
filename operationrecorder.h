@@ -23,9 +23,6 @@
 #include <QAbstractSocket>
 #include <QTcpSocket>
 #include <QTcpServer>
-#ifndef QT_NO_SSL
-#include <QSslSocket>
-#endif
 #include <QTimer>
 #include <QByteArray>
 
@@ -259,7 +256,6 @@ private:
     bool m_tcpEnabled;
     QString m_tcpServerIp;
     quint16 m_tcpServerPort;
-    bool m_tcpUseTls = true;
     QStringList m_allowedHosts;
     QByteArray m_signingKey;
     QTimer *m_reconnectTimer;

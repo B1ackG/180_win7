@@ -1,8 +1,13 @@
 #include "matrixkeymonitor.h"
-#include <fcntl.h>
-#include <unistd.h>
 #include <QDebug>
 #include <QCoreApplication>
+
+#ifdef Q_OS_LINUX
+#include <fcntl.h>
+#include <unistd.h>
+#include <cerrno>
+#include <cstring>
+#endif
 
 MatrixKeyMonitor::MatrixKeyMonitor(const QString &device, QObject *parent)
     : QObject(parent)
@@ -10,7 +15,6 @@ MatrixKeyMonitor::MatrixKeyMonitor(const QString &device, QObject *parent)
     , m_notifier(nullptr)
     , m_devicePath(device)
     , m_isRunning(false)
-    // , m_keepAliveTimer(nullptr)
 {
     qDebug() << "MatrixKeyMonitor 创建，设备:" << device;
 }
@@ -33,7 +37,12 @@ bool MatrixKeyMonitor::startMonitoring()
         return true;
     }
 
-    // 打开输入设备（非阻塞模式）
+#ifndef Q_OS_LINUX
+    const QString error = QStringLiteral("当前平台不支持 Linux input 设备: %1").arg(m_devicePath);
+    qWarning() << error;
+    emit errorOccurred(error);
+    return false;
+#else
     m_fd = open(m_devicePath.toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK);
     if (m_fd < 0) {
         QString error = QString("无法打开设备 %1: %2").arg(m_devicePath).arg(strerror(errno));
@@ -42,17 +51,8 @@ bool MatrixKeyMonitor::startMonitoring()
         return false;
     }
 
-    // 创建socket通知器
     m_notifier = new QSocketNotifier(m_fd, QSocketNotifier::Read, this);
     connect(m_notifier, &QSocketNotifier::activated, this, &MatrixKeyMonitor::onSocketActivated);
-
-    // 创建保活定时器（防止线程意外退出）
-    // m_keepAliveTimer = new QTimer(this);
-    // m_keepAliveTimer->setInterval(1000); // 1秒
-    // connect(m_keepAliveTimer, &QTimer::timeout, this, []() {
-    //     // 空操作，仅保持事件循环活跃
-    // });
-    // m_keepAliveTimer->start();
 
     m_isRunning = true;
     m_lastKeyState.clear();
@@ -60,6 +60,7 @@ bool MatrixKeyMonitor::startMonitoring()
     emit statusChanged(true);
 
     return true;
+#endif
 }
 
 void MatrixKeyMonitor::stopMonitoring()
@@ -70,25 +71,20 @@ void MatrixKeyMonitor::stopMonitoring()
 
     m_isRunning = false;
 
-    // 停止定时器
-    // if (m_keepAliveTimer) {
-    //     m_keepAliveTimer->stop();
-    //     delete m_keepAliveTimer;
-    //     m_keepAliveTimer = nullptr;
-    // }
-
-    // 停止socket通知器
     if (m_notifier) {
         m_notifier->setEnabled(false);
         delete m_notifier;
         m_notifier = nullptr;
     }
 
-    // 关闭文件描述符
+#ifdef Q_OS_LINUX
     if (m_fd >= 0) {
         close(m_fd);
         m_fd = -1;
     }
+#else
+    m_fd = -1;
+#endif
 
     m_lastKeyState.clear();
 
@@ -98,17 +94,17 @@ void MatrixKeyMonitor::stopMonitoring()
 
 void MatrixKeyMonitor::onSocketActivated(int socket)
 {
-    // 这个槽函数会在工作线程中执行
+#ifndef Q_OS_LINUX
+    Q_UNUSED(socket);
+#else
     struct input_event ev;
 
-    // 读取所有可用的事件
     while (true) {
         ssize_t bytesRead = read(socket, &ev, sizeof(ev));
 
         if (bytesRead != sizeof(ev)) {
             if (bytesRead < 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    // 没有更多数据了
                     break;
                 }
                 qWarning() << "读取键盘事件失败:" << strerror(errno);
@@ -117,10 +113,7 @@ void MatrixKeyMonitor::onSocketActivated(int socket)
             break;
         }
 
-        // 只处理按键事件
         if (ev.type == EV_KEY) {
-            // Linux input: 0=release, 1=press, 2=auto-repeat。
-            // auto-repeat 不能当作释放，否则会错误触发 514 写 0。
             if (ev.value != 0 && ev.value != 1) {
                 continue;
             }
@@ -138,31 +131,31 @@ void MatrixKeyMonitor::onSocketActivated(int socket)
                          << "-> 按钮" << keyNumber
                          << "状态:" << (pressed ? "按下" : "释放");
 
-                // 发出信号
                 emit keyPressed(keyNumber, pressed);
                 emit rawKeyEvent(ev.code, ev.value);
             }
         }
     }
+#endif
 }
 
 int MatrixKeyMonitor::mapKeyCodeToButtonNumber(int keyCode)
 {
     switch (keyCode) {
-    case 62: return 1;   // ○1
-    case 47: return 2;   // ○2
-    case 5:  return 3;   // ○3
-    case 60: return 4;   // ○4
-    case 4:  return 5;   // ○5
-    case 3:  return 6;   // ○6
-    case 18: return 7;   // ○7
-    case 17: return 8;   // ○8
-    case 32: return 9;   // ○9
-    case 31: return 10;  // ○10
-    case 46: return 11;  // ○11
-    case 45: return 12;  // ○12
-    case 30: return 13;  // ○13
-    case 16: return 14;  // ○14
+    case 62: return 1;
+    case 47: return 2;
+    case 5:  return 3;
+    case 60: return 4;
+    case 4:  return 5;
+    case 3:  return 6;
+    case 18: return 7;
+    case 17: return 8;
+    case 32: return 9;
+    case 31: return 10;
+    case 46: return 11;
+    case 45: return 12;
+    case 30: return 13;
+    case 16: return 14;
     default:
         qDebug() << "未映射的键码:" << keyCode;
         return -1;
@@ -171,7 +164,6 @@ int MatrixKeyMonitor::mapKeyCodeToButtonNumber(int keyCode)
 
 void MatrixKeyMonitor::runEventLoop()
 {
-    // 如果需要手动运行事件循环
     QEventLoop loop;
     connect(this, &MatrixKeyMonitor::statusChanged, &loop, &QEventLoop::quit);
     loop.exec();
