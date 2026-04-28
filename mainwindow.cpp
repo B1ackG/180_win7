@@ -41,7 +41,8 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <unistd.h>
 #include <cerrno>
 #include <cstring>
-#include <QSocketNotifier>
+#include <QDesktopServices>
+#include <QUrl>
 
 namespace {
 SteeringMode steeringModeFromRegisterValue(quint16 value)
@@ -1737,6 +1738,18 @@ void MainWindow::setupRecordUI()
 
     m_historyListQml = historyQuick;
     m_historyListQml->setResizeMode(QQuickWidget::SizeRootObjectToView);
+
+    // 添加“打开记录文件夹”按钮
+    QPushButton *btnOpenFolder = recordPage->findChild<QPushButton*>("Btn_OpenRecordsFolder");
+    if (!btnOpenFolder) {
+        btnOpenFolder = new QPushButton("打开记录文件夹", recordPage);
+        btnOpenFolder->setObjectName("Btn_OpenRecordsFolder");
+        btnOpenFolder->setGeometry(1000, 640, 150, 40); // 放在右下角
+        btnOpenFolder->setStyleSheet("QPushButton { background-color: #1a5fb4; color: white; border-radius: 4px; font-weight: bold; font-family: 'Microsoft YaHei'; }"
+                                     "QPushButton:hover { background-color: #1c71d8; }");
+    }
+    connect(btnOpenFolder, &QPushButton::clicked, this, &MainWindow::onOpenRecordsFolder);
+
     connect(m_historyListQml, &QQuickWidget::statusChanged, this, [this](QQuickWidget::Status status) {
         if (status == QQuickWidget::Error && m_historyListQml) {
             const auto errs = m_historyListQml->errors();
@@ -1819,6 +1832,16 @@ void MainWindow::onExportRecords()
             QMessageBox::warning(this, "错误", "导出失败");
         }
     }
+}
+
+void MainWindow::onOpenRecordsFolder()
+{
+    QString path = m_recorder->getAutoSaveDir();
+    QDir dir(path);
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+    QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 
 void MainWindow::onFilterRecords()

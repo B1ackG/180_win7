@@ -167,6 +167,17 @@ public:
     bool exportToText(const QString &filename);
 
     /**
+     * @brief 立即将当前缓存的记录保存到当天的会话文件中（自动命名）。
+     * 如何使用：通常由 `addRecord` 内部调用以实现自动保存；也可手动调用触发保存。
+     */
+    bool autoSaveCurrentRecord();
+
+    /**
+     * @brief 加载今天自动保存的会话文件（如果存在）。
+     */
+    bool loadTodayFile();
+
+    /**
      * @brief 获取指定页面的记录
      * @param pageName 页面名
      * @return 过滤后的记录列表
@@ -186,6 +197,16 @@ public:
      */
     int recordCount() const { return m_records.size(); }
     int pageRecordCount(const QString &pageName) const;
+
+    /**
+     * @brief 返回自动保存目录路径
+     */
+    QString getAutoSaveDir() const { return m_autoSaveDir; }
+
+    /**
+     * @brief 初始化自动保存机制（创建目录、设置定时器等）。
+     */
+    void initAutoSave();
 
     /**
      * @brief 启用/禁用 TCP 传输
@@ -279,8 +300,11 @@ private:
     bool decodeRecordLine(const QByteArray &lineBytes, OperationRecord *recordOut) const;
     void appendTcpRecord(const OperationRecord &record);
     void saveLocalSnapshot();
+    bool saveToFileInternal(const QString &filename, const QList<OperationRecord> &records);
 
     bool m_recordLocalOperations = false;
+    QString m_autoSaveDir;
+    QString m_currentSessionFile;
     QTcpServer *m_tcpReceiverServer = nullptr;
     QTcpSocket *m_tcpReceiverClient = nullptr;
     QByteArray m_tcpReceiverBuffer;

@@ -68,6 +68,11 @@ MainWindow::MainWindow(QWidget *parent)
     initializePageNames();
     loadPollingRuntimeSettings();
     initializeCorePagesAndUi();
+
+    // 初始化操作记录器的自动保存
+    if (m_recorder) {
+        m_recorder->initAutoSave();
+    }
     initializeCoreSubsystems();
 
     if (auto *sixAxisQuickWidget = findChild<QQuickWidget*>("sixAxisQuickWidget")) {

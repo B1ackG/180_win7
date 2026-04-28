@@ -428,6 +428,8 @@ private slots:
     void onSaveRecords();
     /** @brief 导出记录 */
     void onExportRecords();
+    /** @brief 打开记录文件夹 */
+    void onOpenRecordsFolder();
     /** @brief 过滤记录 */
     void onFilterRecords();
     /** @brief 发送所有记录（例如通过 TCP） */

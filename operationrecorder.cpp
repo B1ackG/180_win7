@@ -12,7 +12,11 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QTimer>
+#include <QStandardPaths>
+#include <QDir>
+#include <QSaveFile>
 #include <QCoreApplication>
+#include <QFileInfo>
 
 namespace {
 QStringList parseCsvList(const QString &raw)
@@ -56,7 +60,12 @@ OperationRecorder::OperationRecorder(QObject *parent)
     // 初始化 TCP 接收器（用于接收外部记录推送）
     m_tcpReceiverServer = new QTcpServer(this);
     connect(m_tcpReceiverServer, &QTcpServer::newConnection, this, &OperationRecorder::onReceiverNewConnection);
+    
+    // 初始化自动保存配置
+    m_autoSaveDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/OperationRecords/";
+    m_currentSessionFile = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + ".json";
     m_localSnapshotFile = QCoreApplication::applicationDirPath() + "/records_snapshot.json";
+    
     setupTcpReceiver();
 }
 
@@ -139,7 +148,24 @@ QByteArray OperationRecorder::buildSignedPayload(const OperationRecord &record) 
 
 OperationRecorder::~OperationRecorder()
 {
+    // 程序结束时自动保存当前记录
+    if (!m_records.isEmpty()) {
+        autoSaveCurrentRecord();
+    }
     disconnectTcpSocket();
+}
+
+void OperationRecorder::initAutoSave()
+{
+    // 确保目录存在
+    QDir dir(m_autoSaveDir);
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+
+    // 尝试加载今日的记录文件
+    loadTodayFile();
+    qDebug() << "自动保存系统初始化完成，目录:" << m_autoSaveDir;
 }
 
 void OperationRecorder::addRecord(const OperationRecord &record)
@@ -156,6 +182,9 @@ void OperationRecorder::addRecord(const OperationRecord &record)
 
     m_records.append(record);
     emit recordAdded(record);
+
+    // 立即自动保存到会话文件
+    autoSaveCurrentRecord();
 
     // 如果TCP传输已启用，发送记录到服务器
     if (m_tcpEnabled) {
@@ -379,16 +408,64 @@ void OperationRecorder::onReceiverError(QAbstractSocket::SocketError socketError
     emit tcpConnectionStatusChanged(false);
 }
 
+bool OperationRecorder::autoSaveCurrentRecord()
+{
+    if (m_records.isEmpty()) {
+        return false;
+    }
+    QString filename = m_autoSaveDir + m_currentSessionFile;
+    return saveToFileInternal(filename, m_records);
+}
+
+bool OperationRecorder::loadTodayFile()
+{
+    // 尝试查找今日的文件
+    QString dateStr = QDateTime::currentDateTime().toString("yyyyMMdd");
+    QDir dir(m_autoSaveDir);
+    QStringList filters;
+    filters << dateStr + "*.json";
+
+    QStringList files = dir.entryList(filters, QDir::Files, QDir::Time);
+
+    if (!files.isEmpty()) {
+        QString latestFile = m_autoSaveDir + files.first();
+        return loadFromFile(latestFile);
+    }
+
+    return false;
+}
+
+bool OperationRecorder::saveToFileInternal(const QString &filename, const QList<OperationRecord> &records)
+{
+    // 确保目录存在
+    QDir().mkpath(QFileInfo(filename).absolutePath());
+
+    QJsonArray jsonArray;
+    for (const auto &record : records) {
+        jsonArray.append(record.toJson());
+    }
+    QJsonDocument doc(jsonArray);
+    QByteArray jsonData = doc.toJson(QJsonDocument::Indented);
+
+    // 使用 QSaveFile 提供更可靠的写入
+    QSaveFile saveFile(filename);
+    if (!saveFile.open(QIODevice::WriteOnly)) {
+        qWarning() << "无法打开文件进行写入:" << filename << saveFile.errorString();
+        return false;
+    }
+
+    saveFile.write(jsonData);
+    if (!saveFile.commit()) {
+        qWarning() << "QSaveFile 提交失败:" << filename << saveFile.errorString();
+        return false;
+    }
+
+    return true;
+}
+
 void OperationRecorder::saveLocalSnapshot()
 {
-    QJsonArray arr;
-    for (const auto &r : m_records) arr.append(r.toJson());
-    QJsonDocument doc(arr);
-    QFile f(m_localSnapshotFile);
-    if (f.open(QIODevice::WriteOnly)) {
-        f.write(doc.toJson(QJsonDocument::Compact));
-        f.close();
-    }
+    saveToFileInternal(m_localSnapshotFile, m_records);
 }
 
 bool OperationRecorder::exportToText(const QString &filename)
