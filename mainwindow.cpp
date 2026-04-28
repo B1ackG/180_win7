@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+﻿#include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "featureswitchmanager.h"
 #include "featureswitchwidget.h"
@@ -1739,22 +1739,17 @@ void MainWindow::setupRecordUI()
     m_historyListQml = historyQuick;
     m_historyListQml->setResizeMode(QQuickWidget::SizeRootObjectToView);
 
-    // 添加“打开记录文件夹”按钮
-    QPushButton *btnOpenFolder = recordPage->findChild<QPushButton*>("Btn_OpenRecordsFolder");
-    if (!btnOpenFolder) {
-        btnOpenFolder = new QPushButton("打开记录文件夹", recordPage);
-        btnOpenFolder->setObjectName("Btn_OpenRecordsFolder");
-        btnOpenFolder->setGeometry(1000, 640, 150, 40); // 放在右下角
-        btnOpenFolder->setStyleSheet("QPushButton { background-color: #1a5fb4; color: white; border-radius: 4px; font-weight: bold; font-family: 'Microsoft YaHei'; }"
-                                     "QPushButton:hover { background-color: #1c71d8; }");
-    }
-    connect(btnOpenFolder, &QPushButton::clicked, this, &MainWindow::onOpenRecordsFolder);
-
     connect(m_historyListQml, &QQuickWidget::statusChanged, this, [this](QQuickWidget::Status status) {
         if (status == QQuickWidget::Error && m_historyListQml) {
             const auto errs = m_historyListQml->errors();
             for (const auto &err : errs) {
                 qWarning() << "HistoryList QML error:" << err.toString();
+            }
+        } else if (status == QQuickWidget::Ready && m_historyListQml) {
+            QObject *qmlRoot = m_historyListQml->rootObject();
+            if (qmlRoot) {
+                connect(qmlRoot, SIGNAL(openFolderRequested()),
+                        this, SLOT(onOpenRecordsFolder()));
             }
         }
     });

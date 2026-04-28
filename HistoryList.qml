@@ -6,6 +6,8 @@ Item {
     height: 600
     property string currentCategory: "全部"
 
+    signal openFolderRequested()
+
     // 计算滚动条位置和比例
     property real scrollPos: listView.visibleArea.yPosition
     property real scrollHeight: listView.visibleArea.heightRatio
@@ -163,6 +165,34 @@ Item {
                         onClicked: root.currentCategory = modelData
                     }
                 }
+            }
+        }
+
+        Rectangle {
+            id: btnOpenFolder
+            anchors.right: parent.right
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            width: 130
+            height: 28
+            radius: 14
+            color: folderMouseArea.containsMouse ? "#1c71d8" : "#1a5fb4"
+            border.width: 1
+            border.color: "#3F678D"
+
+            Text {
+                anchors.centerIn: parent
+                text: "打开记录文件夹"
+                color: "#F7FBFF"
+                font.pixelSize: 12
+                font.bold: true
+            }
+
+            MouseArea {
+                id: folderMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: root.openFolderRequested()
             }
         }
     }

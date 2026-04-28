@@ -485,8 +485,8 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
          <rect>
           <x>1280</x>
           <y>130</y>
-          <width>200</width>
-          <height>200</height>
+          <width>220</width>
+          <height>220</height>
          </rect>
         </property>
        </widget>
@@ -503,8 +503,8 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
        <widget class="QWidget" name="widget_test2" native="true">
         <property name="geometry">
          <rect>
-          <x>1700</x>
-          <y>370</y>
+          <x>1340</x>
+          <y>330</y>
           <width>200</width>
           <height>200</height>
          </rect>
@@ -597,8 +597,8 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        <widget class="QQuickWidget" name="quickWidget_RobotTotalPower">
         <property name="geometry">
          <rect>
-          <x>1210</x>
-          <y>370</y>
+          <x>770</x>
+          <y>400</y>
           <width>270</width>
           <height>110</height>
          </rect>
@@ -690,8 +690,8 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        <widget class="QLabel" name="lab_Overall_3">
         <property name="geometry">
          <rect>
-          <x>430</x>
-          <y>30</y>
+          <x>490</x>
+          <y>20</y>
           <width>310</width>
           <height>520</height>
          </rect>
