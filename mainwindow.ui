@@ -737,7 +737,7 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        <zorder>lab_Overall_3</zorder>
       </widget>
       <widget class="QWidget" name="page_HistoryRecord">
-       <widget class="QQuickWidget" name="quickWidget_HistoryList">
+       <widget class="QWidget" name="quickWidget_HistoryList">
         <property name="geometry">
          <rect>
           <x>90</x>

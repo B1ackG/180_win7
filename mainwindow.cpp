@@ -35,6 +35,8 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QHeaderView>
+#include <QTableWidgetItem>
 #include <QtMath>
 #include <array>
 #include <fcntl.h>
@@ -1730,65 +1732,96 @@ void MainWindow::setupRecordUI()
         return;
     }
 
-    QQuickWidget *historyQuick = ui->quickWidget_HistoryList;
-    if (!historyQuick) {
-        historyQuick = new QQuickWidget(recordPage);
-        historyQuick->setObjectName("quickWidget_HistoryList");
-        historyQuick->setGeometry(20, 12, 1180, 618);
+    QWidget *historyHost = ui->quickWidget_HistoryList;
+    if (!historyHost) {
+        historyHost = new QWidget(recordPage);
+        historyHost->setObjectName("quickWidget_HistoryList");
+        historyHost->setGeometry(90, 0, 1761, 781);
+    }
+    m_historyListHost = historyHost;
+
+    if (m_historyListHost->layout()) {
+        QLayoutItem *item = nullptr;
+        while ((item = m_historyListHost->layout()->takeAt(0)) != nullptr) {
+            if (item->widget()) {
+                item->widget()->deleteLater();
+            }
+            delete item;
+        }
+        delete m_historyListHost->layout();
     }
 
-    m_historyListQml = historyQuick;
-    m_historyListQml->setResizeMode(QQuickWidget::SizeRootObjectToView);
+    auto *mainLayout = new QVBoxLayout(m_historyListHost);
+    mainLayout->setContentsMargins(8, 8, 8, 8);
+    mainLayout->setSpacing(8);
 
-    connect(m_historyListQml, &QQuickWidget::statusChanged, this, [this](QQuickWidget::Status status) {
-        if (status == QQuickWidget::Error && m_historyListQml) {
-            const auto errs = m_historyListQml->errors();
-            for (const auto &err : errs) {
-                qWarning() << "HistoryList QML error:" << err.toString();
-            }
-        } else if (status == QQuickWidget::Ready && m_historyListQml) {
-            QObject *qmlRoot = m_historyListQml->rootObject();
-            if (qmlRoot) {
-                connect(qmlRoot, SIGNAL(openFolderRequested()),
-                        this, SLOT(onOpenRecordsFolder()));
-            }
-        }
-    });
-    m_historyListQml->setSource(QUrl("qrc:/HistoryList.qml"));
-    m_historyListQml->setClearColor(Qt::transparent);
+    auto *toolbarLayout = new QHBoxLayout();
+    toolbarLayout->setContentsMargins(0, 0, 0, 0);
 
-    // 连接信号
-    connect(m_recorder, &OperationRecorder::recordAdded, this, [this](const OperationRecord &record) {
-        const bool isTcpSessionEvent = (record.operation == "client_connected")
-            || (record.operation == "client_disconnected");
-        if (isTcpSessionEvent) {
-            return;
-        }
+    m_historyCategoryCombo = new QComboBox(m_historyListHost);
+    m_historyCategoryCombo->addItems(QStringList() << "全部" << "警报" << "常规运行" << "操控设备");
+    m_historyCategoryCombo->setCurrentText("全部");
 
-        if (m_historyListQml && m_historyListQml->rootObject()) {
-            QMetaObject::invokeMethod(m_historyListQml->rootObject(), "addRecord",
-                Q_ARG(QVariant, record.timestamp.toString("hh:mm:ss")),
-                Q_ARG(QVariant, record.pageName),
-                Q_ARG(QVariant, record.controlName),
-                Q_ARG(QVariant, record.operation),
-                Q_ARG(QVariant, record.oldValue.toString()),
-                Q_ARG(QVariant, record.newValue.toString()),
-                Q_ARG(QVariant, record.controlType));
-        }
+    m_historyOpenFolderButton = new QPushButton("打开记录文件夹", m_historyListHost);
+    connect(m_historyOpenFolderButton, &QPushButton::clicked, this, &MainWindow::onOpenRecordsFolder);
+    connect(m_historyCategoryCombo, &QComboBox::currentTextChanged, this, [this](const QString &) {
+        updateRecordDisplay();
     });
 
-    connect(m_recorder, &OperationRecorder::recordsCleared, this, [this]() {
-        if (m_historyListQml && m_historyListQml->rootObject()) {
-            QMetaObject::invokeMethod(m_historyListQml->rootObject(), "clearRecords");
-        }
-    });
+    toolbarLayout->addWidget(m_historyCategoryCombo, 0, Qt::AlignLeft);
+    toolbarLayout->addStretch();
+    toolbarLayout->addWidget(m_historyOpenFolderButton, 0, Qt::AlignRight);
 
-    qCDebug(lcMainWindow) << "QML 操作记录列表初始化完成";
+    m_historyTable = new QTableWidget(m_historyListHost);
+    m_historyTable->setObjectName("recordDisplay");
+    m_historyTable->setColumnCount(4);
+    m_historyTable->setHorizontalHeaderLabels(QStringList() << "时间" << "页面" << "控件" << "操作详情");
+    m_historyTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_historyTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_historyTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_historyTable->setAlternatingRowColors(true);
+    m_historyTable->setWordWrap(false);
+    m_historyTable->verticalHeader()->setVisible(false);
+    m_historyTable->horizontalHeader()->setStretchLastSection(true);
+    m_historyTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_historyTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_historyTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+
+    mainLayout->addLayout(toolbarLayout);
+    mainLayout->addWidget(m_historyTable, 1);
+
+    updateRecordDisplay();
+    qCDebug(lcMainWindow) << "纯 C++ 操作记录列表初始化完成";
 }
 
 void MainWindow::updateRecordDisplay()
 {
-    // QML 列表会自动通过信号更新，无需主循环刷新
+    if (!m_historyTable || !m_recorder) {
+        return;
+    }
+
+    const QString category = m_historyCategoryCombo ? m_historyCategoryCombo->currentText() : QStringLiteral("全部");
+    const QList<OperationRecord> &records = m_recorder->records();
+
+    m_historyTable->setRowCount(0);
+    for (int i = records.size() - 1; i >= 0; --i) {
+        const OperationRecord &record = records.at(i);
+        if ((record.operation == "client_connected") || (record.operation == "client_disconnected")) {
+            continue;
+        }
+        if (!matchesHistoryCategory(record, category)) {
+            continue;
+        }
+
+        const int row = m_historyTable->rowCount();
+        m_historyTable->insertRow(row);
+        m_historyTable->setItem(row, 0, new QTableWidgetItem(record.timestamp.toString("hh:mm:ss")));
+        m_historyTable->setItem(row, 1, new QTableWidgetItem(record.pageName));
+        m_historyTable->setItem(row, 2, new QTableWidgetItem(record.controlName));
+        m_historyTable->setItem(row, 3, new QTableWidgetItem(
+            QString("%1 | %2 -> %3")
+                .arg(record.operation, record.oldValue.toString(), record.newValue.toString())));
+    }
 }
 
 void MainWindow::onClearRecords()
@@ -1856,39 +1889,7 @@ void MainWindow::onFilterRecords()
         return;
     }
 
-    QComboBox *filterCombo = findChild<QComboBox*>();
-    if (!filterCombo) return;
-
-    QString filter = filterCombo->currentText();
-    QPlainTextEdit *display = findChild<QPlainTextEdit*>("recordDisplay");
-
-    if (!display) return;
-
-    display->clear();
-    const QList<OperationRecord> &records = m_recorder->records();
-
-    if (filter == "显示全部") {
-        for (const auto &record : records) {
-            display->appendPlainText(record.toString());
-        }
-    } else if (m_pageNames.values().contains(filter)) {
-        QList<OperationRecord> pageRecords = m_recorder->getPageRecords(filter);
-        for (const auto &record : pageRecords) {
-            display->appendPlainText(record.toString());
-        }
-    } else if (filter == "TechSliderEdit操作") {
-        for (const auto &record : records) {
-            if (record.controlType == "TechSliderEdit") {
-                display->appendPlainText(record.toString());
-            }
-        }
-    } else if (filter == "TechPushButton操作") {
-        for (const auto &record : records) {
-            if (record.controlType == "TechPushButton") {
-                display->appendPlainText(record.toString());
-            }
-        }
-    }
+    updateRecordDisplay();
 }
 // 辅助函数：获取控件所在的页面名称
 QString MainWindow::getControlPageName(QWidget *widget)
@@ -2418,6 +2419,50 @@ bool MainWindow::shouldDisplayRecord(const OperationRecord &record, const QStrin
     }
 
     return false;
+}
+
+bool MainWindow::isAlarmHistoryRecord(const OperationRecord &record) const
+{
+    QString text = QString("%1 %2 %3 %4")
+                       .arg(record.controlType, record.operation, record.pageName, record.controlName)
+                       .toLower();
+    return text.contains("报警")
+        || text.contains("急停")
+        || text.contains("告警")
+        || text.contains("超限")
+        || text.contains("fault")
+        || text.contains("error")
+        || text.contains("warning")
+        || text.contains("alarm");
+}
+
+bool MainWindow::isControlHistoryRecord(const OperationRecord &record) const
+{
+    const QString controlType = record.controlType;
+    const QString opText = record.operation.toLower();
+    if (controlType == "EnableButton" || controlType == "MatrixKey") {
+        return true;
+    }
+    return opText.contains("external")
+        || opText.contains("enable")
+        || opText.contains("使能");
+}
+
+bool MainWindow::matchesHistoryCategory(const OperationRecord &record, const QString &category) const
+{
+    if (category == "全部") {
+        return true;
+    }
+    if (category == "警报") {
+        return isAlarmHistoryRecord(record);
+    }
+    if (category == "操控设备") {
+        return !isAlarmHistoryRecord(record) && isControlHistoryRecord(record);
+    }
+    if (category == "常规运行") {
+        return !isAlarmHistoryRecord(record) && !isControlHistoryRecord(record);
+    }
+    return true;
 }
 
 // 辅助函数：应用样式表

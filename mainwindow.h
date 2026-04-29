@@ -38,6 +38,7 @@
 #include <QPushButton>
 #include <QToolButton>
 #include <QButtonGroup>
+#include <QComboBox>
 #include <QLineEdit>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator> // 验证器需要这个
@@ -45,6 +46,7 @@
 #include <QGroupBox>
 #include <QProgressBar>
 #include <QListWidget>
+#include <QTableWidget>
 #include <QQuickWidget>
 #include <QQuickItem>
 #include <QQmlContext>
@@ -658,7 +660,10 @@ private:
     SteeringMode m_lastSteeringMode = STEER_FRONT_BACK;
     SpeedModeSelector *m_speedModeSelector;
     QQuickWidget *m_speedGaugeQml = nullptr;  // 使用 QML 版本的速度仪表
-    QQuickWidget *m_historyListQml = nullptr;  // 使用 QML 版本操作记录列表
+    QWidget *m_historyListHost = nullptr;      // 操作记录纯 QWidget 容器
+    QComboBox *m_historyCategoryCombo = nullptr;
+    QPushButton *m_historyOpenFolderButton = nullptr;
+    QTableWidget *m_historyTable = nullptr;
     QQuickWidget *m_robotTotalPowerQml = nullptr;  // 使用 QML 版本总功率卡片
     QWidget *m_inclinometerXCard = nullptr;  // QWidget 版本 X 轴倾角卡片容器
     QWidget *m_inclinometerYCard = nullptr;  // QWidget 版本 Y 轴倾角卡片容器
@@ -805,6 +810,9 @@ private:
 
     /** @brief 判断记录是否应在当前过滤条件下显示 */
     bool shouldDisplayRecord(const OperationRecord &record, const QString &filter);
+    bool isAlarmHistoryRecord(const OperationRecord &record) const;
+    bool isControlHistoryRecord(const OperationRecord &record) const;
+    bool matchesHistoryCategory(const OperationRecord &record, const QString &category) const;
 
     /** @brief 获取指定滑块标签当前值 */
     double getSliderLabelValue(const QString &labelName);

@@ -49,7 +49,6 @@
         <file>TechSpeedGauge.qml</file>
         <file>RobotTotalPowerCard.qml</file>
         <file>InclinometerCard.qml</file>
-        <file>HistoryList.qml</file>
         <file>BatteryWidget.qml</file>
         <file>PoseDisplay.qml</file>
         <file>Picture/background10.jpg</file>
