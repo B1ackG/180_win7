@@ -546,7 +546,7 @@ int main(int argc, char *argv[])
 
     // 显示主窗口
     qDebug() << "准备显示主窗口";
-    w.show();
+    w.showFullScreen();
 
     // 关闭启动画面
     splash.finish(&w);

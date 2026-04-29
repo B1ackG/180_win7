@@ -485,8 +485,8 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
          <rect>
           <x>1280</x>
           <y>130</y>
-          <width>220</width>
-          <height>220</height>
+          <width>200</width>
+          <height>200</height>
          </rect>
         </property>
        </widget>

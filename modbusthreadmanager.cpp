@@ -22,12 +22,21 @@ ModbusThreadManager* ModbusThreadManager::instance()
             QObject::connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit,
                              workerThread, []() {
                 ModbusThreadManager *inst = ModbusThreadManager::instance();
-                QThread *workerThread = inst->thread();
+                QThread *modbusWorker = inst->thread();
+                if (!modbusWorker || !modbusWorker->isRunning()) {
+                    return;
+                }
+                // 若工作线程仍在运行（closeEvent 未能停止它），在此补充清理。
+                // 使用带超时的 wait() 防止因 TCP 操作阻塞而死锁主线程。
                 QMetaObject::invokeMethod(inst, [inst]() {
                     inst->disconnectFromDevice();
                 }, Qt::BlockingQueuedConnection);
-                workerThread->quit();
-                workerThread->wait();
+                modbusWorker->quit();
+                if (!modbusWorker->wait(3000)) {
+                    qWarning() << "[ModbusThreadManager] 工作线程超时，强制终止";
+                    modbusWorker->terminate();
+                    modbusWorker->wait(1000);
+                }
             }, Qt::UniqueConnection);
         }
 

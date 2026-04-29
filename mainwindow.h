@@ -152,6 +152,8 @@ public:
     // ==========================================
     /** @brief 自定义绘制主窗口背景 */
     void paintEvent(QPaintEvent *event) override;
+    /** @brief 拦截窗口关闭事件，确保所有后台线程和资源被正确清理后再退出 */
+    void closeEvent(QCloseEvent *event) override;
     /** @brief 事件过滤器处理特定的 UI 交互 */
     bool eventFilter(QObject *obj, QEvent *event) override;
     /** @brief 焦点变化处理回调 */

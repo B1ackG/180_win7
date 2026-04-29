@@ -43,6 +43,7 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <cstring>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QProcess>
 
 namespace {
 SteeringMode steeringModeFromRegisterValue(quint16 value)
@@ -1836,7 +1837,16 @@ void MainWindow::onOpenRecordsFolder()
     if (!dir.exists()) {
         dir.mkpath(".");
     }
+#ifdef Q_OS_WIN
+    // QDesktopServices::openUrl 在 Windows 7 上可能静默失败，
+    // 直接启动 explorer.exe 更可靠
+    QString nativePath = QDir::toNativeSeparators(path);
+    if (!QProcess::startDetached("explorer", QStringList() << nativePath)) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    }
+#else
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+#endif
 }
 
 void MainWindow::onFilterRecords()

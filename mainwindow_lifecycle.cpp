@@ -8,6 +8,7 @@
 #include <QMovie>
 #include <QQuickWidget>
 #include <QQmlContext>
+#include <QCloseEvent>
 #include <unistd.h>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -193,6 +194,31 @@ MainWindow::~MainWindow()
     delete ui;
 
     qDebug() << "资源清理完成";
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    qDebug() << "收到关闭事件，准备退出...";
+
+    // 主动停止 ModbusThreadManager 单例持有的工作线程
+    // 必须在主事件循环退出前完成，否则 aboutToQuit 的 BlockingQueuedConnection
+    // 可能因工作线程正在进行 TCP 操作而死锁，导致进程无法退出。
+    ModbusThreadManager *modbusInst = ModbusThreadManager::instance();
+    QThread *modbusWorker = modbusInst->thread();
+    if (modbusWorker && modbusWorker != QThread::currentThread() && modbusWorker->isRunning()) {
+        QMetaObject::invokeMethod(modbusInst, [modbusInst]() {
+            modbusInst->disconnectFromDevice();
+        }, Qt::BlockingQueuedConnection);
+        modbusWorker->quit();
+        if (!modbusWorker->wait(3000)) {
+            qWarning() << "ModbusThreadManager 工作线程未在 3 秒内退出，强制终止";
+            modbusWorker->terminate();
+            modbusWorker->wait(1000);
+        }
+    }
+
+    event->accept();
+    QApplication::quit();
 }
 
 void MainWindow::startAlarmSystem()
@@ -409,7 +435,9 @@ void MainWindow::checkUI()
 
 void MainWindow::initializeUI()
 {
-    setFixedSize(1920, 1080);
+    // 允许窗口根据屏幕进入全屏，不再锁定固定分辨率。
+    setMinimumSize(0, 0);
+    setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
 }
 
 void MainWindow::updateNavButtonStyles(QPushButton *activeBtn)
