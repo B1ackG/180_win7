@@ -1,4 +1,4 @@
-QT       += core gui widgets network
+QT       += core gui widgets network quickwidgets
 
 CONFIG   += c++17
 TEMPLATE = app
