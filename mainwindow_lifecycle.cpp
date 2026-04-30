@@ -6,8 +6,6 @@
 #include <QStackedWidget>
 #include <QDebug>
 #include <QMovie>
-#include <QQuickWidget>
-#include <QQmlContext>
 #include <QCloseEvent>
 #include <unistd.h>
 
@@ -75,11 +73,6 @@ MainWindow::MainWindow(QWidget *parent)
         m_recorder->initAutoSave();
     }
     initializeCoreSubsystems();
-
-    if (auto *sixAxisQuickWidget = findChild<QQuickWidget*>("sixAxisQuickWidget")) {
-        sixAxisQuickWidget->rootContext()->setContextProperty("poseData", m_poseProvider);
-        sixAxisQuickWidget->setSource(QUrl("qrc:/PoseDisplay.qml"));
-    }
 
     ui->StackedWidget->setCurrentIndex(0);
     ui->lab_Overall->setScaledContents(true);

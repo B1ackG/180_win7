@@ -23,6 +23,7 @@
 #include "operationrecorder.h"
 #include "mappingconfig.h"
 #include "matrixkeymonitor.h"
+#include "robottotalpowercard.h"
 #include "techspeeddialsimple.h"
 #include "matrixkeythreadmanager.h"
 #include "modbusthreadmanager.h"
@@ -47,9 +48,6 @@
 #include <QProgressBar>
 #include <QListWidget>
 #include <QTableWidget>
-#include <QQuickWidget>
-#include <QQuickItem>
-#include <QQmlContext>
 #include <QSocketNotifier>
 #include <QSet>
 #include <QHash>
@@ -360,7 +358,7 @@ public:
     // ==========================================
     /** @brief 初始化速度仪表 UI */
     void initSpeedGaugeUI();
-    /** @brief 初始化机器人总功率 QML 卡片 */
+    /** @brief 初始化机器人总功率卡片（纯 QWidget） */
     void initRobotTotalPowerCard();
     /** @brief 初始化 X/Y 倾角卡片（QWidget 版本） */
     void initInclinometerCards();
@@ -659,12 +657,12 @@ private:
     SteeringModeSelector *m_steeringModeSelector = nullptr;
     SteeringMode m_lastSteeringMode = STEER_FRONT_BACK;
     SpeedModeSelector *m_speedModeSelector;
-    QQuickWidget *m_speedGaugeQml = nullptr;  // 使用 QML 版本的速度仪表
+    TechSpeedGauge *m_speedGaugeWidget = nullptr;
     QWidget *m_historyListHost = nullptr;      // 操作记录纯 QWidget 容器
     QComboBox *m_historyCategoryCombo = nullptr;
     QPushButton *m_historyOpenFolderButton = nullptr;
     QTableWidget *m_historyTable = nullptr;
-    QQuickWidget *m_robotTotalPowerQml = nullptr;  // 使用 QML 版本总功率卡片
+    RobotTotalPowerCard *m_robotTotalPowerCard = nullptr;
     QWidget *m_inclinometerXCard = nullptr;  // QWidget 版本 X 轴倾角卡片容器
     QWidget *m_inclinometerYCard = nullptr;  // QWidget 版本 Y 轴倾角卡片容器
     QLabel *m_inclinometerXValueLabel = nullptr;

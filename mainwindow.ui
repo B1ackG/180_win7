@@ -594,7 +594,7 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
          </item>
         </layout>
        </widget>
-       <widget class="QQuickWidget" name="quickWidget_RobotTotalPower">
+      <widget class="QWidget" name="quickWidget_RobotTotalPower" native="true">
         <property name="geometry">
          <rect>
           <x>770</x>
@@ -602,9 +602,6 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
           <width>270</width>
           <height>110</height>
          </rect>
-        </property>
-        <property name="resizeMode">
-         <enum>QQuickWidget::SizeRootObjectToView</enum>
         </property>
        </widget>
        <widget class="QWidget" name="quickWidget_Inclinometer_Y" native="true">
@@ -1016,11 +1013,6 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
   <widget class="QStatusBar" name="statusBar"/>
  </widget>
  <customwidgets>
-  <customwidget>
-   <class>QQuickWidget</class>
-   <extends>QWidget</extends>
-   <header location="global">QtQuickWidgets/QQuickWidget</header>
-  </customwidget>
   <customwidget>
    <class>TechSpeedGauge</class>
    <extends>QWidget</extends>

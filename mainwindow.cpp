@@ -11,10 +11,6 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QLoggingCategory>
-#include <QQuickWidget>
-#include <QQuickWindow>
-#include <QQmlContext>
-#include <QQuickItem>
 Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <QPainter>
 #ifdef qDebug
@@ -84,20 +80,6 @@ bool resolveSteeringModeFromStatus50(quint16 value, SteeringMode *mode, QString 
         return true;
     }
     return false;
-}
-
-void applyTransparentQuickWidgetBackground(QQuickWidget *widget)
-{
-    if (!widget) {
-        return;
-    }
-
-    const QColor panelBlue(26, 95, 180);
-    widget->setStyleSheet(QStringLiteral("background-color: rgb(26, 95, 180); border: 0px;"));
-    widget->setClearColor(panelBlue);
-    if (widget->quickWindow()) {
-        widget->quickWindow()->setColor(panelBlue);
-    }
 }
 
 std::array<quint16, 4> doubleToRegistersGHEFCDAB(double value)
@@ -1081,91 +1063,64 @@ void MainWindow::initSpeedGaugeUI()
         }
     }
 
-    // 1. 创建 QQuickWidget 来承载 QML
-    m_speedGaugeQml = new QQuickWidget(this);
-    m_speedGaugeQml->setResizeMode(QQuickWidget::SizeRootObjectToView);
-    m_speedGaugeQml->setSource(QUrl("qrc:/TechSpeedGauge.qml"));
-    m_speedGaugeQml->setAttribute(Qt::WA_AlwaysStackOnTop);
-    m_speedGaugeQml->setClearColor(Qt::transparent);
-
-    // 2. 将原本放置 TechSpeedGauge 的布局或位置替换掉
-    if (ui->AGV_speedGauge) {
-        QWidget *parent = ui->AGV_speedGauge->parentWidget();
-        m_speedGaugeQml->setParent(parent);
-        m_speedGaugeQml->setGeometry(ui->AGV_speedGauge->geometry());
-        ui->AGV_speedGauge->hide(); // 隐藏旧的 C++ 控件
-        m_speedGaugeQml->show();
-        m_speedGaugeQml->raise();
+    m_speedGaugeWidget = ui->AGV_speedGauge;
+    if (!m_speedGaugeWidget) {
+        qCWarning(lcMainWindow) << "未找到 AGV_speedGauge，跳过速度仪表初始化";
+        return;
     }
 
-    // 3. 初始化 QML 属性
-    QQuickItem *rootItem = m_speedGaugeQml->rootObject();
-    if (rootItem) {
-        rootItem->setProperty("maxValue", 900);
-        rootItem->setProperty("title", "行驶速度");
-        rootItem->setProperty("unit", "mm/s");
-    }
+    m_speedGaugeWidget->setRange(0, 900);
+    m_speedGaugeWidget->setTitle(QStringLiteral("行驶速度"));
+    m_speedGaugeWidget->setUnit(QStringLiteral("mm/s"));
+    m_speedGaugeWidget->setValue(0);
+    m_speedGaugeWidget->setObstacleStatus(false, false, false, false);
 
-    qCDebug(lcMainWindow) << "QML 速度仪表初始化完成 - 量程: 0-900 mm/s";
+    qCDebug(lcMainWindow) << "C++ 速度仪表初始化完成 - 量程: 0-900 mm/s";
 }
 
-// 示例：更新速度值
 void MainWindow::updateSpeed(qreal newSpeed)
 {
-    // 更新 QML 属性实现平滑过渡（QML 内部有动画逻辑）
-    if (m_speedGaugeQml && m_speedGaugeQml->rootObject()) {
-        m_speedGaugeQml->rootObject()->setProperty("currentValue", newSpeed);
+    if (m_speedGaugeWidget) {
+        m_speedGaugeWidget->setValueSmooth(newSpeed);
     }
 }
 
 void MainWindow::initRobotTotalPowerCard()
 {
-    m_robotTotalPowerQml = findChild<QQuickWidget*>("quickWidget_RobotTotalPower");
-    if (!m_robotTotalPowerQml) {
+    QWidget *powerHost = findChild<QWidget*>("quickWidget_RobotTotalPower");
+    if (!powerHost) {
         qCWarning(lcMainWindow) << "未找到 quickWidget_RobotTotalPower，跳过总功率卡片初始化";
         return;
     }
 
-    m_robotTotalPowerQml->setResizeMode(QQuickWidget::SizeRootObjectToView);
-    applyTransparentQuickWidgetBackground(m_robotTotalPowerQml);
-    connect(m_robotTotalPowerQml, &QQuickWidget::statusChanged, this,
-            [this](QQuickWidget::Status status) {
-                if (status == QQuickWidget::Error && m_robotTotalPowerQml) {
-                    const auto errs = m_robotTotalPowerQml->errors();
-                    for (const auto &err : errs) {
-                        qWarning() << "RobotTotalPower QML error:" << err.toString();
-                    }
-                }
-            }, Qt::UniqueConnection);
-    m_robotTotalPowerQml->setSource(QUrl("qrc:/RobotTotalPowerCard.qml"));
-
-    if (QQuickItem *root = m_robotTotalPowerQml->rootObject()) {
-        root->setProperty("title", QStringLiteral("总功率"));
-        root->setProperty("unit", QStringLiteral("W"));
-        root->setProperty("currentPower", 0.0);
+    if (powerHost->layout()) {
+        QLayoutItem *item = nullptr;
+        while ((item = powerHost->layout()->takeAt(0)) != nullptr) {
+            if (item->widget()) {
+                item->widget()->deleteLater();
+            }
+            delete item;
+        }
+        delete powerHost->layout();
     }
+
+    auto *layout = new QVBoxLayout(powerHost);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    m_robotTotalPowerCard = new RobotTotalPowerCard(powerHost);
+    m_robotTotalPowerCard->setTitle(QStringLiteral("总功率"));
+    m_robotTotalPowerCard->setUnit(QStringLiteral("W"));
+    m_robotTotalPowerCard->setCurrentPower(0.0);
+    layout->addWidget(m_robotTotalPowerCard);
 }
 
 void MainWindow::updateRobotTotalPower(quint16 powerValue)
 {
-    if (!(m_robotTotalPowerQml && m_robotTotalPowerQml->rootObject())) {
+    if (!m_robotTotalPowerCard) {
         return;
     }
-
-    QQuickItem *root = m_robotTotalPowerQml->rootObject();
-    const qreal numericPower = static_cast<qreal>(powerValue);
-    const QVariant currentPowerProp = root->property("currentPower");
-    const bool powerChanged = !currentPowerProp.isValid()
-                              || !qFuzzyCompare(currentPowerProp.toReal() + 1.0,
-                                                numericPower + 1.0);
-
-    if (powerChanged) {
-        // 值变化时仅通过属性变更触发一次采样，避免重复点导致趋势图抖动。
-        root->setProperty("currentPower", numericPower);
-    } else {
-        // 值不变时手动补点，保证趋势线持续前进。
-        QMetaObject::invokeMethod(root, "appendSample", Q_ARG(QVariant, numericPower));
-    }
+    m_robotTotalPowerCard->setCurrentPower(static_cast<double>(powerValue));
 }
 
 void MainWindow::initInclinometerCards()
@@ -1296,12 +1251,12 @@ void MainWindow::setupDataSimulation()
     // 创建定时器（用于测试，实际使用时注释掉）
     m_dataSimulator = new QTimer(this);
     connect(m_dataSimulator, &QTimer::timeout, this, [this]() {
-        if (!(m_speedGaugeQml && m_speedGaugeQml->rootObject())) {
-            qCDebug(lcMainWindow) << "错误：m_speedGaugeQml 为空指针！";
+        if (!m_speedGaugeWidget) {
+            qCDebug(lcMainWindow) << "错误：m_speedGaugeWidget 为空指针！";
             return;
         }
         // 生成随机速度波动（测试用）
-        qreal current = m_speedGaugeQml->rootObject()->property("currentValue").toReal();
+        qreal current = m_speedGaugeWidget->value();
         qreal change = (QRandomGenerator::global()->bounded(100) / 10.0) - 5.0;
         qreal newSpeed = qBound(0.0, current + change, 900.0);
 
@@ -4859,24 +4814,14 @@ void MainWindow::setupAGVUI()
                 }
             }
         }
-        if (m_speedGaugeQml && m_speedGaugeQml->rootObject()) {
-            QQuickItem *rootItem = m_speedGaugeQml->rootObject();
-            rootItem->setProperty("minValue", 0);
-            rootItem->setProperty("maxValue", 900);
-            rootItem->setProperty("unit", "mm/s");
-            rootItem->setProperty("currentValue", 0);
-            rootItem->setProperty("touchFront", false);
-            rootItem->setProperty("touchBack", false);
-            rootItem->setProperty("touchLeft", false);
-            rootItem->setProperty("touchRight", false);
-            rootItem->setProperty("avoidFrontState", 0);
-            rootItem->setProperty("avoidBackState", 0);
-            rootItem->setProperty("avoidLeftState", 0);
-            rootItem->setProperty("avoidRightState", 0);
-            rootItem->setProperty("statusText", "正常");
-            qCDebug(lcMainWindow) << "QML AGV速度仪表初始化完成，量程:0-900 mm/s";
+        if (m_speedGaugeWidget) {
+            m_speedGaugeWidget->setRange(0, 900);
+            m_speedGaugeWidget->setUnit(QStringLiteral("mm/s"));
+            m_speedGaugeWidget->setValue(0);
+            m_speedGaugeWidget->setObstacleStatus(false, false, false, false);
+            qCDebug(lcMainWindow) << "C++ AGV速度仪表初始化完成，量程:0-900 mm/s";
         } else {
-            qWarning() << "未找到QML AGV速度仪表";
+            qWarning() << "未找到 C++ AGV速度仪表";
         }
 
         qCDebug(lcMainWindow) << "找到" << m_agvStatusLabels.size() << "个AGV状态标签";
@@ -5014,7 +4959,7 @@ void MainWindow::onAGVModbusError(const QString &error)
 void MainWindow::onAGVBitVariableChanged(int address, int bitPos, bool value)
 {
     // 处理障碍物传感器数据 (地址50)
-    if (address == 50 && m_speedGaugeQml && m_speedGaugeQml->rootObject()) {
+    if (address == 50 && m_speedGaugeWidget) {
         // 位定义：
         // 1 前触边, 2 后触边, 3 左触边, 4 右触边
         // 5 前避障减速, 6 前避障停止, 7 后避障减速, 8 后避障停止
@@ -5041,16 +4986,12 @@ void MainWindow::onAGVBitVariableChanged(int address, int bitPos, bool value)
             statusText = "避障触发";
         }
 
-        QQuickItem *rootItem = m_speedGaugeQml->rootObject();
-        rootItem->setProperty("touchFront", touchFront);
-        rootItem->setProperty("touchBack", touchBack);
-        rootItem->setProperty("touchLeft", touchLeft);
-        rootItem->setProperty("touchRight", touchRight);
-        rootItem->setProperty("avoidFrontState", avoidFrontState);
-        rootItem->setProperty("avoidBackState", avoidBackState);
-        rootItem->setProperty("avoidLeftState", 0);
-        rootItem->setProperty("avoidRightState", 0);
-        rootItem->setProperty("statusText", statusText);
+        Q_UNUSED(statusText);
+        m_speedGaugeWidget->setObstacleStatus(
+            touchFront || avoidFrontState > 0,
+            touchBack || avoidBackState > 0,
+            touchLeft,
+            touchRight);
     }
 }
 

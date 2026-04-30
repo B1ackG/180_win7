@@ -1,4 +1,4 @@
-QT       += core gui widgets network qml quick quickwidgets
+QT       += core gui widgets network
 
 CONFIG   += c++17
 TEMPLATE = app
@@ -28,6 +28,7 @@ SOURCES += \
     modbusvariables.cpp \
     operationrecorder.cpp \
     poseprovider.cpp \
+    robottotalpowercard.cpp \
     speedmodeselector.cpp \
     steeringmodeselector.cpp \
     techarcgauge.cpp \
@@ -60,6 +61,7 @@ HEADERS += \
     modbusvariables.h \
     operationrecorder.h \
     poseprovider.h \
+    robottotalpowercard.h \
     speedmodeselector.h \
     steeringmodeselector.h \
     techarcgauge.h \
@@ -77,5 +79,4 @@ RESOURCES += \
     res.qrc
 
 DISTFILES += \
-    config.ini \
-    *.qml
+    config.ini
