@@ -1,0 +1,522 @@
+--- /home/l/work/180_win7/operationrecorder.h	2026-05-06 09:36:36.793733053 +0800
++++ /home/l/work/190/190/operationrecorder.h	2026-04-28 15:37:01.597038297 +0800
+@@ -1,315 +1,204 @@
+-#ifndef OPERATIONRECORDER_H
+-/**
+- * @file operationrecorder.h
+- * @brief 操作记录器的声明，用于记录用户/系统操作以便回放或审计。
+- *
+- * 详细说明: 提供记录、保存和回放操作序列的接口，适用于调试和事件追踪。
+- *
+- * 使用示例:
+- * @code
+- * #include "operationrecorder.h"
+- * OperationRecorder recorder;
+- * recorder.recordEvent("start");
+- * @endcode
+- */
+-#define OPERATIONRECORDER_H
+-
+-#include <QObject>
+-#include <QDateTime>
+-#include <QList>
+-#include <QJsonObject>
+-#include <QFile>
+-#include <QTextStream>
+-#include <QAbstractSocket>
+-#include <QTcpSocket>
+-#include <QTcpServer>
+-#include <QTimer>
+-#include <QByteArray>
+-
+-#define WIN7_IP "192.168.1.70"
+-#define WIN7_PORT 12345
+-
+-struct OperationRecord {
+-    QDateTime timestamp;      // 操作时间
+-    QString pageName;         // 页面名称
+-    QString controlName;      // 控件名称
+-    QString controlType;      // 控件类型（SliderEdit/PushButton等）
+-    QString operation;        // 操作类型（valueChanged/clicked等）
+-    QVariant oldValue;        // 旧值
+-    QVariant newValue;        // 新值
+-
+-    // 转换为字符串用于显示
+-    QString toString() const {
+-        return QString("[%1] %2 -> %3: %4 -> %5")
+-            .arg(timestamp.toString("hh:mm:ss"))
+-            .arg(controlName)
+-            .arg(operation)
+-            .arg(oldValue.toString())
+-            .arg(newValue.toString());
+-    }
+-
+-    // 转换为JSON用于保存
+-    QJsonObject toJson() const {
+-        QJsonObject obj;
+-        obj["timestamp"] = timestamp.toString(Qt::ISODate);
+-        obj["pageName"] = pageName;
+-        obj["controlName"] = controlName;
+-        obj["controlType"] = controlType;
+-        obj["operation"] = operation;
+-        obj["oldValue"] = oldValue.toString();
+-        obj["newValue"] = newValue.toString();
+-        return obj;
+-    }
+-
+-    // 从JSON恢复
+-    static OperationRecord fromJson(const QJsonObject &obj) {
+-        OperationRecord record;
+-        record.timestamp = QDateTime::fromString(obj["timestamp"].toString(), Qt::ISODate);
+-        record.pageName = obj["pageName"].toString();
+-        record.controlName = obj["controlName"].toString();
+-        record.controlType = obj["controlType"].toString();
+-        record.operation = obj["operation"].toString();
+-        record.oldValue = obj["oldValue"].toString();
+-        record.newValue = obj["newValue"].toString();
+-        return record;
+-    }
+-};
+-// operationrecorder.h 添加新的操作类型
+-enum OperationType {
+-    SLIDER_CHANGE,      // 滑块值改变
+-    BUTTON_CLICK,       // 按钮点击
+-    TOOLBUTTON_CLICK,   // ToolButton点击
+-    TOOLBUTTON_TOGGLE,  // ToolButton切换状态
+-    LINEEDIT_CHANGE,    // LineEdit文本改变
+-    LOGIN_ATTEMPT       // 登录尝试
+-};
+-
+-class OperationRecorder : public QObject
+-{
+-    Q_OBJECT
+-
+-public:
+-    /**
+-     * @brief 构造函数
+-     *
+-     * 初始化操作记录器及网络/持久化相关资源。
+-     *
+-     * @param parent 父对象
+-     * @since 1.0.0
+-     */
+-    explicit OperationRecorder(QObject *parent = nullptr);
+-
+-    /**
+-     * @brief 析构函数
+-     *
+-     * 释放 TCP 连接、定时器及缓冲队列。
+-     */
+-    ~OperationRecorder();
+-
+-    /**
+-     * @brief 添加操作记录
+-     *
+-     * 将一条操作记录加入内存队列并发出 `recordAdded()`。
+-     *
+-     * @param record 要添加的记录
+-     */
+-    void addRecord(const OperationRecord &record);
+-
+-    /**
+-     * 使用示例:
+-     * @code
+-     * OperationRecord r; r.pageName = "main"; r.controlName = "BtnStart";
+-     * r.operation = "click";
+-     * recorder.addRecord(r);
+-     * @endcode
+-     */
+-
+-    /**
+-     * @brief 获取当前记录列表（只读引用）
+-     * @return 当前内存中的记录列表引用
+-     * @note 为线程安全访问请改为返回拷贝或加锁保护
+-     */
+-    const QList<OperationRecord>& records() const { return m_records; }
+-
+-    /**
+-     * @brief 清空所有记录
+-     */
+-    void clear();
+-
+-    /**
+-     * @brief 将记录保存为 JSON 文件
+-     * @param filename 目标文件路径
+-     * @return 成功返回 true
+-     */
+-    bool saveToFile(const QString &filename);
+-
+-    /**
+-     * 使用示例:
+-     * @code
+-     * recorder.saveToFile("records.json");
+-     * recorder.loadFromFile("records.json");
+-     * @endcode
+-     */
+-
+-    /**
+-     * @brief 从 JSON 文件加载记录
+-     * @param filename 源文件路径
+-     * @return 成功返回 true
+-     * @note 加载方式（覆盖/合并）以实现为准
+-     */
+-    bool loadFromFile(const QString &filename);
+-
+-    /**
+-     * @brief 导出为可读文本文件
+-     * @param filename 目标路径
+-     * @return 成功返回 true
+-     */
+-    bool exportToText(const QString &filename);
+-
+-    /**
+-     * @brief 立即将当前缓存的记录保存到当天的会话文件中（自动命名）。
+-     * 如何使用：通常由 `addRecord` 内部调用以实现自动保存；也可手动调用触发保存。
+-     */
+-    bool autoSaveCurrentRecord();
+-
+-    /**
+-     * @brief 加载今天自动保存的会话文件（如果存在）。
+-     */
+-    bool loadTodayFile();
+-
+-    /**
+-     * @brief 获取指定页面的记录
+-     * @param pageName 页面名
+-     * @return 过滤后的记录列表
+-     */
+-    QList<OperationRecord> getPageRecords(const QString &pageName) const;
+-
+-    /**
+-     * @brief 获取指定控件的记录
+-     * @param controlName 控件名
+-     * @return 过滤后的记录列表
+-     */
+-    QList<OperationRecord> getControlRecords(const QString &controlName) const;
+-
+-    /**
+-     * @brief 获取记录总数
+-     * @return 总记录数
+-     */
+-    int recordCount() const { return m_records.size(); }
+-    int pageRecordCount(const QString &pageName) const;
+-
+-    /**
+-     * @brief 返回自动保存目录路径
+-     */
+-    QString getAutoSaveDir() const { return m_autoSaveDir; }
+-
+-    /**
+-     * @brief 初始化自动保存机制（创建目录、设置定时器等）。
+-     */
+-    void initAutoSave();
+-
+-    /**
+-     * @brief 启用/禁用 TCP 传输
+-     * @param enabled true 启用
+-     * @note 启用后需先调用 `setTcpServer()`
+-     */
+-    void enableTcpTransmission(bool enabled);
+-
+-    /**
+-     * @brief 设置远端 TCP 服务器地址与端口
+-     * @param ip 服务器 IP
+-     * @param port 端口号
+-     */
+-    void setTcpServer(const QString &ip, quint16 port);
+-
+-    /**
+-     * @brief 将所有记录通过 TCP 发送到配置的服务器
+-     * @note 需先设置服务器并启用 TCP 传输
+-     */
+-    void sendAllRecordsToServer();
+-
+-    /**
+-     * @brief 设置是否记录本地操作（默认关闭，仅记录TCP入站数据）
+-     */
+-    void setRecordLocalOperations(bool enabled) { m_recordLocalOperations = enabled; }
+-
+-    /**
+-     * 使用示例:
+-     * @code
+-     * recorder.setTcpServer("192.168.1.100", 12346);
+-     * recorder.enableTcpTransmission(true);
+-     * recorder.sendAllRecordsToServer();
+-     * @endcode
+-     */
+-
+-    /**
+-     * @brief 是否已连接到 TCP 服务器
+-     * @return true 表示已连接
+-     */
+-    bool isTcpConnected() const { return m_tcpSocket && m_tcpSocket->state() == QAbstractSocket::ConnectedState; }
+-
+-signals:
+-    void recordAdded(const OperationRecord &record);
+-    void recordsCleared();
+-    void tcpConnectionStatusChanged(bool connected);
+-    void tcpTransmissionComplete();
+-    void tcpTransmissionError(const QString &error);
+-
+-private slots:
+-    void onTcpConnected();
+-    void onTcpDisconnected();
+-    void onTcpError(QAbstractSocket::SocketError socketError);
+-    void onTcpDataWritten(qint64 bytes);
+-    void onReconnectTimeout();
+-    void onReceiverNewConnection();
+-    void onReceiverDataReady();
+-    void onReceiverDisconnected();
+-    void onReceiverError(QAbstractSocket::SocketError socketError);
+-
+-private:
+-    static constexpr int kMaxTcpQueueSize = 2000;
+-
+-    QList<OperationRecord> m_records;
+-    int m_maxRecords = 1000; // 最大记录数
+-
+-    // TCP传输相关成员
+-    QTcpSocket *m_tcpSocket;
+-    bool m_tcpEnabled;
+-    QString m_tcpServerIp;
+-    quint16 m_tcpServerPort;
+-    QStringList m_allowedHosts;
+-    QByteArray m_signingKey;
+-    QTimer *m_reconnectTimer;
+-    QList<OperationRecord> m_tcpSendQueue;  // 待发送的记录队列
+-    QString m_lastTcpError;
+-    qint64 m_lastTcpErrorMs = 0;
+-    bool m_transportPolicyBlocked = false;
+-    QString m_lastTransportPolicyError;
+-    qint64 m_lastTransportPolicyErrorMs = 0;
+-
+-    // TCP发送相关方法
+-    void loadSecuritySettings();
+-    bool validateTransportPolicy(QString *reason = nullptr) const;
+-    QByteArray buildSignedPayload(const OperationRecord &record) const;
+-    bool enqueueRecordIfPossible(const OperationRecord &record);
+-    void sendRecordToServer(const OperationRecord &record);
+-    void sendQueuedRecords();
+-    void connectTcpSocket();
+-    void disconnectTcpSocket();
+-    void setupTcpReceiver();
+-    bool decodeRecordLine(const QByteArray &lineBytes, OperationRecord *recordOut) const;
+-    void appendTcpRecord(const OperationRecord &record);
+-    void saveLocalSnapshot();
+-    bool saveToFileInternal(const QString &filename, const QList<OperationRecord> &records);
+-
+-    bool m_recordLocalOperations = false;
+-    QString m_autoSaveDir;
+-    QString m_currentSessionFile;
+-    QTcpServer *m_tcpReceiverServer = nullptr;
+-    QTcpSocket *m_tcpReceiverClient = nullptr;
+-    QByteArray m_tcpReceiverBuffer;
+-    quint16 m_tcpReceiverPort = WIN7_PORT;
+-    QString m_localSnapshotFile;
+-};
+-
+-#endif // OPERATIONRECORDER_H
++#ifndef OPERATIONRECORDER_H
++#define OPERATIONRECORDER_H
++
++#include <QObject>
++#include <QDateTime>
++#include <QList>
++#include <QJsonObject>
++#include <QFile>
++#include <QTextStream>
++#include <QDir>
++#include <QMutex>
++#include <QMutexLocker>
++
++struct OperationRecord {
++    QDateTime timestamp;      // 操作时间
++    QString pageName;         // 页面名称
++    QString controlName;      // 控件名称
++    QString controlType;      // 控件类型（SliderEdit/PushButton等）
++    QString operation;        // 操作类型（valueChanged/clicked等）
++    QVariant oldValue;        // 旧值
++    QVariant newValue;        // 新值
++
++    // 添加运行时间戳（相对于程序启动的时间）
++    qint64 runtimeMs = 0;
++
++    // 转换为字符串用于显示
++    QString toString() const {
++        return QString("[%1] %2 -> %3: %4 -> %5")
++        .arg(timestamp.toString("hh:mm:ss"))
++            .arg(controlName)
++            .arg(operation)
++            .arg(oldValue.toString())
++            .arg(newValue.toString());
++    }
++
++    // 转换为JSON用于保存
++    QJsonObject toJson() const {
++        QJsonObject obj;
++        obj["timestamp"] = timestamp.toString(Qt::ISODate);
++        obj["runtime_ms"] = static_cast<double>(runtimeMs);
++        obj["pageName"] = pageName;
++        obj["controlName"] = controlName;
++        obj["controlType"] = controlType;
++        obj["operation"] = operation;
++        obj["oldValue"] = oldValue.toString();
++        obj["newValue"] = newValue.toString();
++        return obj;
++    }
++
++    // 从JSON恢复
++    static OperationRecord fromJson(const QJsonObject &obj) {
++        OperationRecord record;
++        record.timestamp = QDateTime::fromString(obj["timestamp"].toString(), Qt::ISODate);
++        if (obj.contains("runtime_ms")) {
++            record.runtimeMs = static_cast<qint64>(obj["runtime_ms"].toDouble());
++        }
++        record.pageName = obj["pageName"].toString();
++        record.controlName = obj["controlName"].toString();
++        record.controlType = obj["controlType"].toString();
++        record.operation = obj["operation"].toString();
++        record.oldValue = obj["oldValue"].toString();
++        record.newValue = obj["newValue"].toString();
++        return record;
++    }
++};
++
++
++class OperationRecorder : public QObject
++{
++    Q_OBJECT
++
++public:
++    /**
++     * 构造/析构
++     * 功能：管理操作记录的收集、保存、加载与导出。
++     */
++    explicit OperationRecorder(QObject *parent = nullptr);
++    ~OperationRecorder();
++
++    /**
++     * 功能：添加一条操作记录并触发自动保存。
++     * 如何使用：外部在监听到用户动作（如 valueChanged、clicked）后构造 `OperationRecord` 并调用本方法。
++     * 如何修改：若需改变保存节奏或缓存策略，请调整 `autoSaveCurrentRecord()` 或 `m_maxRecords` 限制。
++     */
++    void addRecord(const OperationRecord &record);
++
++    /**
++     * 功能：获取缓存中的所有记录（只读引用）。
++     * 如何使用：用于在 UI 中展示或导出全部记录。
++     */
++    const QList<OperationRecord>& records() const { return m_records; }
++
++    /**
++     * 功能：清空所有记录并删除相关自动保存文件。
++     * 如何使用：用于“清除历史”操作。请谨慎调用，操作不可逆。
++     */
++    void clear();
++
++    /**
++     * 功能：立即将当前缓存的记录保存到指定文件（覆盖/创建）。
++     * 如何使用：传入完整文件路径，如 `saveToFile("/tmp/records.json")`。
++     * 返回：保存成功返回 true。
++     */
++    bool saveToFile(const QString &filename);
++
++    /**
++     * 功能：将当前记录追加/写入到当天的会话文件中（自动命名）。
++     * 如何使用：通常由 `addRecord` 内部调用以实现自动保存；也可手动调用触发保存。
++     */
++    bool autoSaveCurrentRecord();
++
++    /**
++     * 功能：从指定文件加载记录到内存（替换当前缓存）。
++     * 如何使用：传入历史文件路径即可恢复；失败时返回 false。
++     */
++    bool loadFromFile(const QString &filename);
++
++    /**
++     * 功能：加载今天自动保存的会话文件（如果存在）。
++     */
++    bool loadTodayFile();
++
++    /**
++     * 功能：将当前记录导出为可读文本文件（便于人工查看）。
++     */
++    bool exportToText(const QString &filename);
++
++    /**
++     * 功能：获取指定页面的所有记录（按页面名筛选）。
++     */
++    QList<OperationRecord> getPageRecords(const QString &pageName) const;
++
++    /**
++     * 功能：获取指定控件的所有记录（按控件名筛选）。
++     */
++    QList<OperationRecord> getControlRecords(const QString &controlName) const;
++
++    // 统计信息
++    /**
++     * 功能：返回当前内存中记录条数。
++     */
++    int recordCount() const { return m_records.size(); }
++    /**
++     * 功能：返回某页面的记录条数。
++     */
++    int pageRecordCount(const QString &pageName) const;
++
++    /**
++     * 功能：返回用于自动保存的今日文件名（包含路径）。
++     */
++    QString getTodayFileName() const;
++
++    /**
++     * 功能：获取第一条记录的时间（用于显示会话起始时间）。
++     */
++    QDateTime getFirstRecordTime() const { return m_firstRecordTime; }
++
++    /**
++     * 功能：获取最后一条记录的时间（用于显示会话结束时间）。
++     */
++    QDateTime getLastRecordTime() const { return m_lastRecordTime; }
++
++    /**
++     * 功能：获取当前会话运行时长（毫秒）。
++     */
++    qint64 getRuntimeDuration() const;
++
++    /**
++     * 功能：初始化自动保存机制（创建目录、设置定时器等）。
++     * 如何使用：在程序启动时调用一次以启用自动保存功能。
++     */
++    void initAutoSave();
++
++    /**
++     * 功能：返回自动保存目录路径，用于外部读取或显示。
++     */
++    QString getAutoSaveDir() const { return m_autoSaveDir; }
++
++signals:
++    void recordAdded(const OperationRecord &record);
++    void recordsCleared();
++    void fileSaved(const QString &filename);
++
++private:
++    QList<OperationRecord> m_records;
++    int m_maxRecords = 10000; // 最大记录数
++
++    // 自动保存相关
++    QString m_autoSaveDir;
++    QString m_currentSessionFile; // 当前会话的文件名
++    QDateTime m_firstRecordTime;
++    QDateTime m_lastRecordTime;
++
++    // 线程安全
++    mutable QMutex m_mutex;
++
++    // 确保目录存在
++    bool ensureAutoSaveDir();
++
++    // 保存到文件（内部实现）
++    bool saveToFileInternal(const QString &filename, const QList<OperationRecord> &records);
++};
++
++#endif // OPERATIONRECORDER_H

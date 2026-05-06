@@ -1755,6 +1755,20 @@ void MainWindow::updateRecordDisplay()
         return;
     }
 
+    QWidget *recordPage = findChild<QWidget*>("page_record");
+    if (recordPage) {
+        if (m_recorder->recordCount() > 0) {
+            QString autoSaveInfo = QString("自动保存: 已启用 | 记录数: %1 | 运行时长: %2分钟")
+                .arg(m_recorder->recordCount())
+                .arg(m_recorder->getRuntimeDuration() / 60000);
+
+            QLabel *autoSaveLabel = recordPage->findChild<QLabel*>("autoSaveInfo");
+            if (autoSaveLabel) {
+                autoSaveLabel->setText(autoSaveInfo);
+            }
+        }
+    }
+
     const QString category = m_historyCategoryCombo ? m_historyCategoryCombo->currentText() : QStringLiteral("全部");
     const QList<OperationRecord> &records = m_recorder->records();
 

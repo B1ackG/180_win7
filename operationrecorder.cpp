@@ -158,29 +158,62 @@ OperationRecorder::~OperationRecorder()
 void OperationRecorder::initAutoSave()
 {
     // 确保目录存在
-    QDir dir(m_autoSaveDir);
-    if (!dir.exists()) {
-        dir.mkpath(".");
-    }
+    ensureAutoSaveDir();
 
     // 尝试加载今日的记录文件
     loadTodayFile();
     qDebug() << "自动保存系统初始化完成，目录:" << m_autoSaveDir;
 }
 
-void OperationRecorder::addRecord(const OperationRecord &record)
+bool OperationRecorder::ensureAutoSaveDir()
+{
+    QDir dir(m_autoSaveDir);
+    if (!dir.exists()) {
+        return dir.mkpath(".");
+    }
+    return true;
+}
+
+QString OperationRecorder::getTodayFileName() const
+{
+    return m_autoSaveDir + m_currentSessionFile;
+}
+
+qint64 OperationRecorder::getRuntimeDuration() const
+{
+    if (!m_firstRecordTime.isValid()) return 0;
+    
+    QDateTime end = m_lastRecordTime.isValid() ? m_lastRecordTime : QDateTime::currentDateTime();
+    return m_firstRecordTime.msecsTo(end);
+}
+
+void OperationRecorder::addRecord(const OperationRecord &rec)
 {
     if (!m_recordLocalOperations) {
         // 如果不记录本地操作，忽略由 UI 调用的 addRecord
         return;
     }
+    
+    OperationRecord record = rec;
+    
+    {
+        QMutexLocker locker(&m_mutex);
+        if (m_records.isEmpty()) {
+            m_firstRecordTime = record.timestamp;
+            record.runtimeMs = 0;
+        } else {
+            record.runtimeMs = m_firstRecordTime.msecsTo(record.timestamp);
+        }
+        m_lastRecordTime = record.timestamp;
 
-    // 限制记录数量
-    if (m_records.size() >= m_maxRecords) {
-        m_records.removeFirst();
+        // 限制记录数量
+        if (m_records.size() >= m_maxRecords) {
+            m_records.removeFirst();
+        }
+
+        m_records.append(record);
     }
-
-    m_records.append(record);
+    
     emit recordAdded(record);
 
     // 立即自动保存到会话文件
@@ -194,26 +227,31 @@ void OperationRecorder::addRecord(const OperationRecord &record)
 
 void OperationRecorder::clear()
 {
-    m_records.clear();
+    {
+        QMutexLocker locker(&m_mutex);
+        m_records.clear();
+        m_firstRecordTime = QDateTime();
+        m_lastRecordTime = QDateTime();
+    }
+    
+    // 如果存在自动保存文件，考虑删除或者重新开始记录
+    // 对于清除操作，我们选择重置文件
+    QFile sessionFile(getTodayFileName());
+    if (sessionFile.exists()) {
+        sessionFile.remove();
+    }
+    
     emit recordsCleared();
 }
 
 bool OperationRecorder::saveToFile(const QString &filename)
 {
-    QJsonArray jsonArray;
-    for (const auto &record : m_records) {
-        jsonArray.append(record.toJson());
+    QList<OperationRecord> snapshot;
+    {
+        QMutexLocker locker(&m_mutex);
+        snapshot = m_records;
     }
-
-    QJsonDocument doc(jsonArray);
-    QFile file(filename);
-    if (!file.open(QIODevice::WriteOnly)) {
-        return false;
-    }
-
-    file.write(doc.toJson());
-    file.close();
-    return true;
+    return saveToFileInternal(filename, snapshot);
 }
 
 bool OperationRecorder::loadFromFile(const QString &filename)
@@ -410,11 +448,19 @@ void OperationRecorder::onReceiverError(QAbstractSocket::SocketError socketError
 
 bool OperationRecorder::autoSaveCurrentRecord()
 {
-    if (m_records.isEmpty()) {
-        return false;
+    QList<OperationRecord> snapshot;
+    QString filename;
+
+    {
+        QMutexLocker locker(&m_mutex);
+        if (m_records.isEmpty()) {
+            return false;
+        }
+        filename = getTodayFileName();
+        snapshot = m_records;
     }
-    QString filename = m_autoSaveDir + m_currentSessionFile;
-    return saveToFileInternal(filename, m_records);
+
+    return saveToFileInternal(filename, snapshot);
 }
 
 bool OperationRecorder::loadTodayFile()
@@ -447,19 +493,25 @@ bool OperationRecorder::saveToFileInternal(const QString &filename, const QList<
     QJsonDocument doc(jsonArray);
     QByteArray jsonData = doc.toJson(QJsonDocument::Indented);
 
-    // 使用 QSaveFile 提供更可靠的写入
+    // 使用 QSaveFile 提供跨平台的原子写入（在 Windows 上更可靠）
     QSaveFile saveFile(filename);
     if (!saveFile.open(QIODevice::WriteOnly)) {
         qWarning() << "无法打开文件进行写入:" << filename << saveFile.errorString();
         return false;
     }
 
-    saveFile.write(jsonData);
+    qint64 bytesWritten = saveFile.write(jsonData);
+    if (bytesWritten == -1) {
+        qWarning() << "写入数据失败:" << filename << saveFile.errorString();
+        return false;
+    }
+
     if (!saveFile.commit()) {
         qWarning() << "QSaveFile 提交失败:" << filename << saveFile.errorString();
         return false;
     }
 
+    emit fileSaved(filename);
     return true;
 }
 

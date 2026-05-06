@@ -25,6 +25,9 @@
 #include <QTcpServer>
 #include <QTimer>
 #include <QByteArray>
+#include <QMutex>
+#include <QMutexLocker>
+#include <QDir>
 
 #define WIN7_IP "192.168.1.70"
 #define WIN7_PORT 12345
@@ -37,6 +40,9 @@ struct OperationRecord {
     QString operation;        // 操作类型（valueChanged/clicked等）
     QVariant oldValue;        // 旧值
     QVariant newValue;        // 新值
+
+    // 添加运行时间戳（相对于程序启动的时间）
+    qint64 runtimeMs = 0;
 
     // 转换为字符串用于显示
     QString toString() const {
@@ -52,6 +58,7 @@ struct OperationRecord {
     QJsonObject toJson() const {
         QJsonObject obj;
         obj["timestamp"] = timestamp.toString(Qt::ISODate);
+        obj["runtime_ms"] = static_cast<double>(runtimeMs);
         obj["pageName"] = pageName;
         obj["controlName"] = controlName;
         obj["controlType"] = controlType;
@@ -65,6 +72,9 @@ struct OperationRecord {
     static OperationRecord fromJson(const QJsonObject &obj) {
         OperationRecord record;
         record.timestamp = QDateTime::fromString(obj["timestamp"].toString(), Qt::ISODate);
+        if (obj.contains("runtime_ms")) {
+            record.runtimeMs = static_cast<qint64>(obj["runtime_ms"].toDouble());
+        }
         record.pageName = obj["pageName"].toString();
         record.controlName = obj["controlName"].toString();
         record.controlType = obj["controlType"].toString();
@@ -251,6 +261,7 @@ public:
 signals:
     void recordAdded(const OperationRecord &record);
     void recordsCleared();
+    void fileSaved(const QString &filename);
     void tcpConnectionStatusChanged(bool connected);
     void tcpTransmissionComplete();
     void tcpTransmissionError(const QString &error);
@@ -266,11 +277,43 @@ private slots:
     void onReceiverDisconnected();
     void onReceiverError(QAbstractSocket::SocketError socketError);
 
+public:
+    /**
+     * @brief 返回用于自动保存的今日文件名（包含路径）。
+     */
+    QString getTodayFileName() const;
+
+    /**
+     * @brief 获取当前会话运行时长（毫秒）。
+     */
+    qint64 getRuntimeDuration() const;
+
+    /**
+     * @brief 获取第一条记录的时间（用于显示会话起始时间）。
+     */
+    QDateTime getFirstRecordTime() const { return m_firstRecordTime; }
+
+    /**
+     * @brief 获取最后一条记录的时间（用于显示会话结束时间）。
+     */
+    QDateTime getLastRecordTime() const { return m_lastRecordTime; }
+
 private:
     static constexpr int kMaxTcpQueueSize = 2000;
 
     QList<OperationRecord> m_records;
     int m_maxRecords = 1000; // 最大记录数
+
+    // 自动保存相关
+    QString m_autoSaveDir;
+    QString m_currentSessionFile; // 当前会话的文件名
+    QDateTime m_firstRecordTime;
+    QDateTime m_lastRecordTime;
+
+    // 线程安全
+    mutable QMutex m_mutex;
+
+    bool ensureAutoSaveDir();
 
     // TCP传输相关成员
     QTcpSocket *m_tcpSocket;
@@ -303,8 +346,6 @@ private:
     bool saveToFileInternal(const QString &filename, const QList<OperationRecord> &records);
 
     bool m_recordLocalOperations = false;
-    QString m_autoSaveDir;
-    QString m_currentSessionFile;
     QTcpServer *m_tcpReceiverServer = nullptr;
     QTcpSocket *m_tcpReceiverClient = nullptr;
     QByteArray m_tcpReceiverBuffer;
