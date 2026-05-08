@@ -15,7 +15,6 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QSaveFile>
-#include <QCoreApplication>
 #include <QFileInfo>
 
 namespace {
@@ -64,7 +63,6 @@ OperationRecorder::OperationRecorder(QObject *parent)
     // 初始化自动保存配置
     m_autoSaveDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/OperationRecords/";
     m_currentSessionFile = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + ".json";
-    m_localSnapshotFile = QCoreApplication::applicationDirPath() + "/records_snapshot.json";
     
     setupTcpReceiver();
 }
@@ -416,7 +414,7 @@ void OperationRecorder::appendTcpRecord(const OperationRecord &record)
     if (m_records.size() >= m_maxRecords) m_records.removeFirst();
     m_records.append(record);
     emit recordAdded(record);
-    saveLocalSnapshot();
+    autoSaveCurrentRecord();
 }
 
 void OperationRecorder::onReceiverDisconnected()
@@ -513,11 +511,6 @@ bool OperationRecorder::saveToFileInternal(const QString &filename, const QList<
 
     emit fileSaved(filename);
     return true;
-}
-
-void OperationRecorder::saveLocalSnapshot()
-{
-    saveToFileInternal(m_localSnapshotFile, m_records);
 }
 
 bool OperationRecorder::exportToText(const QString &filename)

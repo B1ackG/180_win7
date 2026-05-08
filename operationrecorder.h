@@ -239,7 +239,7 @@ public:
     void sendAllRecordsToServer();
 
     /**
-     * @brief 设置是否记录本地操作（默认关闭，仅记录TCP入站数据）
+     * @brief 设置是否记录本地操作（默认开启，写入文档下 OperationRecords）
      */
     void setRecordLocalOperations(bool enabled) { m_recordLocalOperations = enabled; }
 
@@ -342,15 +342,13 @@ private:
     void setupTcpReceiver();
     bool decodeRecordLine(const QByteArray &lineBytes, OperationRecord *recordOut) const;
     void appendTcpRecord(const OperationRecord &record);
-    void saveLocalSnapshot();
     bool saveToFileInternal(const QString &filename, const QList<OperationRecord> &records);
 
-    bool m_recordLocalOperations = false;
+    bool m_recordLocalOperations = true;
     QTcpServer *m_tcpReceiverServer = nullptr;
     QTcpSocket *m_tcpReceiverClient = nullptr;
     QByteArray m_tcpReceiverBuffer;
     quint16 m_tcpReceiverPort = WIN7_PORT;
-    QString m_localSnapshotFile;
 };
 
 #endif // OPERATIONRECORDER_H
