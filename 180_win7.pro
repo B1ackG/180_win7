@@ -8,6 +8,7 @@ SOURCES += \
     agvmodbusmanager.cpp \
     animationmanager.cpp \
     batterywidget.cpp \
+    devicecoordpanel.cpp \
     enablebuttonworker.cpp \
     featureswitchmanager.cpp \
     featureswitchwidget.cpp \
@@ -42,6 +43,7 @@ HEADERS += \
     agvmodbusmanager.h \
     animationmanager.h \
     batterywidget.h \
+    devicecoordpanel.h \
     debug.h \
     enablebuttonworker.h \
     featureswitchmanager.h \

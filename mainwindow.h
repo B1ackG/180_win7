@@ -24,6 +24,7 @@
 #include "mappingconfig.h"
 #include "matrixkeymonitor.h"
 #include "robottotalpowercard.h"
+#include "devicecoordpanel.h"
 #include "techspeeddialsimple.h"
 #include "matrixkeythreadmanager.h"
 #include "modbusthreadmanager.h"
@@ -47,6 +48,8 @@
 #include <QGroupBox>
 #include <QProgressBar>
 #include <QListWidget>
+#include <QLabel>
+#include <QStackedWidget>
 #include <QTableWidget>
 #include <QSocketNotifier>
 #include <QSet>
@@ -362,6 +365,8 @@ public:
     void initRobotTotalPowerCard();
     /** @brief 初始化 X/Y 倾角卡片（QWidget 版本） */
     void initInclinometerCards();
+    /** @brief 初始化主控位姿面板（X/Y/Z/R，寄存器 103~118，纯 QWidget） */
+    void initDeviceCoordPanel();
     /**
      * @brief 更新速度显示
      * @param newSpeed 新速度值
@@ -377,6 +382,8 @@ public:
     void updateRobotTotalPower(quint16 powerValue);
     /** @brief 更新倾角显示（AGV 151/152，寄存器值÷100） */
     void updateInclinometerValue(bool isXAxis, quint16 rawValue);
+    /** @brief 从寄存器缓存刷新位姿面板 */
+    void updateDeviceCoordPanelFromCache();
     /** @brief 初始化滑块编辑 UI */
     void initSliderEditUI();
 
@@ -661,8 +668,11 @@ private:
     QWidget *m_historyListHost = nullptr;      // 操作记录纯 QWidget 容器
     QComboBox *m_historyCategoryCombo = nullptr;
     QPushButton *m_historyOpenFolderButton = nullptr;
+    QStackedWidget *m_historyViewStack = nullptr; // 列表 / 空状态（对齐 QML HistoryList 行为）
+    QLabel *m_historyPlaceholderLabel = nullptr;
     QTableWidget *m_historyTable = nullptr;
     RobotTotalPowerCard *m_robotTotalPowerCard = nullptr;
+    DeviceCoordPanel *m_deviceCoordPanel = nullptr;
     QWidget *m_inclinometerXCard = nullptr;  // QWidget 版本 X 轴倾角卡片容器
     QWidget *m_inclinometerYCard = nullptr;  // QWidget 版本 Y 轴倾角卡片容器
     QLabel *m_inclinometerXValueLabel = nullptr;

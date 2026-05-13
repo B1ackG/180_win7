@@ -32,7 +32,7 @@
    <string>MainWindow</string>
   </property>
   <property name="windowIcon">
-   <iconset resource="res.qrc">
+   <iconset resource="../180/res.qrc">
     <normaloff>:/Picture/TechBackGround4.png</normaloff>:/Picture/TechBackGround4.png</iconset>
   </property>
   <property name="styleSheet">
@@ -378,7 +378,7 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
           <string>主页</string>
          </property>
          <property name="icon">
-          <iconset resource="res.qrc">
+          <iconset resource="../180/res.qrc">
            <normaloff>:/Picture/home2.png</normaloff>:/Picture/home2.png</iconset>
          </property>
          <property name="iconSize">
@@ -409,7 +409,7 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
           <string>权限</string>
          </property>
          <property name="icon">
-          <iconset resource="res.qrc">
+          <iconset resource="../180/res.qrc">
            <normaloff>:/Picture/permission.png</normaloff>:/Picture/permission.png</iconset>
          </property>
          <property name="iconSize">
@@ -440,7 +440,7 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
           <string>历史记录</string>
          </property>
          <property name="icon">
-          <iconset resource="res.qrc">
+          <iconset resource="../180/res.qrc">
            <normaloff>:/Picture/history.png</normaloff>:/Picture/history.png</iconset>
          </property>
          <property name="iconSize">
@@ -480,46 +480,6 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
        <number>0</number>
       </property>
       <widget class="QWidget" name="page_Robot">
-       <widget class="QWidget" name="widget_test3" native="true">
-        <property name="geometry">
-         <rect>
-          <x>1280</x>
-          <y>130</y>
-          <width>200</width>
-          <height>200</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_test4" native="true">
-        <property name="geometry">
-         <rect>
-          <x>1000</x>
-          <y>170</y>
-          <width>200</width>
-          <height>200</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_test2" native="true">
-        <property name="geometry">
-         <rect>
-          <x>1340</x>
-          <y>330</y>
-          <width>200</width>
-          <height>200</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_test1" native="true">
-        <property name="geometry">
-         <rect>
-          <x>1390</x>
-          <y>550</y>
-          <width>200</width>
-          <height>200</height>
-         </rect>
-        </property>
-       </widget>
        <widget class="QLabel" name="lab_Overall">
         <property name="geometry">
          <rect>
@@ -539,7 +499,7 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
          <string/>
         </property>
         <property name="pixmap">
-         <pixmap resource="res.qrc">:/Picture/190overall7_smalltest.png</pixmap>
+         <pixmap resource="../180/res.qrc">:/Picture/190overall7_smalltest.png</pixmap>
         </property>
         <property name="scaledContents">
          <bool>true</bool>
@@ -594,11 +554,11 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
          </item>
         </layout>
        </widget>
-      <widget class="QWidget" name="quickWidget_RobotTotalPower" native="true">
+       <widget class="QWidget" name="quickWidget_RobotTotalPower" native="true">
         <property name="geometry">
          <rect>
-          <x>770</x>
-          <y>400</y>
+          <x>670</x>
+          <y>570</y>
           <width>270</width>
           <height>110</height>
          </rect>
@@ -620,6 +580,16 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
           <x>830</x>
           <y>710</y>
           <width>190</width>
+          <height>70</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="DeviceCoordPanel" name="Widget_DeviceCoordPanel" native="true">
+        <property name="geometry">
+         <rect>
+          <x>830</x>
+          <y>410</y>
+          <width>460</width>
           <height>70</height>
          </rect>
         </property>
@@ -648,7 +618,7 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
         <property name="geometry">
          <rect>
           <x>280</x>
-          <y>340</y>
+          <y>330</y>
           <width>200</width>
           <height>200</height>
          </rect>
@@ -668,7 +638,7 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
         <property name="geometry">
          <rect>
           <x>280</x>
-          <y>560</y>
+          <y>550</y>
           <width>200</width>
           <height>200</height>
          </rect>
@@ -709,32 +679,55 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
          <string/>
         </property>
         <property name="pixmap">
-         <pixmap resource="res.qrc">:/Picture/sixAxiesOverAll.png</pixmap>
+         <pixmap resource="../180/res.qrc">:/Picture/sixAxiesOverAll.png</pixmap>
         </property>
         <property name="scaledContents">
          <bool>true</bool>
         </property>
        </widget>
-       <zorder>lab_Overall</zorder>
-       <zorder>widget_test3</zorder>
-       <zorder>widget_test4</zorder>
-       <zorder>widget_test2</zorder>
-       <zorder>widget_test1</zorder>
-       <zorder>AGV_speedGauge</zorder>
-       <zorder>widget_5</zorder>
-       <zorder>quickWidget_RobotTotalPower</zorder>
-       <zorder>quickWidget_Inclinometer_Y</zorder>
-       <zorder>quickWidget_Inclinometer_X</zorder>
-       <zorder>widget_SixAxies_1</zorder>
-       <zorder>widget_SixAxies_3</zorder>
-       <zorder>widget_SixAxies_5</zorder>
-       <zorder>widget_SixAxies_4</zorder>
-       <zorder>widget_SixAxies_6</zorder>
-       <zorder>widget_SixAxies_2</zorder>
-       <zorder>lab_Overall_3</zorder>
+       <widget class="QWidget" name="widget_test2" native="true">
+        <property name="geometry">
+         <rect>
+          <x>1350</x>
+          <y>340</y>
+          <width>190</width>
+          <height>190</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QWidget" name="widget_test3" native="true">
+        <property name="geometry">
+         <rect>
+          <x>1220</x>
+          <y>110</y>
+          <width>190</width>
+          <height>190</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QWidget" name="widget_test1" native="true">
+        <property name="geometry">
+         <rect>
+          <x>1710</x>
+          <y>530</y>
+          <width>190</width>
+          <height>190</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QWidget" name="widget_test4" native="true">
+        <property name="geometry">
+         <rect>
+          <x>970</x>
+          <y>200</y>
+          <width>190</width>
+          <height>190</height>
+         </rect>
+        </property>
+       </widget>
       </widget>
       <widget class="QWidget" name="page_HistoryRecord">
-       <widget class="QWidget" name="quickWidget_HistoryList">
+       <widget class="QWidget" name="quickWidget_HistoryList" native="true">
         <property name="geometry">
          <rect>
           <x>90</x>
@@ -783,7 +776,7 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
          <string/>
         </property>
         <property name="pixmap">
-         <pixmap resource="res.qrc">:/Picture/sixAxiesOverAll.png</pixmap>
+         <pixmap resource="../180/res.qrc">:/Picture/sixAxiesOverAll.png</pixmap>
         </property>
         <property name="scaledContents">
          <bool>true</bool>
@@ -1025,9 +1018,13 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
    <header location="global">batterywidget.h</header>
    <container>1</container>
   </customwidget>
+  <customwidget>
+   <class>DeviceCoordPanel</class>
+   <extends>QWidget</extends>
+   <header>devicecoordpanel.h</header>
+   <container>1</container>
+  </customwidget>
  </customwidgets>
- <resources>
-  <include location="res.qrc"/>
- </resources>
+ <resources/>
  <connections/>
 </ui>

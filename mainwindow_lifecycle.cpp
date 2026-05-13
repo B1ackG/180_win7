@@ -70,6 +70,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 初始化操作记录器的自动保存
     if (m_recorder) {
+        // 当前工程作为 TCP 接收端，不记录本地 UI 操作，只显示/保存远端推送历史。
+        m_recorder->setRecordLocalOperations(false);
         m_recorder->initAutoSave();
     }
     initializeCoreSubsystems();
@@ -360,6 +362,7 @@ void MainWindow::initUI()
     initSpeedGaugeUI();
     initRobotTotalPowerCard();
     initInclinometerCards();
+    initDeviceCoordPanel();
 
     if (isFeatureEnabled("ui_navigation", "ui.virtual_keyboard")) {
         setupVirtualKeyboard();

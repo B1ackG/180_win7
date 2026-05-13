@@ -30,6 +30,16 @@ QStringList parseCsvList(const QString &raw)
     }
     return result;
 }
+
+bool isReceiverSessionMetaRecord(const OperationRecord &record)
+{
+    if (record.controlName != QStringLiteral("TCP接收器")) {
+        return false;
+    }
+    return record.operation == QStringLiteral("listening")
+        || record.operation == QStringLiteral("client_connected")
+        || record.operation == QStringLiteral("client_disconnected");
+}
 }
 
 OperationRecorder::OperationRecorder(QObject *parent)
@@ -247,7 +257,12 @@ bool OperationRecorder::saveToFile(const QString &filename)
     QList<OperationRecord> snapshot;
     {
         QMutexLocker locker(&m_mutex);
-        snapshot = m_records;
+        snapshot.reserve(m_records.size());
+        for (const auto &record : m_records) {
+            if (!isReceiverSessionMetaRecord(record)) {
+                snapshot.append(record);
+            }
+        }
     }
     return saveToFileInternal(filename, snapshot);
 }
@@ -267,11 +282,24 @@ bool OperationRecorder::loadFromFile(const QString &filename)
         return false;
     }
 
-    m_records.clear();
     QJsonArray jsonArray = doc.array();
+    QList<OperationRecord> loadedRecords;
+    loadedRecords.reserve(jsonArray.size());
     for (const auto &jsonValue : jsonArray) {
         OperationRecord record = OperationRecord::fromJson(jsonValue.toObject());
-        m_records.append(record);
+        loadedRecords.append(record);
+    }
+
+    {
+        QMutexLocker locker(&m_mutex);
+        m_records = loadedRecords;
+        if (m_records.isEmpty()) {
+            m_firstRecordTime = QDateTime();
+            m_lastRecordTime = QDateTime();
+        } else {
+            m_firstRecordTime = m_records.first().timestamp;
+            m_lastRecordTime = m_records.last().timestamp;
+        }
     }
 
     return true;
@@ -344,6 +372,9 @@ bool OperationRecorder::decodeRecordLine(const QByteArray &lineBytes, OperationR
     record.operation = recordObj.value("operation").toString();
     record.oldValue = recordObj.value("oldValue").toVariant();
     record.newValue = recordObj.value("newValue").toVariant();
+    if (recordObj.contains("runtime_ms")) {
+        record.runtimeMs = static_cast<qint64>(recordObj.value("runtime_ms").toDouble());
+    }
 
     // 兼容缺字段报文，避免记录空行到界面
     if (record.controlName.isEmpty() && record.operation.isEmpty() && record.pageName.isEmpty()) {
@@ -411,9 +442,23 @@ void OperationRecorder::onReceiverDataReady()
 
 void OperationRecorder::appendTcpRecord(const OperationRecord &record)
 {
-    if (m_records.size() >= m_maxRecords) m_records.removeFirst();
-    m_records.append(record);
-    emit recordAdded(record);
+    OperationRecord normalized = record;
+    {
+        QMutexLocker locker(&m_mutex);
+        if (m_records.isEmpty()) {
+            m_firstRecordTime = normalized.timestamp;
+            normalized.runtimeMs = 0;
+        } else {
+            normalized.runtimeMs = m_firstRecordTime.msecsTo(normalized.timestamp);
+        }
+        m_lastRecordTime = normalized.timestamp;
+
+        if (m_records.size() >= m_maxRecords) {
+            m_records.removeFirst();
+        }
+        m_records.append(normalized);
+    }
+    emit recordAdded(normalized);
     autoSaveCurrentRecord();
 }
 
@@ -520,14 +565,25 @@ bool OperationRecorder::exportToText(const QString &filename)
         return false;
     }
 
+    QList<OperationRecord> snapshot;
+    {
+        QMutexLocker locker(&m_mutex);
+        snapshot.reserve(m_records.size());
+        for (const auto &record : m_records) {
+            if (!isReceiverSessionMetaRecord(record)) {
+                snapshot.append(record);
+            }
+        }
+    }
+
     QTextStream stream(&file);
     stream << "=== 操作记录报告 ===\n";
     stream << "生成时间: " << QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss") << "\n";
-    stream << "总记录数: " << m_records.size() << "\n\n";
+    stream << "总记录数: " << snapshot.size() << "\n\n";
 
     // 按页面分组
     QMap<QString, QList<OperationRecord>> pageGroups;
-    for (const auto &record : m_records) {
+    for (const auto &record : snapshot) {
         pageGroups[record.pageName].append(record);
     }
 

@@ -344,7 +344,7 @@ private:
     void appendTcpRecord(const OperationRecord &record);
     bool saveToFileInternal(const QString &filename, const QList<OperationRecord> &records);
 
-    bool m_recordLocalOperations = true;
+    bool m_recordLocalOperations = false;
     QTcpServer *m_tcpReceiverServer = nullptr;
     QTcpSocket *m_tcpReceiverClient = nullptr;
     QByteArray m_tcpReceiverBuffer;

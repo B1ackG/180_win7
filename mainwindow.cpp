@@ -18,6 +18,8 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #endif
 #include <QComboBox>
 #include <QPlainTextEdit>
+#include <QColor>
+#include <QBrush>
 #include <QMessageBox>
 #include <QDialog>
 #include <QFileDialog>
@@ -1210,6 +1212,16 @@ void MainWindow::initInclinometerCards()
     initOne(m_inclinometerYCard, QStringLiteral("Y轴倾角"), m_inclinometerYValueLabel);
 }
 
+void MainWindow::initDeviceCoordPanel()
+{
+    m_deviceCoordPanel = findChild<DeviceCoordPanel*>(QStringLiteral("Widget_DeviceCoordPanel"));
+    if (!m_deviceCoordPanel) {
+        qCWarning(lcMainWindow) << "未找到 Widget_DeviceCoordPanel，跳过位姿面板初始化";
+        return;
+    }
+    m_deviceCoordPanel->setCoordinates(0.0, 0.0, 0.0, 0.0);
+}
+
 void MainWindow::updateInclinometerValue(bool isXAxis, quint16 rawValue)
 {
     QLabel *targetLabel = isXAxis ? m_inclinometerXValueLabel : m_inclinometerYValueLabel;
@@ -1674,6 +1686,105 @@ void MainWindow::connectRecordSignals()
     }
 }
 
+namespace {
+
+bool passesHistoryBaseFilter(const OperationRecord &record)
+{
+    const QString op = record.operation.trimmed();
+    if (op == QStringLiteral("listening")
+        || op == QStringLiteral("client_connected")
+        || op == QStringLiteral("client_disconnected")) {
+        return false;
+    }
+    if (op == QStringLiteral("IGNORE_LOG")) {
+        return false;
+    }
+    if (record.controlName.trimmed().isEmpty()) {
+        return false;
+    }
+    return true;
+}
+
+QString historyDetailHtml(const OperationRecord &record)
+{
+    auto esc = [](const QString &s) { return s.toHtmlEscaped(); };
+
+    const QString control = record.controlName.trimmed();
+    const QString op = record.operation.trimmed();
+    const QString oldV = record.oldValue.toString();
+    const QString newV = record.newValue.toString();
+
+    const QString line1 = esc(control.isEmpty() ? QStringLiteral("—") : control);
+
+    QString valueSpan;
+    if (!(oldV.isEmpty() && newV.isEmpty())) {
+        valueSpan = QStringLiteral(
+                        "<span style=\"color:#00ff88;font-weight:bold;font-size:12px;\">&nbsp;%1 → %2</span>")
+                        .arg(esc(oldV), esc(newV));
+    }
+
+    if (op.isEmpty()) {
+        if (valueSpan.isEmpty()) {
+            return QStringLiteral(
+                       "<body style=\"margin:0;\"><div style=\"line-height:1.5;\">"
+                       "<span style=\"font-weight:600;color:#ffffff;font-size:13px;\">%1</span></div></body>")
+                .arg(line1);
+        }
+        return QStringLiteral(
+                   "<body style=\"margin:0;\"><div style=\"line-height:1.5;\">"
+                   "<span style=\"font-weight:600;color:#ffffff;font-size:13px;\">%1</span>%2</div></body>")
+            .arg(line1, valueSpan);
+    }
+
+    const QString line2 =
+        QStringLiteral("<span style=\"color:#ff8888;font-style:italic;font-size:11px;\">%1</span>%2")
+            .arg(esc(op), valueSpan.isEmpty() ? QString() : valueSpan);
+
+    return QStringLiteral(
+               "<body style=\"margin:0;\"><div style=\"line-height:1.5;\">"
+               "<span style=\"font-weight:600;color:#ffffff;font-size:13px;\">%1</span><br/>%2</div></body>")
+        .arg(line1, line2);
+}
+
+void applyHistoryDetailRowHeight(QTableWidget *table, int row, QLabel *detailLabel)
+{
+    if (!table || !detailLabel || row < 0) {
+        return;
+    }
+    constexpr int kDetailCol = 2;
+    int colW = table->columnWidth(kDetailCol);
+    if (colW <= 48) {
+        QWidget *vp = table->viewport();
+        const int vw = vp ? vp->width() : 800;
+        const int w0 = qMax(table->columnWidth(0), 56);
+        const int w1 = qMax(table->columnWidth(1), 56);
+        colW = qMax(240, vw - w0 - w1 - 24);
+    }
+    const int innerW = qMax(100, colW - 28);
+    detailLabel->setFixedWidth(innerW);
+    int contentH = detailLabel->heightForWidth(innerW);
+    if (contentH <= 0) {
+        contentH = detailLabel->sizeHint().height();
+    }
+    constexpr int kMinRow = 76;
+    constexpr int kVerticalPad = 28;
+    table->setRowHeight(row, qBound(kMinRow, contentH + kVerticalPad, 360));
+}
+
+void refitAllHistoryDetailRows(QTableWidget *table)
+{
+    if (!table) {
+        return;
+    }
+    for (int r = 0; r < table->rowCount(); ++r) {
+        if (auto *lb = qobject_cast<QLabel *>(table->cellWidget(r, 2))) {
+            applyHistoryDetailRowHeight(table, r, lb);
+        }
+    }
+}
+
+}
+
 void MainWindow::setupRecordUI()
 {
     if (!isBigFeatureEnabled("operation_records")) {
@@ -1727,55 +1838,125 @@ void MainWindow::setupRecordUI()
     toolbarLayout->addStretch();
     toolbarLayout->addWidget(m_historyOpenFolderButton, 0, Qt::AlignRight);
 
-    m_historyTable = new QTableWidget(m_historyListHost);
-    m_historyTable->setObjectName("recordDisplay");
-    m_historyTable->setColumnCount(4);
-    m_historyTable->setHorizontalHeaderLabels(QStringList() << "时间" << "页面" << "控件" << "操作详情");
+    m_historyViewStack = new QStackedWidget(m_historyListHost);
+    m_historyViewStack->setObjectName(QStringLiteral("historyViewStack"));
+
+    m_historyTable = new QTableWidget(m_historyViewStack);
+    m_historyTable->setObjectName(QStringLiteral("historyRecordTable"));
+    m_historyTable->setColumnCount(3);
+    m_historyTable->setHorizontalHeaderLabels(QStringList()
+                                             << QStringLiteral("时间")
+                                             << QStringLiteral("页面")
+                                             << QStringLiteral("操作详情"));
     m_historyTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_historyTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_historyTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_historyTable->setAlternatingRowColors(true);
-    m_historyTable->setWordWrap(false);
+    m_historyTable->setShowGrid(true);
     m_historyTable->verticalHeader()->setVisible(false);
+    m_historyTable->verticalHeader()->setDefaultSectionSize(76);
     m_historyTable->horizontalHeader()->setStretchLastSection(true);
     m_historyTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     m_historyTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    m_historyTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    m_historyTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+
+    m_historyTable->setStyleSheet(QStringLiteral(
+        "QTableWidget#historyRecordTable {"
+        "  background-color: #1e3c78;"
+        "  alternate-background-color: #254a8a;"
+        "  border: 1px solid #3d7ec4;"
+        "  border-radius: 4px;"
+        "  gridline-color: #3d5480;"
+        "  color: #ffffff;"
+        "  font-size: 13px;"
+        "}"
+        "QTableWidget#historyRecordTable::item {"
+        "  padding: 12px 10px 12px 14px;"
+        "  border: none;"
+        "}"
+        "QTableWidget#historyRecordTable::item:selected {"
+        "  background-color: #2E7DD8;"
+        "}"));
+
+    m_historyTable->horizontalHeader()->setStyleSheet(QStringLiteral(
+        "QHeaderView::section {"
+        "  background-color: rgba(26, 95, 180, 0.65);"
+        "  color: #a9d4ff;"
+        "  font-weight: bold;"
+        "  font-size: 14px;"
+        "  padding: 10px 14px;"
+        "  border: none;"
+        "  border-bottom: 1px solid #3d7ec4;"
+        "}"));
+
+    connect(m_historyTable->horizontalHeader(), &QHeaderView::sectionResized,
+            this, [this](int, int, int) {
+                QTimer::singleShot(0, this, [this]() {
+                    if (m_historyTable) {
+                        refitAllHistoryDetailRows(m_historyTable);
+                    }
+                });
+            });
+
+    QWidget *phHost = new QWidget(m_historyViewStack);
+    QVBoxLayout *phLay = new QVBoxLayout(phHost);
+    phLay->setContentsMargins(16, 48, 16, 48);
+    m_historyPlaceholderLabel = new QLabel(phHost);
+    m_historyPlaceholderLabel->setAlignment(Qt::AlignCenter);
+    m_historyPlaceholderLabel->setWordWrap(true);
+    phLay->addStretch(1);
+    phLay->addWidget(m_historyPlaceholderLabel);
+    phLay->addStretch(1);
+
+    m_historyViewStack->addWidget(m_historyTable);
+    m_historyViewStack->addWidget(phHost);
+    m_historyViewStack->setCurrentIndex(0);
 
     mainLayout->addLayout(toolbarLayout);
-    mainLayout->addWidget(m_historyTable, 1);
+    mainLayout->addWidget(m_historyViewStack, 1);
 
     updateRecordDisplay();
-    qCDebug(lcMainWindow) << "纯 C++ 操作记录列表初始化完成";
+    qCDebug(lcMainWindow) << "操作记录列表初始化完成（对标 180/HistoryList.qml 的 C++ 呈现）";
 }
 
 void MainWindow::updateRecordDisplay()
 {
-    if (!m_historyTable || !m_recorder) {
+    if (!m_recorder || !m_historyTable || !m_historyViewStack || !m_historyPlaceholderLabel) {
         return;
     }
 
     QWidget *recordPage = findChild<QWidget*>("page_record");
     if (recordPage) {
         if (m_recorder->recordCount() > 0) {
-            QString autoSaveInfo = QString("自动保存: 已启用 | 记录数: %1 | 运行时长: %2分钟")
+            QString autoSaveInfo = QString(QStringLiteral("自动保存: 已启用 | 记录数: %1 | 运行时长: %2分钟"))
                 .arg(m_recorder->recordCount())
                 .arg(m_recorder->getRuntimeDuration() / 60000);
 
-            QLabel *autoSaveLabel = recordPage->findChild<QLabel*>("autoSaveInfo");
+            QLabel *autoSaveLabel = recordPage->findChild<QLabel*>(QStringLiteral("autoSaveInfo"));
             if (autoSaveLabel) {
                 autoSaveLabel->setText(autoSaveInfo);
             }
         }
     }
 
-    const QString category = m_historyCategoryCombo ? m_historyCategoryCombo->currentText() : QStringLiteral("全部");
+    const QString category = m_historyCategoryCombo ? m_historyCategoryCombo->currentText()
+                                                    : QStringLiteral("全部");
     const QList<OperationRecord> &records = m_recorder->records();
 
+    int baseCount = 0;
+    for (const OperationRecord &record : records) {
+        if (passesHistoryBaseFilter(record)) {
+            baseCount++;
+        }
+    }
+
+    m_historyTable->clearContents();
     m_historyTable->setRowCount(0);
+
+    int visibleCount = 0;
     for (int i = records.size() - 1; i >= 0; --i) {
         const OperationRecord &record = records.at(i);
-        if ((record.operation == "client_connected") || (record.operation == "client_disconnected")) {
+        if (!passesHistoryBaseFilter(record)) {
             continue;
         }
         if (!matchesHistoryCategory(record, category)) {
@@ -1784,12 +1965,48 @@ void MainWindow::updateRecordDisplay()
 
         const int row = m_historyTable->rowCount();
         m_historyTable->insertRow(row);
-        m_historyTable->setItem(row, 0, new QTableWidgetItem(record.timestamp.toString("hh:mm:ss")));
-        m_historyTable->setItem(row, 1, new QTableWidgetItem(record.pageName));
-        m_historyTable->setItem(row, 2, new QTableWidgetItem(record.controlName));
-        m_historyTable->setItem(row, 3, new QTableWidgetItem(
-            QString("%1 | %2 -> %3")
-                .arg(record.operation, record.oldValue.toString(), record.newValue.toString())));
+
+        auto *timeItem = new QTableWidgetItem(record.timestamp.toString(QStringLiteral("hh:mm:ss")));
+        timeItem->setForeground(QBrush(QColor(QStringLiteral("#00f0ff"))));
+        QFont monoFont = timeItem->font();
+        monoFont.setFamily(QStringLiteral("monospace"));
+        monoFont.setPointSize(11);
+        timeItem->setFont(monoFont);
+        m_historyTable->setItem(row, 0, timeItem);
+
+        auto *pageItem = new QTableWidgetItem(record.pageName);
+        pageItem->setForeground(QBrush(Qt::white));
+        m_historyTable->setItem(row, 1, pageItem);
+
+        auto *detailLabel = new QLabel(m_historyTable);
+        detailLabel->setTextFormat(Qt::RichText);
+        detailLabel->setText(historyDetailHtml(record));
+        detailLabel->setWordWrap(true);
+        detailLabel->setMargin(8);
+        detailLabel->setStyleSheet(QStringLiteral("background: transparent;"));
+        m_historyTable->setCellWidget(row, 2, detailLabel);
+
+        applyHistoryDetailRowHeight(m_historyTable, row, detailLabel);
+        visibleCount++;
+    }
+
+    if (visibleCount > 0) {
+        QTimer::singleShot(0, this, [this]() {
+            if (m_historyTable) {
+                refitAllHistoryDetailRows(m_historyTable);
+            }
+        });
+        m_historyViewStack->setCurrentWidget(m_historyTable);
+    } else if (baseCount == 0) {
+        m_historyPlaceholderLabel->setText(QStringLiteral("暂无操作记录"));
+        m_historyPlaceholderLabel->setStyleSheet(QStringLiteral(
+            "color: rgba(255,255,255,0.35); font-size: 18px;"));
+        m_historyViewStack->setCurrentIndex(1);
+    } else {
+        m_historyPlaceholderLabel->setText(QStringLiteral("当前分类下暂无记录"));
+        m_historyPlaceholderLabel->setStyleSheet(QStringLiteral(
+            "color: #cfe6ff; font-size: 16px; opacity: 0.75;"));
+        m_historyViewStack->setCurrentIndex(1);
     }
 }
 
@@ -2392,29 +2609,37 @@ bool MainWindow::shouldDisplayRecord(const OperationRecord &record, const QStrin
 
 bool MainWindow::isAlarmHistoryRecord(const OperationRecord &record) const
 {
-    QString text = QString("%1 %2 %3 %4")
-                       .arg(record.controlType, record.operation, record.pageName, record.controlName)
-                       .toLower();
-    return text.contains("报警")
-        || text.contains("急停")
-        || text.contains("告警")
-        || text.contains("超限")
-        || text.contains("fault")
-        || text.contains("error")
-        || text.contains("warning")
-        || text.contains("alarm");
+    // 与 `/home/l/work/180/HistoryList.qml` 中 `isAlarmRecord` 一致（含中文「错误」）
+    const QString text = QString("%1 %2 %3 %4")
+                             .arg(record.controlType,
+                                  record.operation,
+                                  record.pageName,
+                                  record.controlName);
+    const QString lower = text.toLower();
+    return text.contains(QStringLiteral("报警"))
+        || text.contains(QStringLiteral("急停"))
+        || text.contains(QStringLiteral("告警"))
+        || text.contains(QStringLiteral("超限"))
+        || text.contains(QStringLiteral("错误"))
+        || lower.contains(QLatin1String("fault"))
+        || lower.contains(QLatin1String("error"))
+        || lower.contains(QLatin1String("warning"))
+        || lower.contains(QLatin1String("alarm"));
 }
 
 bool MainWindow::isControlHistoryRecord(const OperationRecord &record) const
 {
     const QString controlType = record.controlType;
     const QString opText = record.operation.toLower();
-    if (controlType == "EnableButton" || controlType == "MatrixKey") {
+    if (controlType == QLatin1String("EnableButton") || controlType == QLatin1String("MatrixKey")
+        || controlType == QStringLiteral("使能按钮") || controlType == QStringLiteral("物理按键")) {
         return true;
     }
-    return opText.contains("external")
-        || opText.contains("enable")
-        || opText.contains("使能");
+    return opText.contains(QLatin1String("external"))
+        || opText.contains(QLatin1String("enable"))
+        || opText.contains(QStringLiteral("使能"))
+        || opText.contains(QStringLiteral("外部运动"))
+        || opText.contains(QStringLiteral("agv外部"));
 }
 
 bool MainWindow::matchesHistoryCategory(const OperationRecord &record, const QString &category) const
@@ -3778,6 +4003,32 @@ void MainWindow::pollModbusVariables()
 
 static QMap<int, quint16> g_registerCache; 
 
+void MainWindow::updateDeviceCoordPanelFromCache()
+{
+    if (!m_deviceCoordPanel) {
+        return;
+    }
+
+    constexpr int kStart = 103;
+    constexpr int kEnd = 118;
+    for (int a = kStart; a <= kEnd; ++a) {
+        if (!g_registerCache.contains(a)) {
+            return;
+        }
+    }
+
+    const double cx = registersToDoubleDCBAFEHG(
+        g_registerCache[103], g_registerCache[104], g_registerCache[105], g_registerCache[106]);
+    const double cy = registersToDoubleDCBAFEHG(
+        g_registerCache[107], g_registerCache[108], g_registerCache[109], g_registerCache[110]);
+    const double cz = registersToDoubleDCBAFEHG(
+        g_registerCache[111], g_registerCache[112], g_registerCache[113], g_registerCache[114]);
+    const double car = registersToDoubleDCBAFEHG(
+        g_registerCache[115], g_registerCache[116], g_registerCache[117], g_registerCache[118]);
+
+    m_deviceCoordPanel->setCoordinates(cx, cy, cz, car);
+}
+
 void MainWindow::updateSliderLabelValue(const QString& labelName, float value)
 {
     // 根据首页控件名，更新所有相关页面的对应控件
@@ -3931,6 +4182,10 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
 
     if (address == 134) {
         updateRobotTotalPower(value);
+    }
+
+    if (address >= 103 && address <= 118) {
+        updateDeviceCoordPanelFromCache();
     }
 
     const QStringList targetLabels = {
@@ -4361,11 +4616,18 @@ void MainWindow::readAllFloatRegisters()
                                               m_mainDeviceStatusStart,
                                               m_mainDeviceStatusCount);
 
-    // 兼容旧配置：若当前轮询组未覆盖 73~84，则补读一次该区间，确保 SixAxies 数据可用。
     const int statusEnd = m_mainDeviceStatusStart + m_mainDeviceStatusCount - 1;
+
+    // 兼容旧配置：若当前轮询组未覆盖 73~84，则补读一次该区间，确保 SixAxies 数据可用。
     const bool coversSixAxisRange = (m_mainDeviceStatusStart <= 73) && (statusEnd >= 84);
     if (!coversSixAxisRange) {
         MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 73, 12);
+    }
+
+    // Widget_DeviceCoordPanel 使用 103~118（X/Y/Z/R），若未被状态组覆盖则补读。
+    const bool coversDeviceCoordRange = (m_mainDeviceStatusStart <= 103) && (statusEnd >= 118);
+    if (!coversDeviceCoordRange) {
+        MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 103, 16);
     }
 
     // 设备状态组由本函数独立负责；控制同步组由 readMainControlSyncRegisters 负责。
@@ -4395,7 +4657,7 @@ void MainWindow::setupSliderLabelConfigs()
     QStringList allTargetPages = {"回转升降", "伸缩臂", "EOAT控制"};
 
     m_sliderLabelConfigs["robot_ArcGauge_J1Angle"] = {
-        "悬臂组件当前角度:",           // labelText
+        "立柱旋转当前角度:",           // labelText
         "°",                  // unit
         -170.0,              // minValue
         170.0,               // maxValue
@@ -4411,11 +4673,11 @@ void MainWindow::setupSliderLabelConfigs()
     };
 
     m_sliderLabelConfigs["robot_ArcGauge_J2Height"] = {
-        "升降组件当前高度:",           // labelText
+        "立柱升降当前高度:",           // labelText
         "mm",                // unit
-        -5.0,              // minValue
-        3400.0,              // maxValue
-        432.0,               // defaultValue
+        4400.0,              // minValue
+        8000.0,              // maxValue
+        4432.0,               // defaultValue
         "mm",                // suffix
         4,                   // modbusAddress1
         5,                   // modbusAddress2
@@ -4427,10 +4689,10 @@ void MainWindow::setupSliderLabelConfigs()
     };
 
     m_sliderLabelConfigs["robot_ArcGauge_J3Length"] = {
-        "悬臂组件当前长度:",           // labelText
+        "伸缩平衡臂当前长度:",           // labelText
         "mm",                // unit
-        0.0,                 // minValue
-        4000.0,              // maxValue
+        3765.0,                 // minValue
+        6805.0,              // maxValue
         560.0,               // defaultValue
         "mm",                // suffix
         12,                  // modbusAddress1
@@ -4447,8 +4709,8 @@ void MainWindow::setupSliderLabelConfigs()
     m_sliderLabelConfigs["robot_ArcGauge_J4Angle"] = {
         "末端组件当前角度:",    // labelText (修改为末端组件)
         "°",                  // unit
-        -170.0,              // minValue
-        170.0,               // maxValue
+        -90.0,              // minValue
+        90.0,               // maxValue
         -34.0,               // defaultValue
         "°",                 // suffix
         20,                  // modbusAddress1
