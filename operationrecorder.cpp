@@ -72,7 +72,7 @@ OperationRecorder::OperationRecorder(QObject *parent)
     
     // 初始化自动保存配置
     m_autoSaveDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/OperationRecords/";
-    m_currentSessionFile = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + ".json";
+    updateCurrentDailyFile();
     
     setupTcpReceiver();
 }
@@ -170,7 +170,9 @@ void OperationRecorder::initAutoSave()
 
     // 尝试加载今日的记录文件
     loadTodayFile();
-    qDebug() << "自动保存系统初始化完成，目录:" << m_autoSaveDir;
+    m_autoSaveInitialized = true;
+    qDebug() << "按天自动保存系统初始化完成，目录:" << m_autoSaveDir
+             << "当前文件:" << getTodayFileName();
 }
 
 bool OperationRecorder::ensureAutoSaveDir()
@@ -185,6 +187,16 @@ bool OperationRecorder::ensureAutoSaveDir()
 QString OperationRecorder::getTodayFileName() const
 {
     return m_autoSaveDir + m_currentSessionFile;
+}
+
+QString OperationRecorder::dailyFileName(const QDate &date) const
+{
+    return QStringLiteral("operation_history_%1.json").arg(date.toString(QStringLiteral("yyyyMMdd")));
+}
+
+void OperationRecorder::updateCurrentDailyFile()
+{
+    m_currentSessionFile = dailyFileName(QDate::currentDate());
 }
 
 qint64 OperationRecorder::getRuntimeDuration() const
@@ -224,8 +236,10 @@ void OperationRecorder::addRecord(const OperationRecord &rec)
     
     emit recordAdded(record);
 
-    // 立即自动保存到会话文件
-    autoSaveCurrentRecord();
+    // 初始化完成后立即自动保存到当天文件
+    if (m_autoSaveInitialized) {
+        autoSaveCurrentRecord();
+    }
 
     // 如果TCP传输已启用，发送记录到服务器
     if (m_tcpEnabled) {
@@ -242,8 +256,8 @@ void OperationRecorder::clear()
         m_lastRecordTime = QDateTime();
     }
     
-    // 如果存在自动保存文件，考虑删除或者重新开始记录
-    // 对于清除操作，我们选择重置文件
+    // 如果存在当天自动保存文件，清除时同步删除并重新开始记录
+    updateCurrentDailyFile();
     QFile sessionFile(getTodayFileName());
     if (sessionFile.exists()) {
         sessionFile.remove();
@@ -459,7 +473,9 @@ void OperationRecorder::appendTcpRecord(const OperationRecord &record)
         m_records.append(normalized);
     }
     emit recordAdded(normalized);
-    autoSaveCurrentRecord();
+    if (m_autoSaveInitialized) {
+        autoSaveCurrentRecord();
+    }
 }
 
 void OperationRecorder::onReceiverDisconnected()
@@ -499,8 +515,18 @@ bool OperationRecorder::autoSaveCurrentRecord()
         if (m_records.isEmpty()) {
             return false;
         }
+        const QDate today = QDate::currentDate();
+        m_currentSessionFile = dailyFileName(today);
         filename = getTodayFileName();
-        snapshot = m_records;
+        snapshot.reserve(m_records.size());
+        for (const auto &record : m_records) {
+            if (!record.timestamp.isValid() || record.timestamp.date() == today) {
+                snapshot.append(record);
+            }
+        }
+        if (snapshot.isEmpty()) {
+            return false;
+        }
     }
 
     return saveToFileInternal(filename, snapshot);
@@ -508,11 +534,17 @@ bool OperationRecorder::autoSaveCurrentRecord()
 
 bool OperationRecorder::loadTodayFile()
 {
-    // 尝试查找今日的文件
-    QString dateStr = QDateTime::currentDateTime().toString("yyyyMMdd");
+    // 优先加载按天固定命名的历史文件；不存在时兼容旧的启动时间命名文件。
+    updateCurrentDailyFile();
+    const QString todayFile = getTodayFileName();
+    if (QFile::exists(todayFile)) {
+        return loadFromFile(todayFile);
+    }
+
+    QString dateStr = QDate::currentDate().toString("yyyyMMdd");
     QDir dir(m_autoSaveDir);
     QStringList filters;
-    filters << dateStr + "*.json";
+    filters << dateStr + "_*.json";
 
     QStringList files = dir.entryList(filters, QDir::Files, QDir::Time);
 

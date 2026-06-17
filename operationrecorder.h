@@ -177,13 +177,13 @@ public:
     bool exportToText(const QString &filename);
 
     /**
-     * @brief 立即将当前缓存的记录保存到当天的会话文件中（自动命名）。
+     * @brief 立即将当前缓存的记录保存到当天历史文件中（自动命名）。
      * 如何使用：通常由 `addRecord` 内部调用以实现自动保存；也可手动调用触发保存。
      */
     bool autoSaveCurrentRecord();
 
     /**
-     * @brief 加载今天自动保存的会话文件（如果存在）。
+     * @brief 加载今天自动保存的历史文件（如果存在）。
      */
     bool loadTodayFile();
 
@@ -306,14 +306,17 @@ private:
 
     // 自动保存相关
     QString m_autoSaveDir;
-    QString m_currentSessionFile; // 当前会话的文件名
+    QString m_currentSessionFile; // 当前自动保存的当天文件名
     QDateTime m_firstRecordTime;
     QDateTime m_lastRecordTime;
+    bool m_autoSaveInitialized = false;
 
     // 线程安全
     mutable QMutex m_mutex;
 
     bool ensureAutoSaveDir();
+    QString dailyFileName(const QDate &date) const;
+    void updateCurrentDailyFile();
 
     // TCP传输相关成员
     QTcpSocket *m_tcpSocket;
