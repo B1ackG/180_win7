@@ -43,7 +43,6 @@ void FeatureSwitchManager::initializeFeatureSets()
         "modbus_agv",
         "motion_control",
         "input_devices",
-        "force_sensor",
         "alarm_system"
     };
 
@@ -88,12 +87,7 @@ void FeatureSwitchManager::initializeFeatureSets()
         "input.matrix_key",
         "input.enable_button",
 
-        "force.big_sensor",
-        "force.small_sensor",
-        "force.clear_zero",
-
         "alarm.emergency_stop",
-        "alarm.force_limit",
         "alarm.steering_switch",
         "alarm.popup",
         "alarm.status_logs",

@@ -24,6 +24,7 @@
 #include "mappingconfig.h"
 #include "matrixkeymonitor.h"
 #include "robottotalpowercard.h"
+#include "inclinometercard.h"
 #include "devicecoordpanel.h"
 #include "techspeeddialsimple.h"
 #include "matrixkeythreadmanager.h"
@@ -82,7 +83,7 @@ class FeatureSwitchWidget;
  * 详细说明：
  * `MainWindow` 负责构建与维护主界面，初始化并连接各个子模块（如 Modbus 管理、
  * 仪表盘、历史记录、按键监控等），处理顶层信号与槽，协调 UI 与硬件之间的数据交互。
- * 本类包含启动写入寄存器、轮询 Modbus、报警显示、力传感器读取、历史记录管理等主要功能。
+ * 本类包含启动写入寄存器、轮询 Modbus、报警显示、历史记录管理等主要功能。
  *
  * 使用示例:
  * @code
@@ -115,7 +116,6 @@ public:
     // ==========================================
     // 0. 类型定义 (Type Definitions)
     // ==========================================
-    enum ForceDisplayMode { ForceDisplayBig = 0, ForceDisplaySmall = 1 };
     enum class UserRole { Operator = 0, Engineer = 1, Admin = 2, Manufacturer = 3 };
     enum ControlMode { WIRED_MODE = 128, WIRELESS_MODE = 0 };
 
@@ -257,33 +257,10 @@ public:
     double registersToDoubleDCBAFEHG(quint16 reg1, quint16 reg2, quint16 reg3, quint16 reg4);
 
     // ==========================================
-    // 5. 传感器与周边硬件 (Sensors & Peripherals)
+    // 5. 周边硬件 (Peripherals)
     // ==========================================
-    /** @brief 创建并绑定大力值显示标签 */
-    void setupBigForceLabels();
-    /** @brief 创建并绑定小力值显示标签 */
-    void setupSmallForceLabels();
-    /** @brief 配置力传感器读取 */
-    void setupForceReading();
-    /** @brief 配置大量程力读取 */
-    void setupBigForceReading();
-    /** @brief 设置清除力值按钮 */
-    void setupForceClearButton();
-    /** @brief 设置力值显示模式切换按钮 */
-    void setupForceDisplayModeButtons();
-    /** @brief 读取大力值寄存器 */
-    void readBigForceRegisters();
-    /** @brief 读取小力值寄存器 */
-    void readSmallForceRegisters();
-    /** @brief 更新大力值标签 */
-    void updateBigForceLabel(const QString& labelName, float value);
-    /** @brief 更新小力值标签 */
-    void updateSmallForceLabel(const QString& labelName, float value);
-    /** @brief 设置力值显示模式 */
-    void setForceDisplayMode(ForceDisplayMode mode);
-
     /** @brief 更新仿真数据（开发/测试用） */
-    void updateSimulation(); 
+    void updateSimulation();
 
     /** @brief 初始化虚拟键盘 */
     void setupVirtualKeyboard();
@@ -363,7 +340,7 @@ public:
     void initSpeedGaugeUI();
     /** @brief 初始化机器人总功率卡片（纯 QWidget） */
     void initRobotTotalPowerCard();
-    /** @brief 初始化 X/Y 倾角卡片（QWidget 版本） */
+    /** @brief 初始化 X/Y 倾角卡片（纯 QWidget，样式对标 InclinometerCard.qml） */
     void initInclinometerCards();
     /** @brief 初始化主控位姿面板（X/Y/Z/R，寄存器 103~118，纯 QWidget） */
     void initDeviceCoordPanel();
@@ -458,10 +435,6 @@ private slots:
      *  @param pressed 是否按下
      */
     void onMatrixKeyPressed(int keyNumber, bool pressed);
-    /** @brief 力清除按钮按下 */
-    void onForceClearPressed();
-    /** @brief 力清除按钮释放 */
-    void onForceClearReleased();
 
     // Modbus 状态反馈
     /** @brief Modbus 已连接 */
@@ -549,12 +522,10 @@ private:
     QLabel *m_alarmLabel = nullptr;
     QTimer *m_alarmCheckTimer = nullptr;
     bool m_emergencyStopAlarm = false;
-    bool m_forceLimitAlarm = false;
     bool m_emergencyStopColumnFlag = false;
     bool m_emergencyStopChassisFlag = false;
     bool m_robotArmEmergency150Flag = false;
     bool m_agvChassisEmergency51Bit5Flag = false;
-    bool m_forceLimitFlag = false;
     bool m_isSteeringAlarmActive = false;
     bool m_isSwitchingSteeringMode = false;
     int m_targetSteeringWaitBit = -1;
@@ -589,31 +560,6 @@ private:
     QMap<int, quint16> m_agvRegisterShadow;
     bool m_mainRegister150Valid = false;
     quint16 m_mainRegister150Shadow = 0;
-
-    // ----- 六维力 -----
-    ForceDisplayMode m_forceDisplayMode = ForceDisplayBig;
-    QMap<QString, float> m_bigForceOffsets;
-    QMap<QString, float> m_smallForceOffsets;
-    QMap<QString, float> m_bigForceCurrentValues;
-    QMap<QString, float> m_smallForceCurrentValues;
-    QMap<QPair<int, int>, QPair<quint16, quint16>> m_bigForceRegisters;
-    QMap<QPair<int, int>, QPair<quint16, quint16>> m_smallForceRegisters;
-    QMap<QString, QLabel*> m_bigForceLabels;
-    QMap<QString, QLabel*> m_smallForceLabels;
-    QLabel *m_labelBigFX = nullptr;
-    QLabel *m_labelBigFY = nullptr;
-    QLabel *m_labelBigFZ = nullptr;
-    QLabel *m_labelBigMX = nullptr;
-    QLabel *m_labelBigMY = nullptr;
-    QLabel *m_labelBigMZ = nullptr;
-    QLabel *m_labelSmallFX = nullptr;
-    QLabel *m_labelSmallFY = nullptr;
-    QLabel *m_labelSmallFZ = nullptr;
-    QLabel *m_labelSmallMX = nullptr;
-    QLabel *m_labelSmallMY = nullptr;
-    QLabel *m_labelSmallMZ = nullptr;
-    QTimer* m_forceReadTimer;
-    bool m_isForcePeeled = false;
 
     // ----- 历史记录与日志 -----
     OperationRecorder *m_recorder;
@@ -673,10 +619,8 @@ private:
     QTableWidget *m_historyTable = nullptr;
     RobotTotalPowerCard *m_robotTotalPowerCard = nullptr;
     DeviceCoordPanel *m_deviceCoordPanel = nullptr;
-    QWidget *m_inclinometerXCard = nullptr;  // QWidget 版本 X 轴倾角卡片容器
-    QWidget *m_inclinometerYCard = nullptr;  // QWidget 版本 Y 轴倾角卡片容器
-    QLabel *m_inclinometerXValueLabel = nullptr;
-    QLabel *m_inclinometerYValueLabel = nullptr;
+    InclinometerCard *m_inclinometerXCard = nullptr;
+    InclinometerCard *m_inclinometerYCard = nullptr;
     QMovie* m_verticalMovie;
     QPixmap m_backgroundPixmap;
     bool m_backgroundLoaded = false;
@@ -705,9 +649,6 @@ private:
     TechSliderEdit *m_editAGV_MoveSpeed = nullptr;
     TechSliderEdit *m_editAGV_Angle = nullptr;
     TechPushButton *m_btnForceControl = nullptr;
-    TechPushButton *m_btnBigForceControl = nullptr;
-    TechPushButton *m_btnSmallForceControl = nullptr;
-    QPushButton *m_btnForceClear = nullptr;
     QToolButton *m_controlModeBtn = nullptr;
     QToolButton *m_enableBtn = nullptr;
     TechPushButton *m_forcecontrolModebtn = nullptr;
@@ -877,6 +818,7 @@ private:
         
         bool isSumMode = false;
         int sumAddress[4] = {-1, -1, -1, -1};
+        QString secondLabelText;
     };
 public:
     QMap<QString, SliderLabelConfig> m_sliderLabelConfigs;

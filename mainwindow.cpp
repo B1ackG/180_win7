@@ -580,95 +580,77 @@ void MainWindow::setupStyles()
         updateFunctionSwitchVisuals();
     }
 
-    //record
-    // 设置蓝色背景
+    // 操作记录页使用同一套工业深色主题，避免运行时覆盖为旧亮蓝风格。
     ui->page_HistoryRecord->setStyleSheet(
         "QWidget#recordPage {"
-        "    background-color: #1a5fb4;"  // 蓝色背景
+        "    background: transparent;"
         "}"
-
         "QLabel#recordTitle {"
-        "    color: #ffffff;"  // 白色文字
+        "    color: #eaf9ff;"
         "    font-size: 20px;"
         "    font-weight: bold;"
         "}"
-
         "QLabel#timeLabel {"
-        "    color: #ffffff;"  // 白色文字
+        "    color: #91dfff;"
         "    font-size: 12px;"
         "}"
-
         "QWidget#controlPanel {"
-        "    background-color: rgba(30, 60, 120, 0.7);"  // 半透明深蓝色
-        "    border-radius: 8px;"
-        "    border: 1px solid #2d7fda;"
+        "    background: rgba(5, 20, 38, 0.82);"
+        "    border-radius: 10px;"
+        "    border: 1px solid rgba(74, 190, 238, 0.42);"
         "}"
-
         "QPushButton {"
-        "    background-color: #2d7fda;"  // 按钮蓝色
-        "    color: #ffffff;"  // 按钮文字白色
-        "    border: 1px solid #4a9eff;"
-        "    border-radius: 5px;"
+        "    background: rgba(14, 58, 90, 0.88);"
+        "    color: #eaf9ff;"
+        "    border: 1px solid rgba(74, 190, 238, 0.52);"
+        "    border-radius: 8px;"
         "    padding: 6px 12px;"
         "    font-size: 12px;"
         "}"
-
         "QPushButton:hover {"
-        "    background-color: #4a9eff;"  // 悬停时浅蓝色
+        "    background: rgba(25, 92, 132, 0.94);"
+        "    border: 1px solid #6fe7ff;"
         "}"
-
         "QPushButton:pressed {"
-        "    background-color: #1a5fb4;"  // 按下时深蓝色
+        "    background: rgba(0, 126, 186, 0.94);"
         "}"
-
         "QComboBox {"
-        "    background-color: #2d7fda;"  // 下拉框蓝色
-        "    color: #ffffff;"  // 下拉框文字白色
-        "    border: 1px solid #4a9eff;"
-        "    border-radius: 5px;"
+        "    background: rgba(3, 15, 28, 0.88);"
+        "    color: #eaf9ff;"
+        "    border: 1px solid rgba(74, 190, 238, 0.52);"
+        "    border-radius: 8px;"
         "    padding: 4px 8px;"
         "    min-width: 100px;"
         "}"
-
         "QComboBox::drop-down {"
         "    border: none;"
         "}"
-
-        "QComboBox::down-arrow {"
-        "    image: none;"
-        "    border-left: 1px solid #4a9eff;"
-        "    padding-left: 8px;"
-        "}"
-
         "QComboBox QAbstractItemView {"
-        "    background-color: #2d7fda;"  // 下拉列表蓝色
-        "    color: #ffffff;"  // 下拉列表文字白色
-        "    selection-background-color: #4a9eff;"  // 选中项浅蓝色
+        "    background-color: #07192d;"
+        "    color: #eaf9ff;"
+        "    selection-background-color: rgba(0, 126, 186, 0.90);"
+        "    border: 1px solid rgba(74, 190, 238, 0.62);"
         "}"
-
         "QTextEdit#recordDisplay {"
-        "    background-color: rgba(30, 60, 120, 0.5);"  // 半透明深蓝色
-        "    color: #ffffff;"  // 文字白色
-        "    border: 1px solid #2d7fda;"
+        "    background-color: rgba(4, 18, 34, 0.84);"
+        "    color: #eaf9ff;"
+        "    border: 1px solid rgba(74, 190, 238, 0.36);"
         "    border-radius: 8px;"
         "    font-family: Consolas, Courier New, monospace;"
         "    font-size: 12px;"
         "    padding: 10px;"
         "}"
-
         "QWidget#statsPanel {"
-        "    background-color: rgba(30, 60, 120, 0.7);"  // 半透明深蓝色
-        "    border-radius: 8px;"
-        "    border: 1px solid #2d7fda;"
+        "    background-color: rgba(5, 20, 38, 0.82);"
+        "    border-radius: 10px;"
+        "    border: 1px solid rgba(74, 190, 238, 0.42);"
         "}"
-
         "QLabel {"
-        "    color: #ffffff;"  // 所有标签文字白色
+        "    color: #d8f6ff;"
         "    font-size: 12px;"
         "}"
-
         "QLabel[objectName^='stats'] {"
-        "    color: #ffffff;"  // 统计标签白色
+        "    color: #eaf9ff;"
         "    font-weight: bold;"
         "}"
         );
@@ -695,36 +677,37 @@ void MainWindow::updateFunctionSwitchVisuals()
             "}"
             "QToolButton:hover {"
             "  border: 1px solid #d9f4ff;"
+            "  background: %1;"
             "}")
             .arg(color, labelSuffix));
     };
 
-    const QString unknownBg = "rgba(96, 102, 114, 0.86)";
-    const QString unknownBorder = "#8f99a8";
+    const QString unknownBg = "rgba(55, 68, 82, 0.88)";
+    const QString unknownBorder = "#91a4b5";
 
     // 点动/步进：增强颜色对比，状态一眼可分
     if (m_stepModeUnknown) {
         applyModeStyle(m_btnStepMove, unknownBg, unknownBorder);
     } else if (m_stepModeEnabled) {
-        applyModeStyle(m_btnStepMove, "rgba(30, 148, 84, 0.90)", "#a9ffd0");
+        applyModeStyle(m_btnStepMove, "rgba(18, 128, 92, 0.92)", "#9dffd3");
     } else {
-        applyModeStyle(m_btnStepMove, "rgba(172, 108, 26, 0.90)", "#ffd7a1");
+        applyModeStyle(m_btnStepMove, "rgba(156, 104, 28, 0.92)", "#ffd69b");
     }
 
     // 关节/坐标：未选择与步进按钮保持同灰色
     if (m_moveModeUnknown) {
         applyModeStyle(m_btnMoveMode, unknownBg, unknownBorder);
     } else if (m_isJointMode) {
-        applyModeStyle(m_btnMoveMode, "rgba(32, 140, 86, 0.88)", "#9dffd3");
+        applyModeStyle(m_btnMoveMode, "rgba(18, 128, 92, 0.92)", "#9dffd3");
     } else {
-        applyModeStyle(m_btnMoveMode, "rgba(166, 104, 24, 0.88)", "#ffd29a");
+        applyModeStyle(m_btnMoveMode, "rgba(156, 104, 28, 0.92)", "#ffd69b");
     }
 
     // 有线/无线：白/黄差异
     if (m_controlMode == WIRED_MODE) {
-        applyModeStyle(m_controlModeBtn, "rgba(30, 126, 150, 0.90)", "#a8f0ff");
+        applyModeStyle(m_controlModeBtn, "rgba(20, 112, 144, 0.92)", "#a8f0ff");
     } else {
-        applyModeStyle(m_controlModeBtn, "rgba(158, 122, 16, 0.88)", "#ffe28f");
+        applyModeStyle(m_controlModeBtn, "rgba(150, 116, 18, 0.92)", "#ffe28f");
     }
 }
 
@@ -769,24 +752,27 @@ QString MainWindow::BlueWidgetStyle(const QString &WidgetType )
 {
     return QString(
                "%1 {"
-               "    background-color: transparent    ;"
-               "    color: white                 ;"
-               "    border: none ;                "
-               "    border-radius: 6px;           "
-               "    padding: 1px 1px;             "
+               "    background: rgba(10, 38, 66, 0.72);"
+               "    color: #eaf9ff;"
+               "    border: 1px solid rgba(74, 190, 238, 0.38);"
+               "    border-radius: 8px;"
+               "    padding: 5px 10px;"
                "    font-weight: bold;"
                "    font-family: 'Microsoft YaHei', 'Segoe UI';"
-               "   font-size: 14px;"
+               "    font-size: 14px;"
                "}"
                "%1:hover {"
-               "    background-color: #2980B9;"
+               "    background: rgba(24, 82, 122, 0.88);"
+               "    border: 1px solid #6fe7ff;"
                "}"
                "%1:pressed {"
-               "    background-color: #21618C;"
+               "    background: rgba(0, 126, 186, 0.94);"
+               "    border: 1px solid #a8efff;"
                "}"
                "%1:disabled {"
-               "    background-color: #BDC3C7;"
-               "    color: #7F8C8D;"
+               "    background: rgba(28, 42, 54, 0.58);"
+               "    color: rgba(210, 230, 240, 0.42);"
+               "    border: 1px solid rgba(120, 150, 170, 0.24);"
                "}"
                ).arg(WidgetType);
 }
@@ -917,20 +903,27 @@ void MainWindow::applyLineEditStyles(const QList<QLineEdit*> &lineEdits)
                 edit->setValidator(validator);
             }
 
-            // 设置样式
             edit->setStyleSheet(
                 "QLineEdit {"
-                "    background-color: white;"
-                "    border: 2px solid #3498DB;"
-                "    border-radius: 6px;"
-                "    padding: 8px 12px;"
-                "    font-size: 12px;"
-                "    color: #2C3E50;"
-                "    selection-background-color: #3498DB;"
+                "    background: rgba(3, 15, 28, 0.88);"
+                "    border: 1px solid rgba(74, 190, 238, 0.50);"
+                "    border-radius: 8px;"
+                "    padding: 6px 10px;"
+                "    font-size: 13px;"
+                "    color: #f0fbff;"
+                "    selection-background-color: rgba(0, 176, 232, 0.72);"
+                "}"
+                "QLineEdit:hover {"
+                "    border: 1px solid rgba(128, 230, 255, 0.70);"
                 "}"
                 "QLineEdit:focus {"
-                "    border-color: #2980B9;"
-                "    background-color: #F8F9FA;"
+                "    border: 1px solid #9ff4ff;"
+                "    background: rgba(4, 22, 40, 0.96);"
+                "}"
+                "QLineEdit:disabled {"
+                "    color: rgba(210, 230, 240, 0.42);"
+                "    background: rgba(28, 42, 54, 0.58);"
+                "    border: 1px solid rgba(120, 150, 170, 0.24);"
                 "}"
                 );
         } else {
@@ -960,8 +953,9 @@ void MainWindow::initTechButtons() {
         // 根据不同需求选择样式，以全息和能量风格为例：
         // a) 全息样式 (Holographic)
         btn->setButtonStyle(TechPushButton::StyleHolographic);
-        btn->setPrimaryColor(QColor(0, 200, 255, 150)); // 半透明蓝
-        btn->setSecondaryColor(QColor(255, 0, 255, 150)); // 半透明紫
+        btn->setPrimaryColor(QColor(0, 168, 220, 150));
+        btn->setSecondaryColor(QColor(168, 234, 255, 150));
+        btn->setGlowColor(QColor(111, 231, 255, 150));
         // btn->enableScanLine(true); // 启用扫描线动画
 
         // b) 能量样式 (Energy)
@@ -993,6 +987,7 @@ void MainWindow::initSpeedGaugeUI()
         QWidget* placeholder;
         QString name;
         QString label;
+        QString secondLabel;
         QString suffix;
         double min;
         double max;
@@ -1000,16 +995,16 @@ void MainWindow::initSpeedGaugeUI()
     };
 
     QList<ArcConfig> configs = {
-        {ui->widget_test1, "robot_ArcGauge_J1Angle", "悬臂角度", "°", -170, 170, 1},
-        {ui->widget_test2, "robot_ArcGauge_J2Height", "升降高度", "mm", -850, 1150, 0},
-        {ui->widget_test3, "robot_ArcGauge_J3Length", "总伸展长度", "mm", 0, 1600, 0},
-        {ui->widget_test4, "robot_ArcGauge_J4Angle", "末端角度", "°", -180, 180, 1},
-        {ui->widget_SixAxies_1, "robot_ArcGauge_SixAxis1", "六轴 1", "°", -15, 15, 2},
-        {ui->widget_SixAxies_2, "robot_ArcGauge_SixAxis2", "六轴 2", "°", -15, 15, 2},
-        {ui->widget_SixAxies_3, "robot_ArcGauge_SixAxis3", "六轴 3", "°", -17, 17, 2},
-        {ui->widget_SixAxies_4, "robot_ArcGauge_SixAxis4", "六轴 4", "mm", -110, 110, 2},
-        {ui->widget_SixAxies_5, "robot_ArcGauge_SixAxis5", "六轴 5", "mm", -110, 110, 2},
-        {ui->widget_SixAxies_6, "robot_ArcGauge_SixAxis6", "六轴 6", "mm", -90, 90, 2}
+        {ui->widget_test1, "robot_ArcGauge_J1Angle", "悬臂角度", QString(), "°", -170, 170, 1},
+        {ui->widget_test2, "robot_ArcGauge_J2Height", "升降高度", QString(), "mm", -850, 1150, 0},
+        {ui->widget_test3, "robot_ArcGauge_J3Length", "总伸展长度", QString(), "mm", 0, 1600, 0},
+        {ui->widget_test4, "robot_ArcGauge_J4Angle", "末端角度", QString(), "°", -180, 180, 1},
+        {ui->widget_SixAxies_1, "robot_ArcGauge_SixAxis1", "RX当前角度", QString(), "°", -15, 15, 2},
+        {ui->widget_SixAxies_2, "robot_ArcGauge_SixAxis2", "RY当前角度", QString(), "°", -15, 15, 2},
+        {ui->widget_SixAxies_3, "robot_ArcGauge_SixAxis3", "RZ当前角度", QString(), "°", -17, 17, 2},
+        {ui->widget_SixAxies_4, "robot_ArcGauge_SixAxis4", "X当前行程", QString(), "mm", -110, 110, 2},
+        {ui->widget_SixAxies_5, "robot_ArcGauge_SixAxis5", "Y当前行程", QString(), "mm", -110, 110, 2},
+        {ui->widget_SixAxies_6, "robot_ArcGauge_SixAxis6", "Z当前行程", QString(), "mm", -90, 90, 2}
     };
 
     for (auto &cfg : configs) {
@@ -1022,6 +1017,9 @@ void MainWindow::initSpeedGaugeUI()
             if (!rangeCfg.labelText.isEmpty()) {
                 cfg.label = rangeCfg.labelText;
             }
+            if (!rangeCfg.secondLabelText.isEmpty()) {
+                cfg.secondLabel = rangeCfg.secondLabelText;
+            }
             if (!rangeCfg.suffix.isEmpty()) {
                 cfg.suffix = rangeCfg.suffix;
             }
@@ -1031,6 +1029,10 @@ void MainWindow::initSpeedGaugeUI()
 
     for (const auto& cfg : configs) {
         if (cfg.placeholder) {
+            qWarning() << "ArcGauge placeholder" << cfg.name
+                       << "parent" << cfg.placeholder->parentWidget()->objectName()
+                       << "placeholder geometry" << cfg.placeholder->geometry()
+                       << "parent geometry" << cfg.placeholder->parentWidget()->geometry();
             TechArcGauge *arcGauge = new TechArcGauge(cfg.placeholder->parentWidget());
             arcGauge->setGeometry(cfg.placeholder->geometry());
             arcGauge->setObjectName(cfg.name);
@@ -1054,6 +1056,7 @@ void MainWindow::initSpeedGaugeUI()
             }
             
             arcGauge->setLabelText(cfg.label);
+            arcGauge->setSecondLabelText(cfg.secondLabel);
             arcGauge->setSuffix(cfg.suffix);
             arcGauge->setPrecision(cfg.precision);
             
@@ -1127,20 +1130,12 @@ void MainWindow::updateRobotTotalPower(quint16 powerValue)
 
 void MainWindow::initInclinometerCards()
 {
-    m_inclinometerXCard = findChild<QWidget*>("quickWidget_Inclinometer_X");
-    m_inclinometerYCard = findChild<QWidget*>("quickWidget_Inclinometer_Y");
-
-    auto initOne = [](QWidget *widget, const QString &axisTitle, QLabel *&valueLabel) {
-        if (!widget) {
+    auto initOne = [](QWidget *host, const QString &axisTitle, InclinometerCard *&cardOut) {
+        if (!host) {
             return;
         }
 
-        widget->setStyleSheet(QStringLiteral(
-            "background-color: #1A5FB4;"
-            "border: 1px solid #4FAFE8;"
-            "border-radius: 14px;"));
-
-        if (QLayout *oldLayout = widget->layout()) {
+        if (QLayout *oldLayout = host->layout()) {
             QLayoutItem *item = nullptr;
             while ((item = oldLayout->takeAt(0)) != nullptr) {
                 if (item->widget()) {
@@ -1151,65 +1146,24 @@ void MainWindow::initInclinometerCards()
             delete oldLayout;
         }
 
-        auto *layout = new QVBoxLayout(widget);
-        layout->setContentsMargins(8, 5, 8, 5);
-        layout->setSpacing(2);
+        host->setStyleSheet(QStringLiteral("background: transparent; border: none;"));
 
-        auto *headRow = new QHBoxLayout();
-        headRow->setContentsMargins(0, 0, 0, 0);
-        headRow->setSpacing(6);
+        auto *layout = new QVBoxLayout(host);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
 
-        auto *axisLabel = new QLabel(axisTitle, widget);
-        axisLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        axisLabel->setStyleSheet(QStringLiteral(
-            "color: #A8DAFF;"
-            "font: 700 11px 'Noto Sans CJK SC';"
-            "border: none;"
-            "background: transparent;"));
-
-        auto *thresholdLabel = new QLabel(QStringLiteral("阈值: 1.00°"), widget);
-        thresholdLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        thresholdLabel->setStyleSheet(QStringLiteral(
-            "color: #89D1FF;"
-            "font: 600 10px 'Noto Sans CJK SC';"
-            "border: none;"
-            "background: transparent;"));
-
-        headRow->addWidget(axisLabel, 1);
-        headRow->addWidget(thresholdLabel, 0);
-
-        auto *valueRow = new QHBoxLayout();
-        valueRow->setContentsMargins(0, 0, 0, 0);
-        valueRow->setSpacing(6);
-
-        valueLabel = new QLabel(QStringLiteral("0.00°"), widget);
-        valueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        valueLabel->setProperty("normalColor", QStringLiteral("#EAF7FF"));
-        valueLabel->setProperty("alarmColor", QStringLiteral("#FFB366"));
-        valueLabel->setStyleSheet(QStringLiteral(
-            "color: #EAF7FF;"
-            "font: 800 24px 'Noto Sans CJK SC';"
-            "border: none;"
-            "background: transparent;"));
-
-        auto *statusLabel = new QLabel(QStringLiteral("状态: 正常"), widget);
-        statusLabel->setObjectName(QStringLiteral("label_threshold_state"));
-        statusLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        statusLabel->setStyleSheet(QStringLiteral(
-            "color: #7CFFBE;"
-            "font: 700 11px 'Noto Sans CJK SC';"
-            "border: none;"
-            "background: transparent;"));
-
-        valueRow->addWidget(valueLabel, 1);
-        valueRow->addWidget(statusLabel, 0);
-
-        layout->addLayout(headRow, 0);
-        layout->addLayout(valueRow, 1);
+        cardOut = new InclinometerCard(host);
+        cardOut->setAxisLabel(axisTitle);
+        cardOut->setTiltValue(0.0);
+        layout->addWidget(cardOut);
     };
 
-    initOne(m_inclinometerXCard, QStringLiteral("X轴倾角"), m_inclinometerXValueLabel);
-    initOne(m_inclinometerYCard, QStringLiteral("Y轴倾角"), m_inclinometerYValueLabel);
+    initOne(findChild<QWidget*>(QStringLiteral("quickWidget_Inclinometer_X")),
+            QStringLiteral("X轴倾角"),
+            m_inclinometerXCard);
+    initOne(findChild<QWidget*>(QStringLiteral("quickWidget_Inclinometer_Y")),
+            QStringLiteral("Y轴倾角"),
+            m_inclinometerYCard);
 }
 
 void MainWindow::initDeviceCoordPanel()
@@ -1224,37 +1178,14 @@ void MainWindow::initDeviceCoordPanel()
 
 void MainWindow::updateInclinometerValue(bool isXAxis, quint16 rawValue)
 {
-    QLabel *targetLabel = isXAxis ? m_inclinometerXValueLabel : m_inclinometerYValueLabel;
-    if (!targetLabel) {
+    InclinometerCard *card = isXAxis ? m_inclinometerXCard : m_inclinometerYCard;
+    if (!card) {
         return;
     }
 
     const qint16 signedRaw = static_cast<qint16>(rawValue);
     const qreal degree = static_cast<qreal>(signedRaw) / 100.0;
-    const bool isOverThreshold = qAbs(degree) >= 1.0;
-
-    targetLabel->setText(QString::number(degree, 'f', 2) + QStringLiteral("°"));
-    const QString valueColor = isOverThreshold
-                               ? targetLabel->property("alarmColor").toString()
-                               : targetLabel->property("normalColor").toString();
-    targetLabel->setStyleSheet(QStringLiteral(
-        "color: %1;"
-        "font: 800 24px 'Noto Sans CJK SC';"
-        "border: none;"
-        "background: transparent;").arg(valueColor));
-
-    if (QWidget *card = targetLabel->parentWidget()) {
-        if (QLabel *statusLabel = card->findChild<QLabel*>(QStringLiteral("label_threshold_state"))) {
-            statusLabel->setText(isOverThreshold ? QStringLiteral("状态: 超限") : QStringLiteral("状态: 正常"));
-            statusLabel->setStyleSheet(QStringLiteral(
-                "color: %1;"
-                "font: 700 12px 'Noto Sans CJK SC';"
-                "border: none;"
-                "background: transparent;")
-                                           .arg(isOverThreshold ? QStringLiteral("#FFB366")
-                                                                : QStringLiteral("#7CFFBE")));
-        }
-    }
+    card->setTiltValue(degree);
 }
 
 //模拟速度
@@ -1862,12 +1793,12 @@ void MainWindow::setupRecordUI()
 
     m_historyTable->setStyleSheet(QStringLiteral(
         "QTableWidget#historyRecordTable {"
-        "  background-color: #1e3c78;"
-        "  alternate-background-color: #254a8a;"
-        "  border: 1px solid #3d7ec4;"
-        "  border-radius: 4px;"
-        "  gridline-color: #3d5480;"
-        "  color: #ffffff;"
+        "  background-color: rgba(4, 18, 34, 0.88);"
+        "  alternate-background-color: rgba(10, 35, 58, 0.78);"
+        "  border: 1px solid rgba(74, 190, 238, 0.38);"
+        "  border-radius: 10px;"
+        "  gridline-color: rgba(78, 142, 176, 0.34);"
+        "  color: #eaf9ff;"
         "  font-size: 13px;"
         "}"
         "QTableWidget#historyRecordTable::item {"
@@ -1875,18 +1806,18 @@ void MainWindow::setupRecordUI()
         "  border: none;"
         "}"
         "QTableWidget#historyRecordTable::item:selected {"
-        "  background-color: #2E7DD8;"
+        "  background-color: rgba(0, 126, 186, 0.90);"
         "}"));
 
     m_historyTable->horizontalHeader()->setStyleSheet(QStringLiteral(
         "QHeaderView::section {"
-        "  background-color: rgba(26, 95, 180, 0.65);"
-        "  color: #a9d4ff;"
+        "  background-color: rgba(9, 37, 64, 0.94);"
+        "  color: #a8eaff;"
         "  font-weight: bold;"
         "  font-size: 14px;"
         "  padding: 10px 14px;"
         "  border: none;"
-        "  border-bottom: 1px solid #3d7ec4;"
+        "  border-bottom: 1px solid rgba(74, 190, 238, 0.46);"
         "}"));
 
     connect(m_historyTable->horizontalHeader(), &QHeaderView::sectionResized,
@@ -2177,7 +2108,9 @@ void MainWindow::setupAdminPasswordPage()
     QPushButton *featureButton = new QPushButton("功能开关管理", container);
     featureButton->setObjectName("featureButton");
     featureButton->setStyleSheet(
-        "background-color: #55007f; color: #ffaa00; font-weight: bold; border: 2px solid #ffaa00;"
+        "QPushButton { background: rgba(74, 38, 108, 0.88); color: #ffe28f; "
+        "font-weight: bold; border: 1px solid rgba(255, 210, 112, 0.70); border-radius: 8px; padding: 8px 14px; }"
+        "QPushButton:hover { background: rgba(96, 50, 138, 0.94); border: 1px solid #ffe28f; }"
     );
     featureButton->setVisible(false);
     QPushButton *logoutButton = new QPushButton("注销 (返回操作员)", container);
@@ -2193,7 +2126,7 @@ void MainWindow::setupAdminPasswordPage()
     // 第一行：WIN7_IP
     QHBoxLayout *row1Layout = new QHBoxLayout();
     QLabel *ipPrefix = new QLabel("WIN7_IP: 192.168.1.", netConfigSection);
-    ipPrefix->setStyleSheet("color: #00ffff; font-family: 'Microsoft YaHei UI'; font-size: 14px;");
+    ipPrefix->setStyleSheet("color: #a8eaff; font-family: 'Microsoft YaHei UI'; font-size: 14px;");
     QLineEdit *ipHostEdit = new QLineEdit(netConfigSection);
     ipHostEdit->setObjectName("ipHostEdit");
     ipHostEdit->setPlaceholderText("100");
@@ -2201,11 +2134,11 @@ void MainWindow::setupAdminPasswordPage()
     ipHostEdit->setFixedWidth(40);
     ipHostEdit->setAlignment(Qt::AlignCenter);
     ipHostEdit->setValidator(new QIntValidator(0, 255, ipHostEdit));
-    ipHostEdit->setStyleSheet("QLineEdit { background: rgba(0, 0, 0, 100); border: 1px solid #00c8ff; color: #ffaa00; border-radius: 4px; }");
+    ipHostEdit->setStyleSheet("QLineEdit { background: rgba(3, 15, 28, 0.88); border: 1px solid rgba(74, 190, 238, 0.52); color: #ffe28f; border-radius: 6px; padding: 3px 5px; } QLineEdit:focus { border: 1px solid #9ff4ff; }");
     
     QPushButton *ipApplyBtn = new QPushButton("确认", netConfigSection);
     ipApplyBtn->setFixedWidth(50);
-    ipApplyBtn->setStyleSheet("QPushButton { background-color: #004466; border: 1px solid #00c8ff; color: white; border-radius: 4px; font-size: 12px; }");
+    ipApplyBtn->setStyleSheet("QPushButton { background: rgba(14, 58, 90, 0.88); border: 1px solid rgba(74, 190, 238, 0.52); color: #eaf9ff; border-radius: 6px; font-size: 12px; } QPushButton:hover { border: 1px solid #6fe7ff; }");
 
     row1Layout->addWidget(ipPrefix);
     row1Layout->addWidget(ipHostEdit);
@@ -2215,7 +2148,7 @@ void MainWindow::setupAdminPasswordPage()
     // 第二行：远程模拟器
     QHBoxLayout *row2Layout = new QHBoxLayout();
     QLabel *simPrefix = new QLabel("远程模拟器: 192.168.1.", netConfigSection);
-    simPrefix->setStyleSheet("color: #00ffff; font-family: 'Microsoft YaHei UI'; font-size: 14px;");
+    simPrefix->setStyleSheet("color: #a8eaff; font-family: 'Microsoft YaHei UI'; font-size: 14px;");
     QLineEdit *simHostEdit = new QLineEdit(netConfigSection);
     simHostEdit->setObjectName("simHostEdit");
     simHostEdit->setPlaceholderText("70");
@@ -2223,11 +2156,11 @@ void MainWindow::setupAdminPasswordPage()
     simHostEdit->setFixedWidth(40);
     simHostEdit->setAlignment(Qt::AlignCenter);
     simHostEdit->setValidator(new QIntValidator(0, 255, simHostEdit));
-    simHostEdit->setStyleSheet("QLineEdit { background: rgba(0, 0, 0, 100); border: 1px solid #00c8ff; color: #ffaa00; border-radius: 4px; }");
+    simHostEdit->setStyleSheet("QLineEdit { background: rgba(3, 15, 28, 0.88); border: 1px solid rgba(74, 190, 238, 0.52); color: #ffe28f; border-radius: 6px; padding: 3px 5px; } QLineEdit:focus { border: 1px solid #9ff4ff; }");
 
     QPushButton *simApplyBtn = new QPushButton("确认", netConfigSection);
     simApplyBtn->setFixedWidth(50);
-    simApplyBtn->setStyleSheet("QPushButton { background-color: #004466; border: 1px solid #00c8ff; color: white; border-radius: 4px; font-size: 12px; }");
+    simApplyBtn->setStyleSheet("QPushButton { background: rgba(14, 58, 90, 0.88); border: 1px solid rgba(74, 190, 238, 0.52); color: #eaf9ff; border-radius: 6px; font-size: 12px; } QPushButton:hover { border: 1px solid #6fe7ff; }");
 
     row2Layout->addWidget(simPrefix);
     row2Layout->addWidget(simHostEdit);
@@ -2276,74 +2209,74 @@ void MainWindow::setupAdminPasswordPage()
     // 设置样式
     QString style = QString(
         "#page_Permission {"
-        "    background-color: #0a0a1a;"
+        "    background: transparent;"
         "}"
         "#adminContainer {"
         "    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
-        "        stop:0 rgba(20, 20, 40, 220),"
-        "        stop:1 rgba(40, 20, 60, 200));"
-        "    border: 2px solid #00c8ff;"
-        "    border-radius: 15px;"
+        "        stop:0 rgba(8, 28, 50, 226),"
+        "        stop:1 rgba(5, 18, 34, 214));"
+        "    border: 1px solid rgba(74, 190, 238, 0.52);"
+        "    border-radius: 16px;"
         "    padding: 30px;"
         "}"
         "#adminTitle {"
         "    font-family: 'Microsoft YaHei UI';"
         "    font-size: 24px;"
         "    font-weight: bold;"
-        "    color: #00ffff;"
+        "    color: #eaf9ff;"
         "    padding: 10px;"
         "}"
         "#passwordEdit {"
-        "    background-color: rgba(10, 10, 30, 180);"
-        "    border: 2px solid #00c8ff;"
+        "    background-color: rgba(3, 15, 28, 0.90);"
+        "    border: 1px solid rgba(74, 190, 238, 0.58);"
         "    border-radius: 8px;"
         "    padding: 12px 20px;"
         "    font-size: 16px;"
-        "    color: #00ffff;"
-        "    selection-background-color: #00c8ff;"
+        "    color: #f0fbff;"
+        "    selection-background-color: rgba(0, 176, 232, 0.72);"
         "    min-width: 250px;"
         "}"
         "#roleComboBox {"
-        "    background-color: rgba(10, 10, 30, 180);"
-        "    border: 2px solid #00c8ff;"
+        "    background-color: rgba(3, 15, 28, 0.90);"
+        "    border: 1px solid rgba(74, 190, 238, 0.58);"
         "    border-radius: 8px;"
         "    padding: 8px 15px;"
         "    font-size: 16px;"
-        "    color: #00ffff;"
+        "    color: #f0fbff;"
         "    min-width: 250px;"
         "}"
         "#roleComboBox::drop-down {"
         "    border: none;"
         "}"
         "#roleComboBox QAbstractItemView {"
-        "    background-color: rgba(20, 20, 40, 240);"
-        "    color: #00ffff;"
-        "    selection-background-color: #0088ff;"
+        "    background-color: #07192d;"
+        "    color: #eaf9ff;"
+        "    selection-background-color: rgba(0, 126, 186, 0.90);"
         "}"
         "#passwordEdit:focus {"
-        "    border-color: #00ffff;"
+        "    border-color: #9ff4ff;"
         "}"
         "#passwordHint {"
-        "    color: #8888ff;"
+        "    color: #91dfff;"
         "    font-size: 12px;"
         "    font-style: italic;"
         "}"
         "#loginButton {"
         "    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-        "        stop:0 #00c8ff,"
-        "        stop:1 #0088ff);"
-        "    border: none;"
+        "        stop:0 #0096d6,"
+        "        stop:1 #00c4e8);"
+        "    border: 1px solid rgba(128, 230, 255, 0.62);"
         "    border-radius: 8px;"
         "    padding: 12px 30px;"
-        "    color: white;"
+        "    color: #ffffff;"
         "    font-size: 16px;"
         "    font-weight: bold;"
         "    min-width: 150px;"
         "}"
         "#loginButton:hover {"
         "    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-        "        stop:0 #00ffff,"
-        "        stop:1 #00aaff);"
+        "        stop:0 #36dfff,"
+        "        stop:1 #00a8dc);"
         "}"
         "#loginButton:pressed {"
         "    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
@@ -2352,9 +2285,9 @@ void MainWindow::setupAdminPasswordPage()
         "}"
         "#logoutButton {"
         "    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-        "        stop:0 #ff5555,"
-        "        stop:1 #cc0000);"
-        "    border: none;"
+        "        stop:0 #c54a4a,"
+        "        stop:1 #8f2026);"
+        "    border: 1px solid rgba(255, 154, 154, 0.70);"
         "    border-radius: 8px;"
         "    padding: 12px 30px;"
         "    color: white;"
@@ -2664,126 +2597,98 @@ void MainWindow::applyRecordPageStyle(QWidget *recordPage)
 {
     QString style = QString(
         "#recordPage {"
-        "    background-color: #1a5fb4;"  // 蓝色背景
-        "    border: none;"  // 去掉边框
+        "    background: transparent;"
+        "    border: none;"
         "}"
-
         "#recordTitleWidget {"
-        "    background: rgba(30, 60, 120, 0.7);"  // 半透明深蓝色
-        "    border-radius: 8px;"
+        "    background: rgba(5, 20, 38, 0.82);"
+        "    border-radius: 10px;"
         "    padding: 10px;"
         "    margin-bottom: 5px;"
-        "    border: 1px solid #2d7fda;"
+        "    border: 1px solid rgba(74, 190, 238, 0.42);"
         "}"
-
         "#recordTitle {"
         "    font-size: 20px;"
         "    font-weight: bold;"
-        "    color: #ffffff;"  // 白色文字
+        "    color: #eaf9ff;"
         "}"
-
         "#timeLabel {"
-        "    color: #a9d4ff;"  // 浅蓝色文字
+        "    color: #91dfff;"
         "    font-size: 14px;"
         "}"
-
         "#controlPanel {"
-        "    background: rgba(30, 60, 120, 0.8);"  // 半透明深蓝色
-        "    border-radius: 8px;"
-        "    border: 1px solid #2d7fda;"
+        "    background: rgba(5, 20, 38, 0.82);"
+        "    border-radius: 10px;"
+        "    border: 1px solid rgba(74, 190, 238, 0.42);"
         "    padding: 5px;"
         "    margin-bottom: 5px;"
         "}"
-
-        // 按钮样式
         "QPushButton {"
-        "    background-color: #2d7fda;"  // 蓝色
-        "    color: #ffffff;"  // 白色文字
-        "    border: 1px solid #4a9eff;"
-        "    border-radius: 4px;"
+        "    background: rgba(14, 58, 90, 0.88);"
+        "    color: #eaf9ff;"
+        "    border: 1px solid rgba(74, 190, 238, 0.52);"
+        "    border-radius: 8px;"
         "    padding: 6px 12px;"
         "    font-size: 12px;"
         "    min-width: 80px;"
         "}"
-
         "QPushButton:hover {"
-        "    background-color: #4a9eff;"  // 浅蓝色
-        "    border-color: #7fbfff;"
+        "    background: rgba(25, 92, 132, 0.94);"
+        "    border-color: #6fe7ff;"
         "}"
-
         "QPushButton:pressed {"
-        "    background-color: #1a5fb4;"  // 深蓝色
+        "    background: rgba(0, 126, 186, 0.94);"
         "}"
-
-        // 下拉框样式
         "QComboBox {"
-        "    background-color: #2d7fda;"  // 蓝色
-        "    color: #ffffff;"  // 白色文字
-        "    border: 1px solid #4a9eff;"
-        "    border-radius: 4px;"
+        "    background: rgba(3, 15, 28, 0.88);"
+        "    color: #eaf9ff;"
+        "    border: 1px solid rgba(74, 190, 238, 0.52);"
+        "    border-radius: 8px;"
         "    padding: 4px 8px;"
         "    min-width: 120px;"
         "}"
-
         "QComboBox:hover {"
-        "    border-color: #7fbfff;"
+        "    border-color: #6fe7ff;"
         "}"
-
         "QComboBox::drop-down {"
         "    border: none;"
         "    width: 20px;"
         "}"
-
-        "QComboBox::down-arrow {"
-        "    width: 12px;"
-        "    height: 12px;"
-        "    border-left: 6px solid transparent;"
-        "    border-right: 6px solid transparent;"
-        "    border-top: 6px solid #ffffff;"
-        "}"
-
         "QComboBox QAbstractItemView {"
-        "    background-color: #2d7fda;"
-        "    color: #ffffff;"
-        "    selection-background-color: #4a9eff;"
-        "    border: 1px solid #4a9eff;"
+        "    background-color: #07192d;"
+        "    color: #eaf9ff;"
+        "    selection-background-color: rgba(0, 126, 186, 0.90);"
+        "    border: 1px solid rgba(74, 190, 238, 0.62);"
         "}"
-
-        // 标签样式
         "QLabel {"
-        "    color: #ffffff;"  // 白色文字
+        "    color: #d8f6ff;"
         "    font-size: 12px;"
         "}"
-
-        // 记录显示区域
         "#recordDisplay {"
-        "    background: rgba(30, 60, 120, 0.6);"  // 半透明深蓝色
-        "    color: #ffffff;"  // 白色文字
-        "    border: 1px solid #2d7fda;"
+        "    background: rgba(4, 18, 34, 0.84);"
+        "    color: #eaf9ff;"
+        "    border: 1px solid rgba(74, 190, 238, 0.36);"
         "    border-radius: 8px;"
         "    font-family: 'Segoe UI', Arial, sans-serif;"
         "    font-size: 12px;"
         "    padding: 10px;"
-        "    selection-background-color: #4a9eff;"  // 选中文字背景
+        "    selection-background-color: rgba(0, 176, 232, 0.72);"
         "}"
-
         "#statsPanel {"
-        "    background: rgba(30, 60, 120, 0.8);"  // 半透明深蓝色
-        "    border-radius: 8px;"
-        "    border: 1px solid #2d7fda;"
+        "    background: rgba(5, 20, 38, 0.82);"
+        "    border-radius: 10px;"
+        "    border: 1px solid rgba(74, 190, 238, 0.42);"
         "    padding: 5px;"
         "    margin-top: 5px;"
         "}"
-
-        // 统计标签样式
         "#totalStats, #todayStats, #sliderStats, #buttonStats, #toolButtonStats {"
-        "    color: #ffffff;"  // 白色文字
+        "    color: #eaf9ff;"
         "    font-size: 13px;"
         "    font-weight: bold;"
         "    padding: 4px 8px;"
-        "    background: rgba(45, 127, 218, 0.5);"  // 半透明蓝色
-        "    border-radius: 4px;"
-        "    border: 1px solid #4a9eff;"
+        "    background: rgba(10, 58, 92, 0.72);"
+        "    border-radius: 6px;"
+        "    border: 1px solid rgba(74, 190, 238, 0.48);"
         "}"
         );
 
@@ -3887,8 +3792,8 @@ void MainWindow::initSpeedModeSelector()
     speedModeSelector->setButtonStyle(TechPushButton::StyleHolographic);
 
     // 设置自定义颜色
-    speedModeSelector->setActiveColor(QColor(0, 200, 255));     // 激活状态颜色
-    speedModeSelector->setInactiveColor(QColor(80, 80, 100));   // 非激活状态颜色
+    speedModeSelector->setActiveColor(QColor(0, 168, 220));
+    speedModeSelector->setInactiveColor(QColor(42, 68, 86));
     speedModeSelector->setTextColor(Qt::white);                 // 文字颜色
 
     // 连接模式改变信号
@@ -4318,124 +4223,6 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
             QTimer::singleShot(0, this, &MainWindow::checkAlarmConditions);
         }
     }
-
-
-
-    // ============ 新增：处理大六维力寄存器（612-623） ============
-    if (address >= 612 && address <= 623) {
-        // 调试输出：确认收到大六维力数据
-         qCDebug(lcMainWindow) << "收到大六维力寄存器数据 - 地址:" << address << "值:" << value;
-        
-        // 定义地址到大六维力标签的映射
-        static QMap<int, QString> bigForceAddressToLabelMap = {
-            {612, "FX"}, {613, "FX"},
-            {614, "FY"}, {615, "FY"},
-            {616, "FZ"}, {617, "FZ"},
-            {618, "MX"}, {619, "MX"},
-            {620, "MY"}, {621, "MY"},
-            {622, "MZ"}, {623, "MZ"}
-        };
-
-        if (bigForceAddressToLabelMap.contains(address)) {
-            QString labelName = bigForceAddressToLabelMap[address];
-
-            // 获取对应的寄存器对地址
-            int highAddr, lowAddr;
-            if (labelName == "FX") {
-                highAddr = 612; lowAddr = 613;
-            } else if (labelName == "FY") {
-                highAddr = 614; lowAddr = 615;
-            } else if (labelName == "FZ") {
-                highAddr = 616; lowAddr = 617;
-            } else if (labelName == "MX") {
-                highAddr = 618; lowAddr = 619;
-            } else if (labelName == "MY") {
-                highAddr = 620; lowAddr = 621;
-            } else {  // MZ
-                highAddr = 622; lowAddr = 623;
-            }
-
-            // 更新寄存器缓存
-            static QMap<int, quint16> bigForceRegisterCache;
-            bigForceRegisterCache[address] = value;
-
-            // 只有当两个寄存器都有值时才计算
-            if (bigForceRegisterCache.contains(highAddr) && bigForceRegisterCache.contains(lowAddr)) {
-                quint16 high = bigForceRegisterCache[highAddr];
-                quint16 low = bigForceRegisterCache[lowAddr];
-
-                float floatValue = registersToFloat(high, low);
-
-                // 调试输出
-                static int debugCount = 0;
-                if (debugCount++ % 6 == 0) // 减少刷屏，每6次（大约一组）打印一次
-                   qCDebug(lcMainWindow) << "【大" << labelName << "】" << "值:" << floatValue << " (Raw: " << high << "," << low << ")";
-
-                // 更新标签显示
-                updateBigForceLabel(labelName, floatValue);
-            }
-        }
-    }
-
-    // ============ 新增：处理小六维力寄存器（624-635） ============
-    if (address >= 624 && address <= 635) {
-        
-        // 调试输出：确认收到小六维力数据
-        // qCDebug(lcMainWindow) << "收到小六维力寄存器数据 - 地址:" << address << "值:" << value;
-
-        // 定义地址到小六维力标签的映射
-        static QMap<int, QString> smallForceAddressToLabelMap = {
-            {624, "FX"}, {625, "FX"},
-            {626, "FY"}, {627, "FY"},
-            {628, "FZ"}, {629, "FZ"},
-            {630, "MX"}, {631, "MX"},
-            {632, "MY"}, {633, "MY"},
-            {634, "MZ"}, {635, "MZ"}
-        };
-
-        if (smallForceAddressToLabelMap.contains(address)) {
-            QString labelName = smallForceAddressToLabelMap[address];
-
-            // 获取对应的寄存器对地址
-            int highAddr, lowAddr;
-            if (labelName == "FX") {
-                highAddr = 624; lowAddr = 625;
-            } else if (labelName == "FY") {
-                highAddr = 626; lowAddr = 627;
-            } else if (labelName == "FZ") {
-                highAddr = 628; lowAddr = 629;
-            } else if (labelName == "MX") {
-                highAddr = 630; lowAddr = 631;
-            } else if (labelName == "MY") {
-                highAddr = 632; lowAddr = 633;
-            } else {  // MZ
-                highAddr = 634; lowAddr = 635;
-            }
-
-            // 更新寄存器缓存
-            static QMap<int, quint16> smallForceRegisterCache;
-            smallForceRegisterCache[address] = value;
-
-            // 只有当两个寄存器都有值时才计算
-            if (smallForceRegisterCache.contains(highAddr) && smallForceRegisterCache.contains(lowAddr)) {
-                quint16 high = smallForceRegisterCache[highAddr];
-                quint16 low = smallForceRegisterCache[lowAddr];
-
-                float floatValue = registersToFloat(high, low);
-
-                // 调试输出
-                static int smallDebugCount = 0;
-                if (smallDebugCount++ % 6 == 0)
-                   qCDebug(lcMainWindow) << "【小" << labelName << "】"
-                            << "高位(0x" << QString::number(high, 16).toUpper() << ")"
-                            << "低位(0x" << QString::number(low, 16).toUpper() << ")"
-                            << "值:" << floatValue;
-
-                // 更新标签显示
-                updateSmallForceLabel(labelName, floatValue);
-            }
-        }
-    }
 }
 //浮点数辅助函数
 // 将两个16位寄存器转换为32位浮点数（IEEE 754标准）
@@ -4657,7 +4444,7 @@ void MainWindow::setupSliderLabelConfigs()
     QStringList allTargetPages = {"回转升降", "伸缩臂", "EOAT控制"};
 
     m_sliderLabelConfigs["robot_ArcGauge_J1Angle"] = {
-        "立柱旋转当前角度:",           // labelText
+        "J1当前角度:",           // labelText
         "°",                  // unit
         -170.0,              // minValue
         170.0,               // maxValue
@@ -4673,7 +4460,7 @@ void MainWindow::setupSliderLabelConfigs()
     };
 
     m_sliderLabelConfigs["robot_ArcGauge_J2Height"] = {
-        "立柱升降当前高度:",           // labelText
+        "J2当前高度:",           // labelText
         "mm",                // unit
         4400.0,              // minValue
         8000.0,              // maxValue
@@ -4689,7 +4476,7 @@ void MainWindow::setupSliderLabelConfigs()
     };
 
     m_sliderLabelConfigs["robot_ArcGauge_J3Length"] = {
-        "伸缩平衡臂当前长度:",           // labelText
+        "J3当前长度:",           // labelText
         "mm",                // unit
         3765.0,                 // minValue
         6805.0,              // maxValue
@@ -4707,7 +4494,7 @@ void MainWindow::setupSliderLabelConfigs()
     };
 
     m_sliderLabelConfigs["robot_ArcGauge_J4Angle"] = {
-        "末端组件当前角度:",    // labelText (修改为末端组件)
+        "J4当前角度:",    // labelText
         "°",                  // unit
         -90.0,              // minValue
         90.0,               // maxValue
@@ -4721,6 +4508,32 @@ void MainWindow::setupSliderLabelConfigs()
         allTargetPages,      // 在所有三个页面中查找
         1                    // 精度：1位小数
     };
+
+    auto addArcGaugeRangeOnly = [&](const QString &key, const QString &label, const QString &suffix,
+                                    double minVal, double maxVal, int precision) {
+        m_sliderLabelConfigs[key] = {
+            label, suffix, minVal, maxVal, 0.0, suffix,
+            -1, -1, -1, -1, false, {}, precision
+        };
+    };
+    addArcGaugeRangeOnly(QStringLiteral("robot_ArcGauge_SixAxis1"), QStringLiteral("RX当前角度:"), QStringLiteral("°"), -15.0, 15.0, 2);
+    addArcGaugeRangeOnly(QStringLiteral("robot_ArcGauge_SixAxis2"), QStringLiteral("RY当前角度:"), QStringLiteral("°"), -15.0, 15.0, 2);
+    addArcGaugeRangeOnly(QStringLiteral("robot_ArcGauge_SixAxis3"), QStringLiteral("RZ当前角度:"), QStringLiteral("°"), -17.0, 17.0, 2);
+    addArcGaugeRangeOnly(QStringLiteral("robot_ArcGauge_SixAxis4"), QStringLiteral("X当前行程:"), QStringLiteral("mm"), -110.0, 110.0, 2);
+    addArcGaugeRangeOnly(QStringLiteral("robot_ArcGauge_SixAxis5"), QStringLiteral("Y当前行程:"), QStringLiteral("mm"), -110.0, 110.0, 2);
+    addArcGaugeRangeOnly(QStringLiteral("robot_ArcGauge_SixAxis6"), QStringLiteral("Z当前行程:"), QStringLiteral("mm"), -90.0, 90.0, 2);
+
+    // TechArcGauge 第二行标签（secondLabelText），与 initSpeedGaugeUI 中 cfg.name 对应
+    m_sliderLabelConfigs["robot_ArcGauge_J1Angle"].secondLabelText = QStringLiteral("立柱旋转");
+    m_sliderLabelConfigs["robot_ArcGauge_J2Height"].secondLabelText = QStringLiteral("立柱升降");
+    m_sliderLabelConfigs["robot_ArcGauge_J3Length"].secondLabelText = QStringLiteral("伸缩平衡臂");
+    m_sliderLabelConfigs["robot_ArcGauge_J4Angle"].secondLabelText = QStringLiteral("末端组件");
+    m_sliderLabelConfigs["robot_ArcGauge_SixAxis1"].secondLabelText = QStringLiteral("绕X轴旋转");
+    m_sliderLabelConfigs["robot_ArcGauge_SixAxis2"].secondLabelText = QStringLiteral("绕Y轴旋转");
+    m_sliderLabelConfigs["robot_ArcGauge_SixAxis3"].secondLabelText = QStringLiteral("绕Z轴旋转");
+    m_sliderLabelConfigs["robot_ArcGauge_SixAxis4"].secondLabelText = QStringLiteral("X轴位移");
+    m_sliderLabelConfigs["robot_ArcGauge_SixAxis5"].secondLabelText = QStringLiteral("Y轴位移");
+    m_sliderLabelConfigs["robot_ArcGauge_SixAxis6"].secondLabelText = QStringLiteral("Z轴位移");
 
     qCDebug(lcMainWindow) << "SliderLabel配置初始化完成";
     qCDebug(lcMainWindow) << "每个控件都需要在以下页面中查找匹配:" << allTargetPages;
@@ -6670,8 +6483,8 @@ void MainWindow::setupSteeringModeControl()
         m_steeringModeSelector->setButtonStyle(TechPushButton::StyleHolographic);
 
         // 设置自定义颜色
-        m_steeringModeSelector->setActiveColor(QColor(0, 200, 255));     // 激活状态颜色
-        m_steeringModeSelector->setInactiveColor(QColor(80, 80, 100));   // 非激活状态颜色
+        m_steeringModeSelector->setActiveColor(QColor(0, 168, 220));
+        m_steeringModeSelector->setInactiveColor(QColor(42, 68, 86));
         m_steeringModeSelector->setTextColor(Qt::white);                 // 文字颜色
 
         // 连接模式切换信号到报警逻辑
@@ -7157,549 +6970,6 @@ void MainWindow::onTcpTransmissionError(const QString &error)
         qCDebug(lcMainWindow) << "TCP传输错误(已抑制重复):" << error;
     }
 }
-//六维力
-// 在mainwindow.cpp中添加以下函数实现
-void MainWindow::setupBigForceLabels()
-{
-    if (!isFeatureEnabled("force_sensor", "force.big_sensor")) {
-        return;
-    }
-
-    // 查找六个大六维力标签
-    m_labelBigFX = findChild<QLabel*>("labelBigFX");
-    m_labelBigFY = findChild<QLabel*>("labelBigFY");
-    m_labelBigFZ = findChild<QLabel*>("labelBigFZ");
-    m_labelBigMX = findChild<QLabel*>("labelBigMX");
-    m_labelBigMY = findChild<QLabel*>("labelBigMY");
-    m_labelBigMZ = findChild<QLabel*>("labelBigMZ");
-
-    // 创建标签名称到控件指针的映射
-    if (m_labelBigFX) {
-        m_bigForceLabels["FX"] = m_labelBigFX;
-        m_labelBigFX->setText("原始值FX: 0.00");
-        m_labelBigFX->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelBigFX->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 120px;"
-            "}"
-            );
-    }
-
-    if (m_labelBigFY) {
-        m_bigForceLabels["FY"] = m_labelBigFY;
-        m_labelBigFY->setText("原始值FY: 0.00");
-        m_labelBigFY->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelBigFY->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 120px;"
-            "}"
-            );
-    }
-
-    if (m_labelBigFZ) {
-        m_bigForceLabels["FZ"] = m_labelBigFZ;
-        m_labelBigFZ->setText("原始值FZ: 0.00");
-        m_labelBigFZ->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelBigFZ->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 120px;"
-            "}"
-            );
-    }
-
-    if (m_labelBigMX) {
-        m_bigForceLabels["MX"] = m_labelBigMX;
-        m_labelBigMX->setText("原始值MX: 0.00");
-        m_labelBigMX->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelBigMX->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 120px;"
-            "}"
-            );
-    }
-
-    if (m_labelBigMY) {
-        m_bigForceLabels["MY"] = m_labelBigMY;
-        m_labelBigMY->setText("原始值MY: 0.00");
-        m_labelBigMY->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelBigMY->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 120px;"
-            "}"
-            );
-    }
-
-    if (m_labelBigMZ) {
-        m_bigForceLabels["MZ"] = m_labelBigMZ;
-        m_labelBigMZ->setText("原始值MZ: 0.00");
-        m_labelBigMZ->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelBigMZ->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 120px;"
-            "}"
-            );
-    }
-
-    qCDebug(lcMainWindow) << "大六维力标签初始化完成，找到" << m_bigForceLabels.size() << "个标签";
-}
-void MainWindow::setupSmallForceLabels()
-{
-    if (!isFeatureEnabled("force_sensor", "force.small_sensor")) {
-        return;
-    }
-
-    // 查找六个小六维力标签
-    m_labelSmallFX = findChild<QLabel*>("labelSmallFX");
-    m_labelSmallFY = findChild<QLabel*>("labelSmallFY");
-    m_labelSmallFZ = findChild<QLabel*>("labelSmallFZ");
-    m_labelSmallMX = findChild<QLabel*>("labelSmallMX");
-    m_labelSmallMY = findChild<QLabel*>("labelSmallMY");
-    m_labelSmallMZ = findChild<QLabel*>("labelSmallMZ");
-
-    // 创建标签名称到控件指针的映射
-    if (m_labelSmallFX) {
-        m_smallForceLabels["FX"] = m_labelSmallFX;
-        m_labelSmallFX->setText("原始值FX: 0.00");
-        m_labelSmallFX->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelSmallFX->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 100px;"
-            "}"
-            );
-    }
-
-    if (m_labelSmallFY) {
-        m_smallForceLabels["FY"] = m_labelSmallFY;
-        m_labelSmallFY->setText("原始值FY: 0.00");
-        m_labelSmallFY->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelSmallFY->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 100px;"
-            "}"
-            );
-    }
-
-    if (m_labelSmallFZ) {
-        m_smallForceLabels["FZ"] = m_labelSmallFZ;
-        m_labelSmallFZ->setText("原始值FZ: 0.00");
-        m_labelSmallFZ->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelSmallFZ->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 100px;"
-            "}"
-            );
-    }
-
-    if (m_labelSmallMX) {
-        m_smallForceLabels["MX"] = m_labelSmallMX;
-        m_labelSmallMX->setText("原始值MX: 0.00");
-        m_labelSmallMX->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelSmallMX->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 100px;"
-            "}"
-            );
-    }
-
-    if (m_labelSmallMY) {
-        m_smallForceLabels["MY"] = m_labelSmallMY;
-        m_labelSmallMY->setText("原始值MY: 0.00");
-        m_labelSmallMY->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelSmallMY->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 100px;"
-            "}"
-            );
-    }
-
-    if (m_labelSmallMZ) {
-        m_smallForceLabels["MZ"] = m_labelSmallMZ;
-        m_labelSmallMZ->setText("原始值MZ: 0.00");
-        m_labelSmallMZ->setAlignment(Qt::AlignLeft | Qt::AlignVCenter); // 左对齐
-        m_labelSmallMZ->setStyleSheet(
-            "QLabel {"
-            "    font-size: 12px;"  // 统一字体大小为12px
-            "    font-weight: bold;"
-            "    padding: 3px 8px;"
-            "    min-width: 100px;"
-            "}"
-            );
-    }
-
-    qCDebug(lcMainWindow) << "小六维力标签初始化完成，找到" << m_smallForceLabels.size() << "个标签";
-}
-
-
-void MainWindow::setupForceReading()
-{
-    // 已根据要求删除六维力传感器轮询功能，以减少主 Modbus 队列负载
-    qCDebug(lcMainWindow) << "六维力传感器轮询功能已禁用";
-    return;
-}
-
-void MainWindow::setupBigForceReading()
-{
-    // 立即读取一次
-    readBigForceRegisters();
-
-    // 每500毫秒读取一次（与原有浮点数读取保持相同频率）
-    QTimer::singleShot(500, this, [this]() {
-        if (m_modbusManager && m_modbusManager->isConnected()) {
-            readBigForceRegisters();
-            // 继续定时读取
-            QTimer::singleShot(500, this, [this]() { setupBigForceReading(); });
-        } else {
-            // Modbus未连接，等待2秒后重试
-            QTimer::singleShot(2000, this, [this]() { setupBigForceReading(); });
-        }
-    });
-}
-void MainWindow::readBigForceRegisters()
-{
-    if (!MainDeviceModbusApi::isReady(m_modbusManager)) {
-        qCDebug(lcMainWindow) << "Modbus未连接，无法读取大六维力数据";
-        return;
-    }
-
-    // 读取612-623地址（12个寄存器，6个浮点数）
-    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 612, 12);
-}
-void MainWindow::readSmallForceRegisters()
-{
-    if (!MainDeviceModbusApi::isReady(m_modbusManager)) {
-        qCDebug(lcMainWindow) << "Modbus未连接，无法读取小六维力数据";
-        return;
-    }
-
-    // 读取624-635地址（12个寄存器，6个浮点数）
-    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 624, 12);
-}
-void MainWindow::updateBigForceLabel(const QString& labelName, float value)
-{
-    if (!m_bigForceLabels.contains(labelName)) {
-        return;
-    }
-
-    // 存储当前原始值
-    m_bigForceCurrentValues[labelName] = value;
-
-    QLabel* label = m_bigForceLabels[labelName];
-    if (!label) {
-        return;
-    }
-
-    // 根据去皮标志计算显示值
-    float displayValue = value;
-    QString prefix = "原始值";
-
-    if (m_isForcePeeled && m_bigForceOffsets.contains(labelName)) {
-        float offset = m_bigForceOffsets[labelName];
-        displayValue = value - offset;  // 显示值 = 当前值 - 基准值
-        prefix = "去皮值";
-
-        // 调试输出
-        static QMap<QString, int> debugCounters;
-        int count = debugCounters.value(labelName, 0);
-        if (count++ % 10 == 0) {  // 每10次输出一次，避免日志过多
-            qCDebug(lcMainWindow) << "大" << labelName << ": 原始=" << value
-                     << ", 基准=" << offset
-                     << ", 显示=" << displayValue;
-            debugCounters[labelName] = count;
-        }
-    }
-
-    // 格式化显示（保留2位小数），保持左对齐
-    QString displayText = QString("%1%2: %3")
-        .arg(prefix)
-        .arg(labelName)
-        .arg(displayValue, 0, 'f', 2);
-
-    label->setText(displayText);
-    label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-
-    // 根据数值大小设置颜色（可选）
-    if (m_isForcePeeled && qAbs(displayValue) > 10.0) {
-        label->setStyleSheet("color: #ff5555; font-weight: bold;");
-    } else {
-        label->setStyleSheet("color: #ffffff;");
-    }
-}
-
-void MainWindow::updateSmallForceLabel(const QString& labelName, float value)
-{
-    if (!m_smallForceLabels.contains(labelName)) {
-        return;
-    }
-
-    // 存储当前原始值
-    m_smallForceCurrentValues[labelName] = value;
-
-    QLabel* label = m_smallForceLabels[labelName];
-    if (!label) {
-        return;
-    }
-
-    // 根据去皮标志计算显示值
-    float displayValue = value;
-    QString prefix = "原始值";
-
-    if (m_isForcePeeled && m_smallForceOffsets.contains(labelName)) {
-        float offset = m_smallForceOffsets[labelName];
-        displayValue = value - offset;  // 显示值 = 当前值 - 基准值
-        prefix = "去皮值";
-
-        // 调试输出
-        static QMap<QString, int> debugCounters;
-        int count = debugCounters.value(labelName, 0);
-        if (count++ % 10 == 0) {  // 每10次输出一次，避免日志过多
-            qCDebug(lcMainWindow) << "小" << labelName << ": 原始=" << value
-                     << ", 基准=" << offset
-                     << ", 显示=" << displayValue;
-            debugCounters[labelName] = count;
-        }
-    }
-
-    // 格式化显示（保留2位小数），保持左对齐
-    QString displayText = QString("%1%2: %3")
-        .arg(prefix)
-        .arg(labelName)
-        .arg(displayValue, 0, 'f', 2);
-
-    label->setText(displayText);
-    label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-
-    // 根据数值大小设置颜色（可选）
-    if (m_isForcePeeled && qAbs(displayValue) > 5.0) {
-        label->setStyleSheet("color: #ff5555; font-weight: bold;");
-    } else {
-        label->setStyleSheet("color: #ffffff;");
-    }
-}
-
-void MainWindow::setupForceDisplayModeButtons()
-{
-    if (!isBigFeatureEnabled("force_sensor")) {
-        return;
-    }
-
-    m_btnBigForceControl = findChild<TechPushButton*>("Btn_bigForceControl");
-    m_btnSmallForceControl = findChild<TechPushButton*>("Btn_smallForceControl");
-
-    if (!m_btnBigForceControl || !m_btnSmallForceControl) {
-        qWarning() << "未找到Btn_bigForceControl或Btn_smallForceControl按钮";
-        return;
-    }
-
-    m_btnBigForceControl->enableClickAnimation(true);
-    m_btnSmallForceControl->enableClickAnimation(true);
-    m_btnBigForceControl->enableHoverAnimation(true);
-    m_btnSmallForceControl->enableHoverAnimation(true);
-    m_btnBigForceControl->setTextGlow(true);
-    m_btnSmallForceControl->setTextGlow(true);
-
-    m_btnBigForceControl->setButtonStyle(TechPushButton::StyleHolographic);
-    m_btnSmallForceControl->setButtonStyle(TechPushButton::StyleHolographic);
-
-    connect(m_btnBigForceControl, &TechPushButton::clicked, this, [this]() {
-        setForceDisplayMode(ForceDisplayBig);
-    });
-    connect(m_btnSmallForceControl, &TechPushButton::clicked, this, [this]() {
-        setForceDisplayMode(ForceDisplaySmall);
-    });
-
-    setForceDisplayMode(m_forceDisplayMode);
-    qCDebug(lcMainWindow) << "大/小六维力模式按钮初始化完成";
-}
-
-void MainWindow::setForceDisplayMode(ForceDisplayMode mode)
-{
-    if (!m_btnBigForceControl || !m_btnSmallForceControl) {
-        return;
-    }
-
-    m_forceDisplayMode = mode;
-
-    const QColor activeColor(0, 200, 255);
-    const QColor inactiveColor(80, 80, 100);
-    const QColor inactiveTextColor(200, 200, 200);
-
-    // 发送Modbus指令 (新增)
-    if (mode == ForceDisplayBig) {
-        writeToMainDevice(404, 0); // 大力模式：写0
-        qCDebug(lcMainWindow) << "切换至大力传感器模式，地址404写入0";
-    } else {
-        writeToMainDevice(404, 1); // 小力模式：写1
-        qCDebug(lcMainWindow) << "切换至小力传感器模式，地址404写入1";
-    }
-
-    // 先全部设为非激活
-    m_btnBigForceControl->setPrimaryColor(inactiveColor);
-    m_btnBigForceControl->setGlowColor(inactiveColor);
-    m_btnBigForceControl->setTextColor(inactiveTextColor);
-    m_btnBigForceControl->enablePulseEffect(false);
-
-    m_btnSmallForceControl->setPrimaryColor(inactiveColor);
-    m_btnSmallForceControl->setGlowColor(inactiveColor);
-    m_btnSmallForceControl->setTextColor(inactiveTextColor);
-    m_btnSmallForceControl->enablePulseEffect(false);
-
-    // 激活当前模式
-    if (mode == ForceDisplayBig) {
-        m_btnBigForceControl->setPrimaryColor(activeColor);
-        m_btnBigForceControl->setGlowColor(activeColor.lighter(150));
-        m_btnBigForceControl->setTextColor(Qt::white);
-        // m_btnBigForceControl->enablePulseEffect(true);
-    } else {
-        m_btnSmallForceControl->setPrimaryColor(activeColor);
-        m_btnSmallForceControl->setGlowColor(activeColor.lighter(150));
-        m_btnSmallForceControl->setTextColor(Qt::white);
-        // m_btnSmallForceControl->enablePulseEffect(true);
-    }
-
-    m_btnBigForceControl->update();
-    m_btnSmallForceControl->update();
-}
-
-void MainWindow::setupForceClearButton()
-{
-    if (!isFeatureEnabled("force_sensor", "force.clear_zero")) {
-        return;
-    }
-
-    m_btnForceClear = findChild<QPushButton*>("btn_ForceClear");
-    if (m_btnForceClear) {
-        // 连接按下和释放信号
-        connect(m_btnForceClear, &QPushButton::pressed, this, &MainWindow::onForceClearPressed);
-        connect(m_btnForceClear, &QPushButton::released, this, &MainWindow::onForceClearReleased);
-
-        // 设置简化按钮样式
-        m_btnForceClear->setStyleSheet(
-            "QPushButton {"
-            "    padding: 10px;"
-            "    font-size: 14px;"
-            "}"
-            );
-
-        qCDebug(lcMainWindow) << "去皮按钮初始化完成";
-    } else {
-        qWarning() << "未找到btn_ForceClear按钮";
-    }
-}
-
-void MainWindow::onForceClearPressed()
-{
-    qCDebug(lcMainWindow) << "去皮按钮按下";
-
-    // 获取当前页面名称（用于操作记录）
-    QString pageName = getCurrentPageName();
-
-    // 记录去皮前的值（用于操作记录）
-    QMap<QString, float> beforeValues;
-
-    // 1. 只记录大六维力的当前值作为基准值
-    qCDebug(lcMainWindow) << "=== 记录大六维力基准值 ===";
-    for (auto it = m_bigForceCurrentValues.begin(); it != m_bigForceCurrentValues.end(); ++it) {
-        QString labelName = it.key();
-        float currentValue = it.value();
-
-        beforeValues[QString("大%1").arg(labelName)] = currentValue;
-        m_bigForceOffsets[labelName] = currentValue;
-
-        qCDebug(lcMainWindow) << "大六维力 " << labelName << " 基准值: " << currentValue;
-    }
-
-    // 2. 只记录小六维力的当前值作为基准值
-    qCDebug(lcMainWindow) << "=== 记录小六维力基准值 ===";
-    for (auto it = m_smallForceCurrentValues.begin(); it != m_smallForceCurrentValues.end(); ++it) {
-        QString labelName = it.key();
-        float currentValue = it.value();
-
-        beforeValues[QString("小%1").arg(labelName)] = currentValue;
-        m_smallForceOffsets[labelName] = currentValue;
-
-        qCDebug(lcMainWindow) << "小六维力 " << labelName << " 基准值: " << currentValue;
-    }
-
-    // 3. 设置去皮标志（注意：不在按钮按下时立即更新显示）
-    m_isForcePeeled = true;
-
-    // 4. 给192.168.1.13设备的401地址写1
-    writeToMainDevice(401, 1);
-
-    // 5. 记录操作到历史记录
-    OperationRecord record;
-    record.timestamp = QDateTime::currentDateTime();
-    record.pageName = pageName;
-    record.controlName = "去皮按钮";
-    record.controlType = "ForceClear";
-    record.operation = "force_clear_pressed";
-    record.oldValue = "未去皮";
-
-    // 构建详细的值字符串
-    QString valuesStr = "大六维力基准值: ";
-    for (auto it = beforeValues.begin(); it != beforeValues.end(); ++it) {
-        if (it.key().startsWith("大")) {
-            valuesStr += QString("%1=%2; ").arg(it.key()).arg(it.value(), 0, 'f', 2);
-        }
-    }
-    valuesStr += "小六维力基准值: ";
-    for (auto it = beforeValues.begin(); it != beforeValues.end(); ++it) {
-        if (it.key().startsWith("小")) {
-            valuesStr += QString("%1=%2; ").arg(it.key()).arg(it.value(), 0, 'f', 2);
-        }
-    }
-
-    record.newValue = valuesStr;
-    m_recorder->addRecord(record);
-
-    // 6. 显示通知（但不要立即更新标签显示）
-    showNotification("已记录当前值为基准值，后续显示将自动减去基准值");
-
-    qCDebug(lcMainWindow) << "去皮操作完成：已记录基准值，去皮标志设为true";
-}
-void MainWindow::onForceClearReleased()
-{
-    qCDebug(lcMainWindow) << "去皮按钮释放";
-
-    // 给192.168.1.13设备的401地址写0
-    writeToMainDevice(401, 0);
-
-    // 注意：我们不在这里清除去皮标志，因为去皮状态应该保持
-    // 如果需要取消去皮，可以添加专门的取消去皮功能
-}
 
 void MainWindow::toggleForceControl()
 {
@@ -7713,7 +6983,7 @@ void MainWindow::toggleForceControl()
 
         if (m_forcecontrolMode) {
             // 力控开启
-            m_btnForceControl->setText(m_isForcePeeled ? "力控开启(去皮)" : "力控开启");
+            m_btnForceControl->setText("力控开启");
             m_btnForceControl->setPrimaryColor(QColor("#00C8FF"));
             m_btnForceControl->setGlowColor(QColor(0, 200, 255, 180));
             writeToMainDevice(400, 1);
@@ -7721,7 +6991,7 @@ void MainWindow::toggleForceControl()
             ui->statusBar->showMessage("力控开启模式已启用", 2000);
         } else {
             // 力控关闭
-            m_btnForceControl->setText(m_isForcePeeled ? "力控关闭(去皮)" : "力控关闭");
+            m_btnForceControl->setText("力控关闭");
             m_btnForceControl->setPrimaryColor(QColor("#7F8C8D"));
             m_btnForceControl->setGlowColor(QColor(127, 140, 141, 100));
             writeToMainDevice(400, 0);
@@ -8620,11 +7890,6 @@ void MainWindow::on_TBtn_RemoveWarning_clicked()
         qCDebug(lcMainWindow) << "用户清除了紧急停止报警";
     }
 
-    if (m_forceLimitAlarm) {
-        m_forceLimitAlarm = false;
-        qCDebug(lcMainWindow) << "用户清除了力控超限报警";
-    }
-
     // 更新报警显示
     updateAlarmDisplay();
 
@@ -8654,7 +7919,6 @@ void MainWindow::setupAlarmSystem()
 
     // 初始化报警状态
     m_emergencyStopAlarm = false;
-    m_forceLimitAlarm = false;
     m_emergencyStopColumnFlag = false;
     m_emergencyStopChassisFlag = false;
     m_robotArmEmergency150Flag = false;
@@ -8665,7 +7929,6 @@ void MainWindow::setupAlarmSystem()
     m_agvBatteryLowAcked = false;
     m_mainRegister150Valid = false;
     m_mainRegister150Shadow = 0;
-    m_forceLimitFlag = false;
 
     // 创建报警检测定时器
     if (!m_alarmCheckTimer) {
@@ -9215,26 +8478,20 @@ void MainWindow::onTestAlarmButtonClicked()
 
     // 等待3秒
     QTimer::singleShot(3000, this, [this]() {
-        qCDebug(lcMainWindow) << "测试2：测试力控超限报警...";
-        showAlarm("手动测试报警 - 力控超限", "#ff8800");
+        qCDebug(lcMainWindow) << "测试2：再次测试急停报警...";
+        showAlarm("手动测试报警 - 急停复测", "#ff8800");
     });
 
     // 等待6秒，测试报警条件检查
     QTimer::singleShot(6000, this, [this]() {
         qCDebug(lcMainWindow) << "测试3：通过设置标志位触发报警检查...";
 
-        // 设置报警标志
         m_emergencyStopColumnFlag = true;
         m_emergencyStopChassisFlag = true;
-        m_forceLimitFlag = true;
-        m_forcecontrolMode = true;  // 模拟力控开启
 
         qCDebug(lcMainWindow) << "立柱急停标志:" << m_emergencyStopColumnFlag;
         qCDebug(lcMainWindow) << "底盘急停标志:" << m_emergencyStopChassisFlag;
-        qCDebug(lcMainWindow) << "力控超限标志:" << m_forceLimitFlag;
-        qCDebug(lcMainWindow) << "力控模式:" << m_forcecontrolMode;
 
-        // 手动触发报警检查
         checkAlarmConditions();
     });
 
@@ -9242,12 +8499,9 @@ void MainWindow::onTestAlarmButtonClicked()
     QTimer::singleShot(9000, this, [this]() {
         qCDebug(lcMainWindow) << "测试4：清除报警...";
 
-        // 清除报警标志
         m_emergencyStopColumnFlag = false;
         m_emergencyStopChassisFlag = false;
-        m_forceLimitFlag = false;
 
-        // 触发报警检查
         checkAlarmConditions();
 
         qCDebug(lcMainWindow) << "=== 报警系统测试完成 ===";

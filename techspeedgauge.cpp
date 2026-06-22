@@ -20,9 +20,9 @@ TechSpeedGauge::TechSpeedGauge(QWidget *parent)
     m_unit("km/h"),
     m_title("当前速度"),
     m_precision(1),
-    m_primaryColor(QColor(0, 200, 255)),      // 科技蓝
-    m_secondaryColor(QColor(138, 43, 226)),   // 蓝紫色
-    m_glowColor(QColor(0, 255, 255, 100)),
+    m_primaryColor(QColor(0, 168, 220)),
+    m_secondaryColor(QColor(168, 234, 255)),
+    m_glowColor(QColor(111, 231, 255, 100)),
     m_glowEnabled(true),
     m_scanLineEnabled(false),  // 关键优化：默认禁用扫描线（减少每秒15次的全屏重绘）
     m_pulseEffectEnabled(false),
@@ -113,9 +113,9 @@ void TechSpeedGauge::setGaugeStyle(GaugeStyle style)
         // 根据样式设置默认颜色
         switch (style) {
         case StyleCyberFuturistic:
-            m_primaryColor = QColor(0, 200, 255);   // 科技蓝
-            m_secondaryColor = QColor(138, 43, 226); // 蓝紫
-            m_glowColor = QColor(0, 255, 255, 100);
+            m_primaryColor = QColor(0, 168, 220);
+            m_secondaryColor = QColor(168, 234, 255);
+            m_glowColor = QColor(111, 231, 255, 100);
             break;
         case StyleEnergyArc:
             m_primaryColor = QColor(255, 100, 0);   // 橙红

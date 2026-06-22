@@ -110,7 +110,6 @@ void MappingConfig::initDefaultMappings()
     m_operationMap["client_connected"] = "客户端连接";
     m_operationMap["error"] = "错误";
     m_operationMap["force_control_toggled"] = "力控切换";
-    m_operationMap["force_clear_pressed"] = "传感器清零";
     m_operationMap["mode_switch"] = "模式切换";
     m_operationMap["step_mode_changed"] = "步进模式变更";
     m_operationMap["step_move_start"] = "开始步进移动";

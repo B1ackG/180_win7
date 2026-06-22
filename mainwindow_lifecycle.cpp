@@ -24,10 +24,8 @@ MainWindow::MainWindow(QWidget *parent)
     , m_alarmLabel(nullptr)
     , m_alarmCheckTimer(nullptr)
     , m_emergencyStopAlarm(false)
-    , m_forceLimitAlarm(false)
     , m_emergencyStopColumnFlag(false)
     , m_emergencyStopChassisFlag(false)
-    , m_forceLimitFlag(false)
     , m_modbusManager(nullptr)
     , m_modbusVariables(new ModbusVariables(this))
     , m_modbusPollTimer(new QTimer(this))
@@ -38,7 +36,6 @@ MainWindow::MainWindow(QWidget *parent)
     , m_agvModbusManager(nullptr)
     , m_agvFaultListWidget(nullptr)
     , m_agvFaultsLabel(nullptr)
-    , m_forceReadTimer(nullptr)
     , m_recorder(new OperationRecorder(this))
     , m_mappingConfig(new MappingConfig(this))
     , m_tcpTransmissionEnabled(false)
@@ -54,7 +51,6 @@ MainWindow::MainWindow(QWidget *parent)
     , m_threadStatusLabel(nullptr)
     , m_threadMonitorTimer(nullptr)
     , m_techButtons()
-    , m_btnForceClear(nullptr)
 {
     ui->setupUi(this);
     loadBackgroundImage();
@@ -156,20 +152,6 @@ MainWindow::~MainWindow()
     if (m_recorder) {
         m_recorder->enableTcpTransmission(false);
     }
-
-    if (m_forceReadTimer) {
-        m_forceReadTimer->stop();
-        delete m_forceReadTimer;
-        m_forceReadTimer = nullptr;
-        qDebug() << "六维力读取定时器已清理";
-    }
-
-    m_bigForceOffsets.clear();
-    m_smallForceOffsets.clear();
-    m_bigForceCurrentValues.clear();
-    m_smallForceCurrentValues.clear();
-    m_bigForceLabels.clear();
-    m_smallForceLabels.clear();
 
     if (m_alarmCheckTimer) {
         m_alarmCheckTimer->stop();

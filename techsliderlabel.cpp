@@ -13,9 +13,9 @@ TechSliderLabel::TechSliderLabel(QWidget *parent)
     , m_precision(0)
     , m_suffix("")
     , m_modbusAddress(-1)
-    , m_primaryColor(QColor(0, 200, 255))
-    , m_secondaryColor(QColor(0, 200, 255))
-    , m_glowColor(QColor(0, 255, 255, 180))
+    , m_primaryColor(QColor(0, 168, 220))
+    , m_secondaryColor(QColor(168, 234, 255))
+    , m_glowColor(QColor(111, 231, 255, 170))
     , m_glowEnabled(true)
     , m_scanLineEnabled(false)
     , m_pulseEnabled(false)
@@ -446,10 +446,9 @@ void TechSliderLabel::enablePulseEffect(bool enable)
 
 void TechSliderLabel::setTechBlueStyle()
 {
-    // 设置科技蓝样式
-    setPrimaryColor(QColor(0, 200, 255));
-    setSecondaryColor(QColor(0, 200, 255));
-    setGlowColor(QColor(0, 255, 255, 180));
+    setPrimaryColor(QColor(0, 168, 220));
+    setSecondaryColor(QColor(168, 234, 255));
+    setGlowColor(QColor(111, 231, 255, 170));
 }
 
 void TechSliderLabel::updateAnimation()

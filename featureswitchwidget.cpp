@@ -28,14 +28,16 @@ FeatureSwitchWidget::FeatureSwitchWidget(QWidget *parent) : QWidget(parent)
     
     // 设置深色调工业风格样式
     setStyleSheet(
-        "QWidget { background-color: #1a1a2a; color: #00ffff; font-family: 'Microsoft YaHei UI'; }"
-        "QGroupBox { border: 2px solid #00c8ff; border-radius: 10px; margin-top: 15px; font-weight: bold; padding: 10px; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 15px; padding: 0 5px; }"
-        "QCheckBox { spacing: 10px; padding: 5px; }"
-        "QCheckBox::indicator { width: 24px; height: 24px; border: 2px solid #00c8ff; border-radius: 4px; }"
-        "QCheckBox::indicator:checked { background-color: #00c8ff; }"
-        "QPushButton { background-color: #004466; border: 1px solid #00c8ff; border-radius: 5px; padding: 8px 20px; color: white; }"
-        "QPushButton:hover { background-color: #006699; }"
+        "QWidget { background-color: #071321; color: #d8f6ff; font-family: 'Microsoft YaHei UI'; }"
+        "QGroupBox { background: rgba(5, 20, 38, 0.86); border: 1px solid rgba(74, 190, 238, 0.42); border-radius: 12px; margin-top: 16px; font-weight: bold; padding: 12px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 15px; padding: 2px 8px; color: #a8eaff; background: #071321; border-radius: 5px; }"
+        "QCheckBox { spacing: 10px; padding: 5px; color: #d8f6ff; }"
+        "QCheckBox::indicator { width: 22px; height: 22px; border: 1px solid rgba(74, 190, 238, 0.70); border-radius: 5px; background: rgba(3, 15, 28, 0.92); }"
+        "QCheckBox::indicator:checked { background-color: #00a8dc; border: 1px solid #9ff4ff; }"
+        "QPushButton { background: rgba(14, 58, 90, 0.88); border: 1px solid rgba(74, 190, 238, 0.52); border-radius: 8px; padding: 8px 20px; color: #eaf9ff; font-weight: bold; }"
+        "QPushButton:hover { background: rgba(25, 92, 132, 0.94); border: 1px solid #6fe7ff; }"
+        "QLineEdit { background: rgba(3, 15, 28, 0.90); color: #f0fbff; border: 1px solid rgba(74, 190, 238, 0.52); border-radius: 6px; padding: 4px 6px; }"
+        "QLineEdit:focus { border: 1px solid #9ff4ff; }"
         "QScrollArea { border: none; background-color: transparent; }"
     );
     
@@ -59,7 +61,7 @@ void FeatureSwitchWidget::setupUI()
 {
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     
-    QLabel *title = new QLabel("<h1 style='color: #00ffff;'>系统功能控制台</h1>");
+    QLabel *title = new QLabel("<h1 style='color: #eaf9ff;'>系统功能控制台</h1>");
     title->setAlignment(Qt::AlignCenter);
     mainLayout->addWidget(title);
 
@@ -84,7 +86,6 @@ void FeatureSwitchWidget::setupUI()
     desc["modbus_agv"] = "AGV Modbus";
     desc["motion_control"] = "运动控制";
     desc["input_devices"] = "输入设备";
-    desc["force_sensor"] = "力传感";
     desc["alarm_system"] = "报警系统";
 
     QStringList bigKeys = mgr->allBigFeatures().values();
@@ -133,11 +134,7 @@ void FeatureSwitchWidget::setupUI()
     sdesc["motion.force_control"] = "力控参与运动";
     sdesc["input.matrix_key"] = "矩阵按键";
     sdesc["input.enable_button"] = "使能按钮";
-    sdesc["force.big_sensor"] = "大力传感器";
-    sdesc["force.small_sensor"] = "小力传感器";
-    sdesc["force.clear_zero"] = "力传感器清零";
     sdesc["alarm.emergency_stop"] = "急停报警";
-    sdesc["alarm.force_limit"] = "力控超限报警";
     sdesc["alarm.steering_switch"] = "转向模式切换报警";
     sdesc["alarm.popup"] = "报警弹窗显示";
     sdesc["alarm.status_logs"] = "报警状态周期日志";
@@ -217,15 +214,15 @@ void FeatureSwitchWidget::setupUI()
     connect(btnReload, &QPushButton::clicked, this, &FeatureSwitchWidget::onReload);
 
     QPushButton *btnApply = new QPushButton("立即生效");
-    btnApply->setStyleSheet("background-color: #2196F3; font-weight: bold; border-color: #ffffff;");
+    btnApply->setStyleSheet("background: rgba(0, 126, 186, 0.94); font-weight: bold; border-color: #9ff4ff;");
     connect(btnApply, &QPushButton::clicked, this, &FeatureSwitchWidget::onApply);
 
     QPushButton *btnSave = new QPushButton("保存并写入INI");
-    btnSave->setStyleSheet("background-color: #4CAF50; font-weight: bold; border-color: #ffffff;");
+    btnSave->setStyleSheet("background: rgba(18, 128, 92, 0.92); font-weight: bold; border-color: #9dffd3;");
     connect(btnSave, &QPushButton::clicked, this, &FeatureSwitchWidget::onSave);
 
     QPushButton *btnClose = new QPushButton("退出");
-    btnClose->setStyleSheet("background-color: #f44336; font-weight: bold; border-color: #ffffff;");
+    btnClose->setStyleSheet("background: rgba(150, 42, 42, 0.94); font-weight: bold; border-color: #ff9a9a;");
     connect(btnClose, &QPushButton::clicked, this, &QWidget::close);
 
     btnLayout->addWidget(btnAll);
@@ -264,7 +261,7 @@ void FeatureSwitchWidget::setupPollingUI(QVBoxLayout *scrollLayout)
         h->addWidget(new QLabel(label));
         edit = new QLineEdit();
         edit->setFixedWidth(150);
-        edit->setStyleSheet("background-color: #002233; color: #ffffff; border: 1px solid #00c8ff; border-radius: 3px; padding: 3px;");
+        edit->setStyleSheet("background: rgba(3, 15, 28, 0.90); color: #f0fbff; border: 1px solid rgba(74, 190, 238, 0.52); border-radius: 6px; padding: 4px 6px;");
         edit->installEventFilter(this);
         h->addWidget(edit);
         h->addStretch();
@@ -325,13 +322,13 @@ void FeatureSwitchWidget::setupSliderLimitUI(QVBoxLayout *scrollLayout)
         QLineEdit *minEdit = new QLineEdit();
         minEdit->setPlaceholderText("最小值");
         minEdit->setFixedWidth(80);
-        minEdit->setStyleSheet("background-color: #002233; color: #ffffff; border: 1px solid #00c8ff; border-radius: 3px;");
+        minEdit->setStyleSheet("background: rgba(3, 15, 28, 0.90); color: #f0fbff; border: 1px solid rgba(74, 190, 238, 0.52); border-radius: 6px; padding: 3px 5px;");
         minEdit->installEventFilter(this);
 
         QLineEdit *maxEdit = new QLineEdit();
         maxEdit->setPlaceholderText("最大值");
         maxEdit->setFixedWidth(80);
-        maxEdit->setStyleSheet("background-color: #002233; color: #ffffff; border: 1px solid #00c8ff; border-radius: 3px;");
+        maxEdit->setStyleSheet("background: rgba(3, 15, 28, 0.90); color: #f0fbff; border: 1px solid rgba(74, 190, 238, 0.52); border-radius: 6px; padding: 3px 5px;");
         maxEdit->installEventFilter(this);
 
         row->addWidget(new QLabel("Min:"));

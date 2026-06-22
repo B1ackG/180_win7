@@ -14,9 +14,9 @@ TechSliderEdit::TechSliderEdit(QWidget *parent)
     , m_suffix("")
     , m_modbusAddress(-1)      // 默认无Modbus地址
     , m_sliderPressed(false)
-    , m_primaryColor(QColor(0, 200, 255))      // 科技蓝
-    , m_secondaryColor(QColor(0, 200, 255))   // 紫色
-    , m_glowColor(QColor(0, 255, 255, 180))    // 青色辉光
+    , m_primaryColor(QColor(0, 168, 220))
+    , m_secondaryColor(QColor(168, 234, 255))
+    , m_glowColor(QColor(111, 231, 255, 170))
     , m_glowEnabled(true)
     , m_scanLineEnabled(false)
     , m_pulseEnabled(false)
@@ -637,7 +637,10 @@ void TechSliderEdit::enablePulseEffect(bool enable)
 }
 void TechSliderEdit::setTechBlueStyle()
 {
-
+    m_primaryColor = QColor(0, 168, 220);
+    m_secondaryColor = QColor(168, 234, 255);
+    m_glowColor = QColor(111, 231, 255, 170);
+    applyTechStyle();
 }
 void TechSliderEdit::updateAnimation()
 {
@@ -712,23 +715,24 @@ void TechSliderEdit::setupPresetButtons()
 {
     QString btnStyle = QString(
         "QPushButton {"
-        "    background-color: rgba(30, 30, 60, 200);"
+        "    background-color: rgba(10, 38, 66, 210);"
         "    border: 1px solid %1;"
-        "    border-radius: 4px;"
+        "    border-radius: 7px;"
         "    color: %2;"
         "    font-family: 'Segoe UI', 'Microsoft YaHei';"
         "    font-size: 12px;"
         "    font-weight: bold;"
         "    min-height: 25px;"
+        "    padding: 2px 8px;"
         "}"
         "QPushButton:hover {"
-        "    background-color: rgba(40, 40, 80, 220);"
+        "    background-color: rgba(24, 82, 122, 230);"
         "    border: 1px solid %3;"
         "    color: white;"
         "}"
         "QPushButton:pressed {"
-        "    background-color: rgba(20, 20, 40, 240);"
-        "    border: 2px solid %3;"
+        "    background-color: rgba(0, 126, 186, 235);"
+        "    border: 1px solid %3;"
         "    padding-top: 2px;"
         "    padding-left: 2px;"
         "}"

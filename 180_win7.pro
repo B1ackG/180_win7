@@ -12,6 +12,7 @@ SOURCES += \
     enablebuttonworker.cpp \
     featureswitchmanager.cpp \
     featureswitchwidget.cpp \
+    inclinometercard.cpp \
     main.cpp \
     maindevicemodbusapi.cpp \
     mainmodbusconnector.cpp \
@@ -48,6 +49,7 @@ HEADERS += \
     enablebuttonworker.h \
     featureswitchmanager.h \
     featureswitchwidget.h \
+    inclinometercard.h \
     maindevicemodbusapi.h \
     mainmodbusconnector.h \
     matrixkeymonitor.h \

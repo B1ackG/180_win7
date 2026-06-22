@@ -18,9 +18,9 @@
 TechPushButton::TechPushButton(QWidget *parent) : QPushButton(parent),
     m_style(StyleDefault),
     m_state(StateNormal),
-    m_primaryColor(52, 152, 219),     // 科技蓝
-    m_secondaryColor(155, 89, 182),   // 紫色
-    m_glowColor(0, 255, 255, 100),    // 青色
+    m_primaryColor(0, 168, 220),
+    m_secondaryColor(168, 234, 255),
+    m_glowColor(111, 231, 255, 110),
     m_textColor(Qt::white),
     m_borderWidth(2),
     m_cornerRadius(8),
@@ -154,9 +154,9 @@ void TechPushButton::setButtonStyle(ButtonStyle style)
         // 根据样式设置默认颜色
         switch (style) {
         case StyleDefault:
-            m_primaryColor = QColor(52, 152, 219);  // 科技蓝
-            m_secondaryColor = QColor(155, 89, 182);
-            m_glowColor = QColor(0, 255, 255, 100);
+            m_primaryColor = QColor(0, 168, 220);
+            m_secondaryColor = QColor(168, 234, 255);
+            m_glowColor = QColor(111, 231, 255, 110);
             break;
         case StyleHolographic:
             m_primaryColor = QColor(0, 204, 255, 150);  // 青色半透明
@@ -640,38 +640,30 @@ void TechPushButton::drawBaseButton(QPainter &painter, const QRect &rect)
 // 绘制全息按钮
 void TechPushButton::drawHolographicButton(QPainter &painter, const QRect &rect)
 {
-    // 半透明背景
-    QColor bgColor = m_primaryColor;
-    bgColor.setAlpha(100);
-
     QPainterPath path;
     path.addRoundedRect(rect, m_cornerRadius, m_cornerRadius);
 
-    // 多层半透明效果
-    for (int i = 0; i < 3; i++) {
-        int offset = i * 2;
-        qreal alpha = 0.3 - i * 0.1;
+    QColor topColor = m_primaryColor;
+    topColor.setAlpha(150);
+    QColor bottomColor = m_primaryColor.darker(150);
+    bottomColor.setAlpha(120);
+    QLinearGradient panelGradient(rect.topLeft(), rect.bottomLeft());
+    panelGradient.setColorAt(0.0, topColor);
+    panelGradient.setColorAt(1.0, bottomColor);
+    painter.fillPath(path, panelGradient);
 
-        QPainterPath layerPath;
-        layerPath.addRoundedRect(rect.adjusted(offset, offset, -offset, -offset),
-                                 m_cornerRadius, m_cornerRadius);
-
-        QColor layerColor = m_primaryColor;
-        layerColor.setAlphaF(alpha);
-
-        painter.fillPath(layerPath, layerColor);
-    }
-
-    // 边框
-    QPen borderPen(m_glowColor, m_borderWidth);
-    borderPen.setStyle(Qt::DotLine);
+    QPen borderPen(m_glowColor, qMax(1, m_borderWidth));
     painter.setPen(borderPen);
     painter.setBrush(Qt::NoBrush);
     painter.drawPath(path);
 
-    // 内部发光
+    QPen topPen(QColor(255, 255, 255, 54), 1);
+    painter.setPen(topPen);
+    painter.drawLine(rect.topLeft() + QPoint(m_cornerRadius, 1),
+                     rect.topRight() + QPoint(-m_cornerRadius, 1));
+
     QRadialGradient innerGlow(rect.center(), qMax(rect.width(), rect.height()) / 2);
-    innerGlow.setColorAt(0, QColor(255, 255, 255, 50));
+    innerGlow.setColorAt(0, QColor(111, 231, 255, 40));
     innerGlow.setColorAt(1, QColor(255, 255, 255, 0));
 
     painter.setBrush(QBrush(innerGlow));

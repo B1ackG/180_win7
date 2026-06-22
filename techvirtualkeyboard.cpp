@@ -11,9 +11,9 @@ TechVirtualKeyboard::TechVirtualKeyboard(QWidget *parent)
     : QWidget{parent}
     , m_targetLineEdit(nullptr)
     , m_inputPreview(nullptr)
-    , m_primaryColor(QColor(0, 200, 255))      // 科技蓝
+    , m_primaryColor(QColor(0, 168, 220))
     , m_secondaryColor(QColor(138, 43, 226))   // 紫色
-    , m_glowColor(QColor(0, 255, 255, 150))    // 青色辉光
+    , m_glowColor(QColor(111, 231, 255, 130))
     , m_glowEnabled(true)
     , m_glowIntensity(0.3)
     , m_glowDirection(true)
@@ -146,7 +146,7 @@ void TechVirtualKeyboard::applyTechStyle()
     // 修改为更柔和的深色调，符合现代上位机UI
     m_primaryColor = QColor(41, 128, 185);    // 优雅蓝
     m_secondaryColor = QColor(52, 152, 219);  // 明亮蓝
-    m_glowColor = QColor(0, 255, 255, 80);    // 降低辉光强度
+    m_glowColor = QColor(111, 231, 255, 80);
 
     // 设置窗口样式
     QString windowStyle = QString(

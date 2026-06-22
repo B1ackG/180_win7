@@ -5,8 +5,8 @@ SteeringModeSelector::SteeringModeSelector(QWidget *parent)
     : QWidget(parent)
     , m_currentMode(STEER_FRONT_BACK)  // 默认前后轮转向
     , m_buttonStyle(TechPushButton::StyleHolographic)
-    , m_activeColor(0, 200, 255)       // 激活状态颜色（科技蓝）
-    , m_inactiveColor(80, 80, 100)     // 非激活状态颜色（灰色）
+    , m_activeColor(0, 168, 220)
+    , m_inactiveColor(42, 68, 86)
     , m_textColor(Qt::white)
 {
     // 设置默认样式

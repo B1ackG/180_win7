@@ -11,8 +11,8 @@ SpeedModeSelector::SpeedModeSelector(QWidget *parent)
     : QWidget(parent)
     , m_currentMode(MODE_MEDIUM)
     , m_buttonStyle(TechPushButton::StyleDefault)
-    , m_activeColor(0, 150, 255)      // 激活状态颜色（蓝色）
-    , m_inactiveColor(100, 100, 100)  // 非激活状态颜色（灰色）
+    , m_activeColor(0, 168, 220)
+    , m_inactiveColor(42, 68, 86)
     , m_textColor(Qt::white)
     , m_glowAnimation(nullptr)
 {

@@ -72,34 +72,37 @@ void RobotTotalPowerCard::paintEvent(QPaintEvent *event)
         return;
     }
 
-    painter.setPen(QPen(QColor("#4FAFE8"), 1));
-    painter.setBrush(QColor("#1A5FB4"));
+    QLinearGradient panelGradient(r.topLeft(), r.bottomLeft());
+    panelGradient.setColorAt(0.0, QColor(8, 34, 58, 226));
+    panelGradient.setColorAt(1.0, QColor(4, 18, 34, 218));
+    painter.setPen(QPen(QColor(74, 190, 238, 132), 1));
+    painter.setBrush(panelGradient);
     painter.drawRoundedRect(r, 18, 18);
 
     const QRectF inner = r.adjusted(2, 2, -2, -2);
-    painter.setPen(QPen(QColor("#2A9FE7AA"), 1));
+    painter.setPen(QPen(QColor(122, 224, 255, 74), 1));
     painter.setBrush(Qt::NoBrush);
     painter.drawRoundedRect(inner, 16, 16);
 
-    painter.setPen(QPen(QColor("#67C5F6"), 1));
+    painter.setPen(QPen(QColor(111, 231, 255, 120), 1));
     painter.setOpacity(0.45);
     painter.drawLine(QPointF(r.left() + 10, r.top() + 10), QPointF(r.right() - 10, r.top() + 10));
     painter.setOpacity(1.0);
 
     QFont titleFont(QStringLiteral("Noto Sans CJK SC"), 13, QFont::Bold);
     painter.setFont(titleFont);
-    painter.setPen(QColor("#A6D8FF"));
+    painter.setPen(QColor("#A8EAFF"));
     painter.drawText(QRectF(r.left() + 12, r.top() + 8, 130, 24), Qt::AlignLeft | Qt::AlignVCenter, m_title);
 
     QFont valueFont(QStringLiteral("Noto Sans CJK SC"), 22, QFont::Bold);
     painter.setFont(valueFont);
-    painter.setPen(QColor("#EAF7FF"));
+    painter.setPen(QColor("#F2FBFF"));
     const QString valueText = QString::number(qRound(m_currentPower)) + " " + m_unit;
     painter.drawText(QRectF(r.right() - 180, r.top() + 6, 168, 38), Qt::AlignRight | Qt::AlignVCenter, valueText);
 
     QFont subFont(QStringLiteral("Noto Sans CJK SC"), 11, QFont::Normal);
     painter.setFont(subFont);
-    painter.setPen(QColor("#89D1FF"));
+    painter.setPen(QColor("#91DFFF"));
     painter.drawText(QRectF(r.left() + 12, r.top() + 34, 80, 18), Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("实时趋势"));
 
     const QRectF chartRect(r.left() + 12, r.top() + 54, r.width() - 24, r.height() - 64);
@@ -107,7 +110,7 @@ void RobotTotalPowerCard::paintEvent(QPaintEvent *event)
         return;
     }
 
-    QPen gridPen(QColor("#4A95C9CC"), 1, Qt::DashLine);
+    QPen gridPen(QColor(90, 154, 190, 110), 1, Qt::DashLine);
     painter.setPen(gridPen);
     for (int i = 0; i < 4; ++i) {
         const qreal y = chartRect.top() + (chartRect.height() * i / 3.0);
@@ -140,11 +143,11 @@ void RobotTotalPowerCard::paintEvent(QPaintEvent *event)
     areaPath.closeSubpath();
 
     QLinearGradient areaGrad(chartRect.topLeft(), chartRect.bottomLeft());
-    areaGrad.setColorAt(0.0, QColor("#3D8FE08A"));
-    areaGrad.setColorAt(1.0, QColor("#0A2F5C14"));
+    areaGrad.setColorAt(0.0, QColor(0, 176, 232, 104));
+    areaGrad.setColorAt(1.0, QColor(0, 92, 140, 18));
     painter.fillPath(areaPath, areaGrad);
 
-    QPen linePen(QColor("#69D0FF"), 2);
+    QPen linePen(QColor("#6FE7FF"), 2);
     linePen.setCapStyle(Qt::RoundCap);
     painter.setPen(linePen);
     for (int i = 1; i < points.size(); ++i) {
