@@ -778,6 +778,26 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
          </rect>
         </property>
        </widget>
+       <widget class="QTabWidget" name="tabWidget">
+        <property name="geometry">
+         <rect>
+          <x>130</x>
+          <y>30</y>
+          <width>120</width>
+          <height>80</height>
+         </rect>
+        </property>
+        <widget class="QWidget" name="tab">
+         <attribute name="title">
+          <string>Tab 1</string>
+         </attribute>
+        </widget>
+        <widget class="QWidget" name="tab_2">
+         <attribute name="title">
+          <string>Tab 2</string>
+         </attribute>
+        </widget>
+       </widget>
       </widget>
       <widget class="QWidget" name="page_HistoryRecord">
        <widget class="QWidget" name="quickWidget_HistoryList" native="true">
