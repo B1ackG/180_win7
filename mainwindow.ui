@@ -98,7 +98,7 @@ QGroupBox#groupBox_4::title {
   border: 1px solid rgba(255, 126, 126, 0.50);
   background: rgba(48, 13, 16, 0.96);
 }
-QGroupBox#groupBox_StepMove, QGroupBox#groupBox_SixAxies_StepMove {
+QGroupBox#groupBox_StepMove {
   border: 1px solid rgba(56, 214, 255, 0.52);
   background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                               stop:0 rgba(8, 31, 56, 0.88),
@@ -210,14 +210,12 @@ QProgressBar::chunk {
   border: 1px solid #ffd6d6;
 }
 
-#groupBox_StepMove QLabel,
-#groupBox_SixAxies_StepMove QLabel {
+#groupBox_StepMove QLabel {
   color: #dff8ff;
   font-size: 13px;
   font-weight: 600;
 }
-#groupBox_StepMove QLineEdit,
-#groupBox_SixAxies_StepMove QLineEdit {
+#groupBox_StepMove QLineEdit {
   font-family: &quot;Consolas&quot;, &quot;Microsoft YaHei UI&quot;;
   font-size: 14px;
   font-weight: 700;
@@ -242,115 +240,75 @@ QProgressBar::chunk {
       </property>
      </spacer>
     </item>
-    <item row="6" column="1" colspan="7">
-     <widget class="QGroupBox" name="groupBox">
+    <item row="6" column="2">
+     <widget class="TechChamferToolButton" name="TBtn_PageNavMenu">
       <property name="sizePolicy">
-       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-        <horstretch>5</horstretch>
-        <verstretch>1</verstretch>
+       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+        <horstretch>1</horstretch>
+        <verstretch>0</verstretch>
        </sizepolicy>
       </property>
-      <property name="title">
-       <string>页面导航</string>
+      <property name="minimumSize">
+       <size>
+        <width>194</width>
+        <height>46</height>
+       </size>
       </property>
-      <property name="alignment">
-       <set>Qt::AlignCenter</set>
+      <property name="font">
+       <font>
+        <pointsize>12</pointsize>
+        <bold>true</bold>
+       </font>
       </property>
-      <layout class="QHBoxLayout" name="horizontalLayout_2">
-       <item>
-        <widget class="QToolButton" name="TBtn_HomePage">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-           <horstretch>1</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="font">
-          <font>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>主页</string>
-         </property>
-         <property name="icon">
-          <iconset resource="res.qrc">
-           <normaloff>:/Picture/home2.png</normaloff>:/Picture/home2.png</iconset>
-         </property>
-         <property name="iconSize">
-          <size>
-           <width>22</width>
-           <height>22</height>
-          </size>
-         </property>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonTextBesideIcon</enum>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QToolButton" name="TBtn_PermissionPage">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-           <horstretch>1</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="font">
-          <font>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>权限</string>
-         </property>
-         <property name="icon">
-          <iconset resource="res.qrc">
-           <normaloff>:/Picture/permission.png</normaloff>:/Picture/permission.png</iconset>
-         </property>
-         <property name="iconSize">
-          <size>
-           <width>22</width>
-           <height>22</height>
-          </size>
-         </property>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonTextBesideIcon</enum>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QToolButton" name="TBtn_HistoryRecord">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-           <horstretch>1</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="font">
-          <font>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>历史记录</string>
-         </property>
-         <property name="icon">
-          <iconset resource="res.qrc">
-           <normaloff>:/Picture/history.png</normaloff>:/Picture/history.png</iconset>
-         </property>
-         <property name="iconSize">
-          <size>
-           <width>22</width>
-           <height>22</height>
-          </size>
-         </property>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonTextBesideIcon</enum>
-         </property>
-        </widget>
-       </item>
-      </layout>
+      <property name="text">
+       <string>系统管理</string>
+      </property>
+      <property name="iconSize">
+       <size>
+        <width>24</width>
+        <height>24</height>
+       </size>
+      </property>
+      <property name="checkable">
+       <bool>true</bool>
+      </property>
+      <property name="toolButtonStyle">
+       <enum>Qt::ToolButtonTextBesideIcon</enum>
+      </property>
+     </widget>
+    </item>
+    <item row="6" column="7">
+     <widget class="QToolButton" name="TBtn_RemoveWarning">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+        <horstretch>1</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>46</height>
+       </size>
+      </property>
+      <property name="font">
+       <font>
+        <pointsize>12</pointsize>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="text">
+       <string>清除报错</string>
+      </property>
+      <property name="iconSize">
+       <size>
+        <width>24</width>
+        <height>24</height>
+       </size>
+      </property>
+      <property name="toolButtonStyle">
+       <enum>Qt::ToolButtonTextBesideIcon</enum>
+      </property>
      </widget>
     </item>
     <item row="1" column="0">
@@ -431,7 +389,7 @@ QProgressBar::chunk {
     </string>
       </property>
       <property name="text">
-       <string>辅助装配系统10.47</string>
+       <string>辅助装配系统</string>
       </property>
      </widget>
     </item>
@@ -502,9 +460,6 @@ QProgressBar::chunk {
       </property>
      </spacer>
     </item>
-    <item row="2" column="5">
-     <widget class="DeviceCoordPanel" name="Widget_DeviceCoordPanel" native="true"/>
-    </item>
     <item row="7" column="0" colspan="9">
      <widget class="QStackedWidget" name="StackedWidget">
       <property name="enabled">
@@ -528,10 +483,31 @@ QProgressBar::chunk {
        <number>0</number>
       </property>
       <widget class="QWidget" name="page_Robot">
-       <widget class="QLabel" name="lab_Overall">
+       <widget class="TechZonePanel" name="techZone_RobotOverview" native="true">
         <property name="geometry">
          <rect>
-          <x>1020</x>
+          <x>1000</x>
+          <y>0</y>
+          <width>820</width>
+          <height>820</height>
+         </rect>
+        </property>
+        <property name="title" stdset="0">
+         <string>机器人概览</string>
+        </property>
+        <property name="backgroundImage" stdset="0">
+         <string>:/Picture/zonePanel.png</string>
+        </property>
+        <property name="chamferSize" stdset="0">
+         <number>12</number>
+        </property>
+        <property name="imageBorderMargin" stdset="0">
+         <number>50</number>
+        </property>
+        <widget class="QLabel" name="lab_Overall">
+        <property name="geometry">
+         <rect>
+          <x>20</x>
           <y>10</y>
           <width>790</width>
           <height>800</height>
@@ -556,7 +532,7 @@ QProgressBar::chunk {
        <widget class="TechSpeedGauge" name="AGV_speedGauge" native="true">
         <property name="geometry">
          <rect>
-          <x>1200</x>
+          <x>200</x>
           <y>540</y>
           <width>270</width>
           <height>251</height>
@@ -566,7 +542,7 @@ QProgressBar::chunk {
        <widget class="QWidget" name="widget_5" native="true">
         <property name="geometry">
          <rect>
-          <x>1660</x>
+          <x>660</x>
           <y>10</y>
           <width>171</width>
           <height>50</height>
@@ -602,11 +578,97 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
          </item>
         </layout>
        </widget>
+       <widget class="QWidget" name="widget_test3" native="true">
+        <property name="geometry">
+         <rect>
+          <x>360</x>
+          <y>150</y>
+          <width>193</width>
+          <height>193</height>
+         </rect>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>193</width>
+          <height>193</height>
+         </size>
+        </property>
+       </widget>
+       <widget class="QWidget" name="widget_test4" native="true">
+        <property name="geometry">
+         <rect>
+          <x>120</x>
+          <y>150</y>
+          <width>193</width>
+          <height>193</height>
+         </rect>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>193</width>
+          <height>193</height>
+         </size>
+        </property>
+       </widget>
+       <widget class="QWidget" name="widget_test2" native="true">
+        <property name="geometry">
+         <rect>
+          <x>360</x>
+          <y>370</y>
+          <width>193</width>
+          <height>193</height>
+         </rect>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>193</width>
+          <height>193</height>
+         </size>
+        </property>
+       </widget>
+       <widget class="QWidget" name="widget_test1" native="true">
+        <property name="geometry">
+         <rect>
+          <x>120</x>
+          <y>370</y>
+          <width>193</width>
+          <height>193</height>
+         </rect>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>193</width>
+          <height>193</height>
+         </size>
+        </property>
+       </widget>
+       </widget>
+       <widget class="TechZonePanel" name="techZone_RobotStatus" native="true">
+        <property name="geometry">
+         <rect>
+          <x>40</x>
+          <y>20</y>
+          <width>920</width>
+          <height>740</height>
+         </rect>
+        </property>
+        <property name="title" stdset="0">
+         <string>状态监控</string>
+        </property>
+        <property name="backgroundImage" stdset="0">
+         <string>:/Picture/zonePanel.png</string>
+        </property>
+        <property name="chamferSize" stdset="0">
+         <number>12</number>
+        </property>
+        <property name="imageBorderMargin" stdset="0">
+         <number>50</number>
+        </property>
        <widget class="QLabel" name="lab_Overall_3">
         <property name="geometry">
          <rect>
-          <x>490</x>
-          <y>20</y>
+          <x>450</x>
+          <y>0</y>
           <width>310</width>
           <height>520</height>
          </rect>
@@ -636,8 +698,8 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        <widget class="QWidget" name="widget_2" native="true">
         <property name="geometry">
          <rect>
-          <x>490</x>
-          <y>660</y>
+          <x>470</x>
+          <y>620</y>
           <width>611</width>
           <height>111</height>
          </rect>
@@ -654,75 +716,11 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
          </item>
         </layout>
        </widget>
-       <widget class="QWidget" name="widget_test3" native="true">
-        <property name="geometry">
-         <rect>
-          <x>1360</x>
-          <y>150</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>193</width>
-          <height>193</height>
-         </size>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_test4" native="true">
-        <property name="geometry">
-         <rect>
-          <x>1120</x>
-          <y>150</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>193</width>
-          <height>193</height>
-         </size>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_test2" native="true">
-        <property name="geometry">
-         <rect>
-          <x>1360</x>
-          <y>370</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>193</width>
-          <height>193</height>
-         </size>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_test1" native="true">
-        <property name="geometry">
-         <rect>
-          <x>1120</x>
-          <y>370</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>193</width>
-          <height>193</height>
-         </size>
-        </property>
-       </widget>
        <widget class="QWidget" name="widget_SixAxies_6" native="true">
         <property name="geometry">
          <rect>
-          <x>260</x>
-          <y>440</y>
+          <x>220</x>
+          <y>420</y>
           <width>193</width>
           <height>193</height>
          </rect>
@@ -731,8 +729,8 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        <widget class="QWidget" name="widget_SixAxies_4" native="true">
         <property name="geometry">
          <rect>
-          <x>260</x>
-          <y>41</y>
+          <x>220</x>
+          <y>21</y>
           <width>193</width>
           <height>193</height>
          </rect>
@@ -741,8 +739,8 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        <widget class="QWidget" name="widget_SixAxies_5" native="true">
         <property name="geometry">
          <rect>
-          <x>260</x>
-          <y>240</y>
+          <x>220</x>
+          <y>220</y>
           <width>193</width>
           <height>194</height>
          </rect>
@@ -751,8 +749,8 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        <widget class="QWidget" name="widget_SixAxies_3" native="true">
         <property name="geometry">
          <rect>
-          <x>61</x>
-          <y>440</y>
+          <x>21</x>
+          <y>420</y>
           <width>193</width>
           <height>193</height>
          </rect>
@@ -761,8 +759,8 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        <widget class="QWidget" name="widget_SixAxies_2" native="true">
         <property name="geometry">
          <rect>
-          <x>61</x>
-          <y>240</y>
+          <x>21</x>
+          <y>220</y>
           <width>193</width>
           <height>194</height>
          </rect>
@@ -771,32 +769,13 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        <widget class="QWidget" name="widget_SixAxies_1" native="true">
         <property name="geometry">
          <rect>
-          <x>61</x>
-          <y>41</y>
+          <x>21</x>
+          <y>21</y>
           <width>193</width>
           <height>193</height>
          </rect>
         </property>
        </widget>
-       <widget class="QTabWidget" name="tabWidget">
-        <property name="geometry">
-         <rect>
-          <x>130</x>
-          <y>30</y>
-          <width>120</width>
-          <height>80</height>
-         </rect>
-        </property>
-        <widget class="QWidget" name="tab">
-         <attribute name="title">
-          <string>Tab 1</string>
-         </attribute>
-        </widget>
-        <widget class="QWidget" name="tab_2">
-         <attribute name="title">
-          <string>Tab 2</string>
-         </attribute>
-        </widget>
        </widget>
       </widget>
       <widget class="QWidget" name="page_HistoryRecord">
@@ -823,258 +802,136 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
         </property>
        </widget>
       </widget>
-      <widget class="QWidget" name="page_SixAxies">
-       <widget class="QLabel" name="lab_Overall_2">
-        <property name="geometry">
-         <rect>
-          <x>51</x>
-          <y>80</y>
-          <width>241</width>
-          <height>441</height>
-         </rect>
-        </property>
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>16777215</width>
-          <height>630</height>
-         </size>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-        <property name="pixmap">
-         <pixmap resource="res.qrc">:/Picture/sixAxiesOverAll.png</pixmap>
-        </property>
-        <property name="scaledContents">
-         <bool>true</bool>
-        </property>
-       </widget>
-       <widget class="QGroupBox" name="groupBox_SixAxies_StepMove">
-        <property name="geometry">
-         <rect>
-          <x>1160</x>
-          <y>0</y>
-          <width>91</width>
-          <height>521</height>
-         </rect>
-        </property>
-        <property name="title">
-         <string>步进控制</string>
-        </property>
-        <layout class="QVBoxLayout" name="verticalLayout_SixAxies_StepMove">
-         <item>
-          <widget class="QWidget" name="widget_SixAxies_StepTargetList" native="true">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-             <horstretch>0</horstretch>
-             <verstretch>1</verstretch>
-            </sizepolicy>
-           </property>
-           <layout class="QVBoxLayout" name="verticalLayout_SixAxies_StepTargetList">
-            <property name="spacing">
-             <number>8</number>
-            </property>
-            <property name="leftMargin">
-             <number>4</number>
-            </property>
-            <property name="topMargin">
-             <number>2</number>
-            </property>
-            <property name="rightMargin">
-             <number>4</number>
-            </property>
-            <property name="bottomMargin">
-             <number>2</number>
-            </property>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetSixAxis1">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>轴1</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-              <property name="checked">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetSixAxis2">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>轴2</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetSixAxis3">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>轴3</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetSixAxis4">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>轴4</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetSixAxis5">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>轴5</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetSixAxis6">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>轴6</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="btnStepTargetSixAxis6_2">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="text">
-               <string>钢缆</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="label_SixAxies_StepValue">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="text">
-            <string>步进值</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QWidget" name="widget_SixAxies_StepValueInput" native="true">
-           <layout class="QHBoxLayout" name="horizontalLayout_SixAxies_StepValueInput">
-            <property name="spacing">
-             <number>6</number>
-            </property>
-            <property name="leftMargin">
-             <number>4</number>
-            </property>
-            <property name="topMargin">
-             <number>2</number>
-            </property>
-            <property name="rightMargin">
-             <number>4</number>
-            </property>
-            <property name="bottomMargin">
-             <number>2</number>
-            </property>
-            <item>
-             <widget class="QLineEdit" name="lineEdit_SixAxies_StepValue">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-                <horstretch>0</horstretch>
-                <verstretch>4</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="minimumSize">
-               <size>
-                <width>64</width>
-                <height>44</height>
-               </size>
-              </property>
-              <property name="text">
-               <string>1</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-              <property name="placeholderText">
-               <string>输入步进值</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-      </widget>
+     </widget>
+    </item>
+    <item row="2" column="5" colspan="2">
+     <widget class="DeviceCoordPanel" name="Widget_DeviceCoordPanel" native="true"/>
+    </item>
+    <item row="6" column="3">
+     <widget class="TechChamferToolButton" name="TBtn_DeviceControlMenu">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+        <horstretch>1</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>194</width>
+        <height>46</height>
+       </size>
+      </property>
+      <property name="font">
+       <font>
+        <pointsize>12</pointsize>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="text">
+       <string>设备控制</string>
+      </property>
+      <property name="iconSize">
+       <size>
+        <width>24</width>
+        <height>24</height>
+       </size>
+      </property>
+      <property name="checkable">
+       <bool>true</bool>
+      </property>
+      <property name="toolButtonStyle">
+       <enum>Qt::ToolButtonTextBesideIcon</enum>
+      </property>
      </widget>
     </item>
    </layout>
+   <widget class="QWidget" name="widget_HiddenToolButtons">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>100</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <layout class="QHBoxLayout" name="horizontalLayout_HiddenToolButtons">
+     <item>
+      <widget class="TechChamferToolButton" name="TBtn_PermissionPage">
+       <property name="font">
+        <font>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="text">
+        <string>权限</string>
+       </property>
+       <property name="iconSize">
+        <size>
+         <width>22</width>
+         <height>22</height>
+        </size>
+       </property>
+       <property name="toolButtonStyle">
+        <enum>Qt::ToolButtonTextBesideIcon</enum>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="TechChamferToolButton" name="TBtn_HistoryRecord">
+       <property name="font">
+        <font>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="text">
+        <string>历史记录</string>
+       </property>
+       <property name="iconSize">
+        <size>
+         <width>22</width>
+         <height>22</height>
+        </size>
+       </property>
+       <property name="toolButtonStyle">
+        <enum>Qt::ToolButtonTextBesideIcon</enum>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="TechChamferToolButton" name="TBtn_HomePage">
+       <property name="font">
+        <font>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="text">
+        <string>主页</string>
+       </property>
+       <property name="iconSize">
+        <size>
+         <width>22</width>
+         <height>22</height>
+        </size>
+       </property>
+       <property name="toolButtonStyle">
+        <enum>Qt::ToolButtonTextBesideIcon</enum>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
  </widget>
@@ -1096,6 +953,17 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
    <extends>QWidget</extends>
    <header>devicecoordpanel.h</header>
    <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>TechZonePanel</class>
+   <extends>QWidget</extends>
+   <header location="global">techzonepanel.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>TechChamferToolButton</class>
+   <extends>QToolButton</extends>
+   <header location="global">techchamfertoolbutton.h</header>
   </customwidget>
  </customwidgets>
  <resources>

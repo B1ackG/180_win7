@@ -214,7 +214,6 @@ void MainWindow::initializePageNames()
     m_pageNames[0] = "机械臂";
     m_pageNames[1] = "操作记录";
     m_pageNames[2] = "管理员验证";
-    m_pageNames[3] = "六自由度";
 }
 
 void MainWindow::initializeCorePagesAndUi()
@@ -353,6 +352,8 @@ void MainWindow::initUI()
     if (isFeatureEnabled("motion_control", "motion.steering_mode")) {
         setupSteeringModeControl();
     }
+
+    setupTechBorders();
 
     if (isBigFeatureEnabled("tcp_transmission")) {
         setupTcpTransmissionUI();

@@ -7,6 +7,11 @@
 #include "mainmodbuslabelmapper.h"
 #include "mainmodbuspoller.h"
 #include "mainmodbusstatus.h"
+#include "navigationicon.h"
+#include "techchamfertoolbutton.h"
+#include "techzonepanel.h"
+#include <QFrame>
+#include <QResizeEvent>
 #include <QMovie>
 #include <QDateTime>
 #include <QDebug>
@@ -105,6 +110,23 @@ std::array<quint16, 4> doubleToRegistersGHEFCDAB(double value)
         static_cast<quint16>((static_cast<quint16>(A) << 8) | B)
     };
 }
+
+void initChamferButtonTheme(TechChamferToolButton *button)
+{
+    if (!button) {
+        return;
+    }
+    button->setFillColor(QColor(8, 18, 32, 173));
+    button->setBorderColor(QColor(0, 220, 255, 180));
+    button->setCheckedFillColor(QColor(0, 130, 200, 224));
+    button->setCheckedBorderColor(QColor(120, 240, 255, 255));
+}
+
+bool isBackgroundOnlyZonePanel(const TechZonePanel *panel)
+{
+    return panel && panel->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly).isEmpty();
+}
+
 }
 
 bool MainWindow::isBigFeatureEnabled(const QString &key) const
@@ -322,6 +344,7 @@ void MainWindow::applySliderLabelRuntimeSettings()
 // 信号槽连接
 void MainWindow::setupConnections()
 {
+    setupCollapsibleControlPanels();
     setupNavigationConnections();
     setupRecordAndPermissionConnections();
     setupControlConnections();
@@ -335,14 +358,10 @@ void MainWindow::setupNavigationConnections()
         return;
     }
 
-    QToolButton *sixAxiesBtn = findChild<QToolButton*>("TBtn_SixAxies");
-
-    // 导航按钮互斥：同一时刻仅保留一个页面入口为激活态。
     const QList<QToolButton*> navButtons = {
         ui->TBtn_HomePage,
         ui->TBtn_PermissionPage,
-        ui->TBtn_HistoryRecord,
-        sixAxiesBtn
+        ui->TBtn_HistoryRecord
     };
     for (QToolButton *btn : navButtons) {
         if (!btn) {
@@ -351,26 +370,281 @@ void MainWindow::setupNavigationConnections()
         btn->setCheckable(true);
         btn->setAutoExclusive(true);
     }
-    if (ui->TBtn_HomePage) {
-        ui->TBtn_HomePage->setChecked(true);
+
+    const QList<TechChamferToolButton*> navChamferButtons = {
+        ui->TBtn_HomePage,
+        ui->TBtn_PermissionPage,
+        ui->TBtn_HistoryRecord
+    };
+    for (TechChamferToolButton *btn : navChamferButtons) {
+        if (btn) {
+            connect(btn, &TechChamferToolButton::toggled,
+                    this, &MainWindow::updateNavigationButtonVisuals);
+        }
+    }
+    updateNavigationButtonVisuals();
+
+    if (ui->StackedWidget) {
+        connect(ui->StackedWidget, &QStackedWidget::currentChanged,
+                this, [this](int) { updateNavigationButtonVisuals(); });
     }
 
-    connect(ui->TBtn_HomePage, &QPushButton::clicked, [=]() {
+    connect(ui->TBtn_HomePage, &QPushButton::clicked, [this]() {
         ui->StackedWidget->setCurrentIndex(0);
         ui->TBtn_HomePage->setChecked(true);
         updateNavButtonStyles(nullptr);
     });
+}
 
-    if (sixAxiesBtn) {
-        connect(sixAxiesBtn, &QPushButton::clicked, [this, sixAxiesBtn]() {
-            if (ui->page_SixAxies) {
-                ui->StackedWidget->setCurrentWidget(ui->page_SixAxies);
-            }
-            sixAxiesBtn->setChecked(true);
-        });
+void MainWindow::setupNavigationMenuIcons()
+{
+    if (!ui) {
+        return;
     }
 
-    // 旧模板按钮 Btn_Switch* 已移除，页面切换统一由左侧工具按钮负责。
+    constexpr QColor kCyan(0, 200, 255);
+    const auto setIcon = [&](TechChamferToolButton *btn, NavIconKind kind, int px) {
+        if (!btn) {
+            return;
+        }
+        btn->setIcon(navigationIcon(kind, QSize(px, px), kCyan));
+        btn->setIconSize(QSize(px, px));
+    };
+
+    setIcon(ui->TBtn_PageNavMenu, NavIconKind::SystemMenu, 24);
+    setIcon(ui->TBtn_PermissionPage, NavIconKind::Permission, 22);
+    setIcon(ui->TBtn_HistoryRecord, NavIconKind::History, 22);
+
+    setIcon(ui->TBtn_DeviceControlMenu, NavIconKind::DeviceMenu, 24);
+    setIcon(ui->TBtn_HomePage, NavIconKind::Home, 22);
+
+    constexpr QColor kClearAlarmIcon(255, 244, 244);
+    if (ui->TBtn_RemoveWarning) {
+        ui->TBtn_RemoveWarning->setIcon(
+            navigationIcon(NavIconKind::ClearAlarm, QSize(24, 24), kClearAlarmIcon));
+        ui->TBtn_RemoveWarning->setIconSize(QSize(24, 24));
+    }
+}
+
+void MainWindow::setupCollapsibleControlPanels()
+{
+    if (!ui || !ui->centralwidget
+        || m_pageNavigationPopup || m_deviceControlPopup) {
+        repositionCollapsibleControlPanels();
+        return;
+    }
+
+    auto initMenuButton = [](TechChamferToolButton *button, const QString &text) {
+        if (!button) {
+            return;
+        }
+        button->setText(text);
+        button->setIconSize(QSize(24, 24));
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        button->setCheckable(true);
+        button->setMinimumHeight(60);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        initChamferButtonTheme(button);
+    };
+
+    auto makePopup = [this](const QString &objectName) {
+        auto *panel = new QFrame(ui->centralwidget);
+        panel->setObjectName(objectName);
+        panel->setFrameShape(QFrame::StyledPanel);
+        panel->setAutoFillBackground(false);
+        panel->setStyleSheet(QStringLiteral(
+            "QFrame#%1 {"
+            "  background: rgba(8, 24, 38, 0.96);"
+            "  border: 2px solid rgba(0, 200, 255, 0.85);"
+            "  border-radius: 10px;"
+            "}"
+        ).arg(objectName));
+        auto *layout = new QHBoxLayout(panel);
+        layout->setContentsMargins(10, 8, 10, 8);
+        layout->setSpacing(8);
+        panel->hide();
+        return panel;
+    };
+
+    auto moveButtonsToPopup = [](QLayout *sourceLayout,
+                                 QWidget *popup,
+                                 const QList<TechChamferToolButton*> &buttons) {
+        auto *targetLayout = qobject_cast<QHBoxLayout*>(popup->layout());
+        if (!targetLayout) {
+            return;
+        }
+
+        for (TechChamferToolButton *button : buttons) {
+            if (!button) {
+                continue;
+            }
+            if (sourceLayout) {
+                sourceLayout->removeWidget(button);
+            }
+            button->setParent(popup);
+            button->setMinimumWidth(168);
+            button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+            button->show();
+            initChamferButtonTheme(button);
+            targetLayout->addWidget(button);
+        }
+    };
+
+    QLayout *hiddenLayout = ui->widget_HiddenToolButtons
+                                ? ui->widget_HiddenToolButtons->layout()
+                                : nullptr;
+
+    m_pageNavigationPopup = makePopup(QStringLiteral("pageNavigationPopup"));
+    moveButtonsToPopup(hiddenLayout,
+                       m_pageNavigationPopup,
+                       {ui->TBtn_PermissionPage, ui->TBtn_HistoryRecord});
+
+    m_pageNavigationMenuButton = ui->TBtn_PageNavMenu;
+    initMenuButton(m_pageNavigationMenuButton, QStringLiteral("系统管理"));
+    if (m_pageNavigationMenuButton) {
+        m_pageNavigationMenuButton->show();
+        connect(m_pageNavigationMenuButton, &QToolButton::clicked,
+                this, &MainWindow::togglePageNavigationPanel);
+    }
+
+    m_deviceControlPopup = makePopup(QStringLiteral("deviceControlPopup"));
+    moveButtonsToPopup(hiddenLayout,
+                       m_deviceControlPopup,
+                       {ui->TBtn_HomePage});
+
+    m_deviceControlMenuButton = ui->TBtn_DeviceControlMenu;
+    initMenuButton(m_deviceControlMenuButton, QStringLiteral("设备控制"));
+    if (m_deviceControlMenuButton) {
+        m_deviceControlMenuButton->show();
+        connect(m_deviceControlMenuButton, &QToolButton::clicked,
+                this, &MainWindow::toggleDeviceControlPanel);
+    }
+
+    setupNavigationMenuIcons();
+
+    const QList<QToolButton*> closeAfterNavClick = {
+        ui->TBtn_PermissionPage,
+        ui->TBtn_HistoryRecord,
+        ui->TBtn_HomePage
+    };
+    for (QToolButton *button : closeAfterNavClick) {
+        if (button) {
+            connect(button, &QToolButton::clicked,
+                    this, &MainWindow::hideCollapsibleControlPanels);
+        }
+    }
+
+    repositionCollapsibleControlPanels();
+    updateNavigationButtonVisuals();
+    updateFunctionSwitchVisuals();
+    if (ui->TBtn_HomePage) {
+        ui->TBtn_HomePage->setChecked(true);
+    }
+}
+
+void MainWindow::togglePageNavigationPanel()
+{
+    if (!m_pageNavigationPopup) {
+        return;
+    }
+
+    const bool showPanel = !m_pageNavigationPopup->isVisible();
+    if (m_deviceControlPopup) {
+        m_deviceControlPopup->hide();
+    }
+    if (m_deviceControlMenuButton) {
+        m_deviceControlMenuButton->setChecked(false);
+    }
+
+    if (showPanel) {
+        positionCollapsiblePanel(m_pageNavigationPopup, m_pageNavigationMenuButton);
+        m_pageNavigationPopup->show();
+        m_pageNavigationPopup->raise();
+    } else {
+        m_pageNavigationPopup->hide();
+    }
+    if (m_pageNavigationMenuButton) {
+        m_pageNavigationMenuButton->setChecked(showPanel);
+    }
+}
+
+void MainWindow::toggleDeviceControlPanel()
+{
+    if (!m_deviceControlPopup) {
+        return;
+    }
+
+    const bool showPanel = !m_deviceControlPopup->isVisible();
+    if (m_pageNavigationPopup) {
+        m_pageNavigationPopup->hide();
+    }
+    if (m_pageNavigationMenuButton) {
+        m_pageNavigationMenuButton->setChecked(false);
+    }
+
+    if (showPanel) {
+        positionCollapsiblePanel(m_deviceControlPopup, m_deviceControlMenuButton);
+        m_deviceControlPopup->show();
+        m_deviceControlPopup->raise();
+    } else {
+        m_deviceControlPopup->hide();
+    }
+    if (m_deviceControlMenuButton) {
+        m_deviceControlMenuButton->setChecked(showPanel);
+    }
+}
+
+void MainWindow::hideCollapsibleControlPanels()
+{
+    if (m_pageNavigationPopup) {
+        m_pageNavigationPopup->hide();
+    }
+    if (m_deviceControlPopup) {
+        m_deviceControlPopup->hide();
+    }
+    if (m_pageNavigationMenuButton) {
+        m_pageNavigationMenuButton->setChecked(false);
+    }
+    if (m_deviceControlMenuButton) {
+        m_deviceControlMenuButton->setChecked(false);
+    }
+}
+
+void MainWindow::repositionCollapsibleControlPanels()
+{
+    if (m_pageNavigationPopup && m_pageNavigationPopup->isVisible()) {
+        positionCollapsiblePanel(m_pageNavigationPopup, m_pageNavigationMenuButton);
+    }
+    if (m_deviceControlPopup && m_deviceControlPopup->isVisible()) {
+        positionCollapsiblePanel(m_deviceControlPopup, m_deviceControlMenuButton);
+    }
+}
+
+void MainWindow::positionCollapsiblePanel(QWidget *panel, QToolButton *anchorButton)
+{
+    if (!ui || !ui->centralwidget || !panel || !anchorButton) {
+        return;
+    }
+
+    QWidget *host = ui->centralwidget;
+    const int rightBoundary = host->width() - 8;
+
+    const QSize hint = panel->sizeHint();
+    const int maxWidth = qMax(160, rightBoundary - 8);
+    const int panelWidth = qMin(hint.width(), maxWidth);
+    const int panelHeight = hint.height();
+    panel->setFixedSize(panelWidth, panelHeight);
+
+    const QPoint anchorTopLeft = anchorButton->mapTo(host, QPoint(0, 0));
+    const int maxX = qMax(8, rightBoundary - panelWidth);
+    const int centeredX = anchorTopLeft.x() + (anchorButton->width() - panelWidth) / 2;
+    const int x = qBound(8, centeredX, maxX);
+
+    int y = anchorTopLeft.y() - panelHeight - 8;
+    if (y < 8) {
+        y = anchorTopLeft.y() + anchorButton->height() + 8;
+    }
+    panel->move(x, y);
 }
 
 void MainWindow::setupRecordAndPermissionConnections()
@@ -398,46 +672,7 @@ void MainWindow::setupRecordAndPermissionConnections()
         }
     });
 
-    m_btnMoveMode = findChild<QToolButton*>("TBtn_MoveMode");
-    if (m_btnMoveMode) {
-        m_btnMoveMode->setText("未选择模式");
-        connect(m_btnMoveMode, &QPushButton::clicked, [=]() {
-            if (m_moveModeUnknown) {
-                m_moveModeUnknown = false;
-                m_isJointMode = true; // 首次默认进入关节模式
-            } else {
-                m_isJointMode = !m_isJointMode;
-            }
-
-            if (m_isJointMode) {
-                writeToMainDevice(525, 2);
-                m_btnMoveMode->setText("关节模式");
-                QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
-                if (moveModeLabel) {
-                    moveModeLabel->setText("关节模式");
-                    moveModeLabel->setStyleSheet("color: #55ff55; font-weight: bold; font-size: 11px;");
-                }
-                showNotification("已切换至关节模式");
-            } else {
-                writeToMainDevice(525, 1);
-                m_btnMoveMode->setText("坐标模式");
-                QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
-                if (moveModeLabel) {
-                    moveModeLabel->setText("坐标模式");
-                    moveModeLabel->setStyleSheet("color: #ffaa00; font-weight: bold; font-size: 11px;");
-                }
-                showNotification("已切换至坐标模式");
-            }
-
-            updateFunctionSwitchVisuals();
-        });
-    } else {
-        qWarning() << "未找到TBtn_MoveMode按钮";
-        m_btnMoveMode = new QToolButton(this);
-        m_btnMoveMode->setObjectName("TBtn_MoveMode_Fallback");
-        m_btnMoveMode->hide();
-    }
-    connect(ui->TBtn_PermissionPage, &QPushButton::clicked, [this]() {
+    connect(ui->TBtn_HistoryRecord, &QPushButton::clicked, this, [this]() {
         if (ui->page_Permission) {
             ui->StackedWidget->setCurrentWidget(ui->page_Permission);
         }
@@ -492,28 +727,6 @@ void MainWindow::setupControlConnections()
 
                 updateStepTargetButtonsState();
             });
-
-    m_btnStepMove = findChild<QToolButton*>("TBtn_Stepmove");
-    if (m_btnStepMove) {
-        connect(m_btnStepMove, &QToolButton::clicked,
-                this, &MainWindow::onStepMoveButtonClicked);
-    } else {
-        qWarning() << "未找到TBtn_Stepmove按钮";
-        m_btnStepMove = new QToolButton(this);
-        m_btnStepMove->setObjectName("TBtn_Stepmove_Fallback");
-        m_btnStepMove->hide();
-    }
-
-    m_controlModeBtn = findChild<QToolButton*>("TBtn_ControlMode");
-    if (m_controlModeBtn) {
-        connect(m_controlModeBtn, &QToolButton::clicked,
-                this, &MainWindow::onControlModeClicked);
-    } else {
-        qWarning() << "未找到TBtn_ControlMode按钮";
-        m_controlModeBtn = new QToolButton(this);
-        m_controlModeBtn->setObjectName("TBtn_ControlMode_Fallback");
-        m_controlModeBtn->hide();
-    }
 
     m_btnForceControl = findChild<TechPushButton*>("btn_ForceControl");
     if (m_btnForceControl) {
@@ -574,9 +787,6 @@ void MainWindow::setupStyles()
 
     // 顶部分组与按钮基础风格统一由 .ui 样式表维护，便于 Qt Creator 中可视化调整。
     if (ui) {
-        if (m_btnStepMove) m_btnStepMove->setCheckable(false);
-        if (m_btnMoveMode) m_btnMoveMode->setCheckable(false);
-        if (m_controlModeBtn) m_controlModeBtn->setCheckable(false);
         updateFunctionSwitchVisuals();
     }
 
@@ -656,58 +866,62 @@ void MainWindow::setupStyles()
         );
 }
 
-void MainWindow::updateFunctionSwitchVisuals()
+void MainWindow::updateNavigationButtonVisuals()
 {
     if (!ui) {
         return;
     }
 
-    auto applyModeStyle = [](QToolButton *btn, const QString &color, const QString &labelSuffix) {
-        if (!btn) {
-            return;
-        }
-        btn->setStyleSheet(QString(
-            "QToolButton {"
-            "  color: #f4fbff;"
-            "  background: %1;"
-            "  border: 1px solid %2;"
-            "  border-radius: 8px;"
-            "  padding: 3px 8px;"
-            "  min-height: 36px;"
-            "}"
-            "QToolButton:hover {"
-            "  border: 1px solid #d9f4ff;"
-            "  background: %1;"
-            "}")
-            .arg(color, labelSuffix));
+    const QList<TechChamferToolButton*> navButtons = {
+        ui->TBtn_HomePage,
+        ui->TBtn_PermissionPage,
+        ui->TBtn_HistoryRecord
     };
+    for (TechChamferToolButton *btn : navButtons) {
+        if (!btn) {
+            continue;
+        }
+        initChamferButtonTheme(btn);
+        btn->update();
+    }
+}
 
-    const QString unknownBg = "rgba(55, 68, 82, 0.88)";
-    const QString unknownBorder = "#91a4b5";
-
-    // 点动/步进：增强颜色对比，状态一眼可分
-    if (m_stepModeUnknown) {
-        applyModeStyle(m_btnStepMove, unknownBg, unknownBorder);
-    } else if (m_stepModeEnabled) {
-        applyModeStyle(m_btnStepMove, "rgba(18, 128, 92, 0.92)", "#9dffd3");
-    } else {
-        applyModeStyle(m_btnStepMove, "rgba(156, 104, 28, 0.92)", "#ffd69b");
+void MainWindow::updateFunctionSwitchVisuals()
+{
+    if (!ui || !ui->statusBar) {
+        return;
     }
 
-    // 关节/坐标：未选择与步进按钮保持同灰色
-    if (m_moveModeUnknown) {
-        applyModeStyle(m_btnMoveMode, unknownBg, unknownBorder);
-    } else if (m_isJointMode) {
-        applyModeStyle(m_btnMoveMode, "rgba(18, 128, 92, 0.92)", "#9dffd3");
-    } else {
-        applyModeStyle(m_btnMoveMode, "rgba(156, 104, 28, 0.92)", "#ffd69b");
+    if (QLabel *runModeLabel = ui->statusBar->findChild<QLabel*>("statusBarRunModeLabel")) {
+        if (m_stepModeUnknown) {
+            runModeLabel->setText("步进未选择");
+            runModeLabel->setStyleSheet("color: #aaaaaa; font-weight: bold; font-size: 11px;");
+        } else if (m_stepModeEnabled) {
+            runModeLabel->setText("步进模式");
+            runModeLabel->setStyleSheet("color: #00ff00; font-weight: bold; font-size: 11px;");
+        } else {
+            runModeLabel->setText("点动模式");
+            runModeLabel->setStyleSheet("color: #00ccff; font-weight: bold; font-size: 11px;");
+        }
     }
 
-    // 有线/无线：白/黄差异
-    if (m_controlMode == WIRED_MODE) {
-        applyModeStyle(m_controlModeBtn, "rgba(20, 112, 144, 0.92)", "#a8f0ff");
-    } else {
-        applyModeStyle(m_controlModeBtn, "rgba(150, 116, 18, 0.92)", "#ffe28f");
+    if (QLabel *moveModeLabel = ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel")) {
+        if (m_moveModeUnknown) {
+            moveModeLabel->setText("运动未选择");
+            moveModeLabel->setStyleSheet("color: #aaaaaa; font-weight: bold; font-size: 11px;");
+        } else if (m_isJointMode) {
+            moveModeLabel->setText("关节模式");
+            moveModeLabel->setStyleSheet("color: #55ff55; font-weight: bold; font-size: 11px;");
+        } else {
+            moveModeLabel->setText("坐标模式");
+            moveModeLabel->setStyleSheet("color: #ffaa00; font-weight: bold; font-size: 11px;");
+        }
+    }
+
+    if (QLabel *controlModeLabel = ui->statusBar->findChild<QLabel*>("statusBarControlModeLabel")) {
+        controlModeLabel->setText(m_controlMode == WIRED_MODE ? "示教器控制" : "遥控器控制");
+        controlModeLabel->setStyleSheet(QString("color: %1; font-weight: bold; font-size: 11px;")
+                                            .arg(m_controlMode == WIRED_MODE ? "#ffffff" : "#ffff00"));
     }
 }
 
@@ -732,12 +946,11 @@ void MainWindow::applyToolButtonStyles(const QList<QToolButton*> &buttons)
     for(QToolButton *btn : buttons) {
         if(btn) {
             const QString name = btn->objectName();
-            if (name == "TBtn_Stepmove" || name == "TBtn_MoveMode" ||
-                name == "TBtn_ControlMode" || name == "TBtn_RemoveWarning" ||
+            if (name == "TBtn_RemoveWarning" ||
                 name == "TBtn_HomePage" || name == "TBtn_PermissionPage" ||
-                name == "TBtn_HistoryRecord" || name == "TBtn_SixAxies" ||
+                name == "TBtn_HistoryRecord" ||
+                name == "TBtn_PageNavMenu" || name == "TBtn_DeviceControlMenu" ||
                 name.startsWith("btnStepTargetAxis") ||
-                name.startsWith("btnStepTargetSixAxis") ||
                 name == "btnStepTargetAgv") {
                 continue;
             }
@@ -810,6 +1023,27 @@ void MainWindow::setupAnimations()
      */
 
 }
+
+void MainWindow::setupTechBorders()
+{
+    m_contentZonePanels.clear();
+
+    for (TechZonePanel *panel : findChildren<TechZonePanel*>()) {
+        if (panel->backgroundImage().isEmpty()) {
+            panel->setBackgroundImage(QStringLiteral(":/Picture/zonePanel.png"));
+        }
+
+        if (isBackgroundOnlyZonePanel(panel)) {
+            panel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+            panel->lower();
+        } else {
+            panel->setAttribute(Qt::WA_TransparentForMouseEvents, false);
+            panel->raise();
+        }
+
+        m_contentZonePanels.append(panel);
+    }
+}
 // 历史记录页面初始化
 void MainWindow::initializeHistoryPage()
 {
@@ -862,6 +1096,12 @@ void MainWindow::paintEvent(QPaintEvent *)
     // 备用方案：如果预加载失败，使用简单背景色
     QPainter painter(this);
     painter.fillRect(this->rect(), QColor(25, 148, 225));
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    repositionCollapsibleControlPanels();
 }
 
 // 修改事件过滤器(虚拟键盘)
@@ -2945,10 +3185,8 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
     int currentPage = ui->StackedWidget->currentIndex();
     QString pageName = m_pageNames.value(currentPage, "未知");
     const bool isRobotPage = (currentPage == 0 || pageName == "机械臂" || pageName == "page_Robot");
-    const bool isSixAxisPage = (currentPage == 3 || pageName == "六自由度" || pageName == "page_SixAxies");
-    const bool isJointModeByUiText = (ui && m_btnMoveMode
-                                      && m_btnMoveMode->text().trimmed() == "关节模式");
-    const bool isJointModeForExternal = (m_isJointMode || isJointModeByUiText);
+    const bool isSixAxisPage = false;
+    const bool isJointModeForExternal = m_isJointMode;
     const bool isSixAxisSpecialKey = (isSixAxisPage && (keyNumber == 13 || keyNumber == 14));
 
     // 首页外部按键提示：
@@ -3158,7 +3396,7 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
         return;
     }
 
-    // 除第1页（机械臂）与第4页（六自由度）外，其他页面外部按键统一不响应。
+    // 除机械臂页外，其他页面外部按键统一不响应。
     if (!isRobotPage) {
         return;
     }
@@ -3743,8 +3981,8 @@ void MainWindow::onModbusConnected()
             timeoutRecord.operation = "startup_mode_read_timeout";
             timeoutRecord.oldValue = "等待读取125/126";
             timeoutRecord.newValue = QString("20秒超时，步进=%1，运动=%2")
-                                         .arg(ui && m_btnStepMove ? m_btnStepMove->text() : "未知")
-                                         .arg(ui && m_btnMoveMode ? m_btnMoveMode->text() : "未知");
+                                         .arg(m_stepModeUnknown ? "未选择" : (m_stepModeEnabled ? "步进模式" : "点动模式"))
+                                         .arg(m_moveModeUnknown ? "未选择" : (m_isJointMode ? "关节模式" : "坐标模式"));
             m_recorder->addRecord(timeoutRecord);
         }
     });
@@ -4009,69 +4247,30 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
 
     const bool allowUiStateSync = m_uiStateSyncEnabled;
 
-    if (allowUiStateSync && address == 125 && ui && m_btnStepMove) {
+    if (allowUiStateSync && address == 125 && ui) {
         if (value == 2) {
             m_stepModeUnknown = false;
             m_stepModeEnabled = true;
-            m_btnStepMove->setText("步进模式");
-            m_btnStepMove->setToolTip("当前模式：步进模式");
-            QLabel *runModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarRunModeLabel") : nullptr;
-            if (runModeLabel) {
-                runModeLabel->setText("步进模式");
-                runModeLabel->setStyleSheet("color: #00ff00; font-weight: bold; font-size: 11px;");
-            }
         } else if (value == 1) {
             m_stepModeUnknown = false;
             m_stepModeEnabled = false;
-            m_btnStepMove->setText("点动模式");
-            m_btnStepMove->setToolTip("当前模式：点动模式");
-            QLabel *runModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarRunModeLabel") : nullptr;
-            if (runModeLabel) {
-                runModeLabel->setText("点动模式");
-                runModeLabel->setStyleSheet("color: #00ccff; font-weight: bold; font-size: 11px;");
-            }
         } else {
             m_stepModeUnknown = true;
-            m_btnStepMove->setText("未选择模式");
-            m_btnStepMove->setToolTip("当前模式：未选择模式");
-            QLabel *runModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarRunModeLabel") : nullptr;
-            if (runModeLabel) {
-                runModeLabel->setText("步进未选择");
-                runModeLabel->setStyleSheet("color: #aaaaaa; font-weight: bold; font-size: 11px;");
-            }
         }
 
         updateFunctionSwitchVisuals();
         updateStepTargetButtonsState();
     }
 
-    if (allowUiStateSync && address == 126 && ui && m_btnMoveMode) {
+    if (allowUiStateSync && address == 126 && ui) {
         if (value == 2) {
             m_moveModeUnknown = false;
             m_isJointMode = true;
-            m_btnMoveMode->setText("关节模式");
-            QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
-            if (moveModeLabel) {
-                moveModeLabel->setText("关节模式");
-                moveModeLabel->setStyleSheet("color: #55ff55; font-weight: bold; font-size: 11px;");
-            }
         } else if (value == 1) {
             m_moveModeUnknown = false;
             m_isJointMode = false;
-            m_btnMoveMode->setText("坐标模式");
-            QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
-            if (moveModeLabel) {
-                moveModeLabel->setText("坐标模式");
-                moveModeLabel->setStyleSheet("color: #ffaa00; font-weight: bold; font-size: 11px;");
-            }
         } else {
             m_moveModeUnknown = true;
-            m_btnMoveMode->setText("未选择模式");
-            QLabel *moveModeLabel = ui->statusBar ? ui->statusBar->findChild<QLabel*>("statusBarMoveModeLabel") : nullptr;
-            if (moveModeLabel) {
-                moveModeLabel->setText("运动未选择");
-                moveModeLabel->setStyleSheet("color: #aaaaaa; font-weight: bold; font-size: 11px;");
-            }
         }
 
         updateFunctionSwitchVisuals();
@@ -4696,23 +4895,14 @@ void MainWindow::setupAGVModbus()
             this, [this](int address, quint16 value) {
                 m_agvRegisterShadow[address] = value;
 
-                if (address == 100 && m_controlModeBtn) {
+                if (address == 100) {
                     if (value == 1) {
                         m_controlMode = WIRELESS_MODE;
-                        m_controlModeBtn->setText("遥控器控制");
                     } else if (value == 2) {
                         m_controlMode = WIRED_MODE;
-                        m_controlModeBtn->setText("示教器控制");
                     }
 
-                    QLabel *controlModeLabel = ui && ui->statusBar
-                                                    ? ui->statusBar->findChild<QLabel*>("statusBarControlModeLabel")
-                                                    : nullptr;
-                    if (controlModeLabel) {
-                        controlModeLabel->setText(m_controlMode == WIRED_MODE ? "示教器控制" : "遥控器控制");
-                        controlModeLabel->setStyleSheet(QString("color: %1; font-weight: bold; font-size: 11px;")
-                                                            .arg(m_controlMode == WIRED_MODE ? "#ffffff" : "#ffff00"));
-                    }
+                    updateFunctionSwitchVisuals();
                 }
 
                 if (address == 50) {
@@ -5834,38 +6024,20 @@ void MainWindow::onControlModeClicked()
     // 切换控制模式
     if (m_controlMode == WIRED_MODE) {
         m_controlMode = WIRELESS_MODE;
-        m_controlModeBtn->setText("遥控器控制");
 
         // 遥控器控制 -> AGV设备500写1
         writeToAGVDevice(500, 1);
 
         qCDebug(lcMainWindow) << "切换到遥控器控制模式";
         ui->statusBar->showMessage("已切换到遥控器控制模式", 2000);
-
-        // 更新状态栏显示
-        QLabel *controlModeLabel = ui->statusBar->findChild<QLabel*>("statusBarControlModeLabel");
-        if (controlModeLabel) {
-            controlModeLabel->setText("遥控器控制");
-            controlModeLabel->setStyleSheet("color: #ffff00; font-weight: bold; font-size: 11px;");
-        }
     } else {
         m_controlMode = WIRED_MODE;
-        m_controlModeBtn->setText("示教器控制");
 
         // 示教器控制 -> AGV设备500写2
         writeToAGVDevice(500, 2);
 
-        // ... 省略逻辑 ...
-        
         qCDebug(lcMainWindow) << "切换到示教器控制模式";
         ui->statusBar->showMessage("已切换到示教器控制模式", 2000);
-
-        // 更新状态栏显示
-        QLabel *controlModeLabel = ui->statusBar->findChild<QLabel*>("statusBarControlModeLabel");
-        if (controlModeLabel) {
-            controlModeLabel->setText("示教器控制");
-            controlModeLabel->setStyleSheet("color: #ffffff; font-weight: bold; font-size: 11px;");
-        }
     }
 
     updateFunctionSwitchVisuals();
@@ -7063,36 +7235,13 @@ void MainWindow::onStepMoveButtonClicked()
 
     if (m_stepModeEnabled) {
         // 切换到步进模式
-        m_btnStepMove->setText("步进模式");
-        m_btnStepMove->setToolTip("当前模式：步进模式");
-
-        // 给501寄存器写入2
         writeToMainDevice(501, 2);
         writeToMainDevice(600, 2);
 
         qCDebug(lcMainWindow) << "切换到步进模式，地址501/600写入2";
         ui->statusBar->showMessage("已切换到步进模式", 2000);
-
-        // 更新状态栏显示
-        QLabel *runModeLabel = ui->statusBar->findChild<QLabel*>("statusBarRunModeLabel");
-        if (runModeLabel) {
-            runModeLabel->setText("步进模式");
-            runModeLabel->setStyleSheet("color: #00ff00; font-weight: bold; font-size: 11px;");
-        }
-
     } else {
         // 切换到点动模式
-        m_btnStepMove->setText("点动模式");
-        m_btnStepMove->setToolTip("当前模式：点动模式");
-
-        // 更新状态栏显示
-        QLabel *runModeLabel = ui->statusBar->findChild<QLabel*>("statusBarRunModeLabel");
-        if (runModeLabel) {
-            runModeLabel->setText("点动模式");
-            runModeLabel->setStyleSheet("color: #00ccff; font-weight: bold; font-size: 11px;");
-        }
-
-        // 给501寄存器写入1
         writeToMainDevice(501, 1);
         writeToMainDevice(600, 1);
 
@@ -7283,22 +7432,12 @@ void MainWindow::updateStepMoveGroupBoxState()
         return;
     }
 
-    bool isStepMode = (!m_stepModeUnknown && m_stepModeEnabled);
-    if (!isStepMode && m_btnStepMove) {
-        isStepMode = (m_btnStepMove->text().trimmed() == "步进模式");
-    }
+    const bool isStepMode = (!m_stepModeUnknown && m_stepModeEnabled);
 
     const bool isFirstPage = ui->StackedWidget && ui->StackedWidget->currentIndex() == 0;
     const bool shouldDisable = (!isStepMode && isFirstPage);
     if (QGroupBox *stepGroup = findChild<QGroupBox*>("groupBox_StepMove")) {
         stepGroup->setEnabled(!shouldDisable);
-    }
-
-    QGroupBox *sixAxisGroup = findChild<QGroupBox*>("groupBox_SixAxies_StepMove");
-    if (sixAxisGroup) {
-        const bool isSixAxisPage = ui->StackedWidget && ui->StackedWidget->currentIndex() == 3;
-        const bool sixAxisShouldDisable = (!isStepMode && isSixAxisPage);
-        sixAxisGroup->setEnabled(!sixAxisShouldDisable);
     }
 }
 
@@ -7343,7 +7482,6 @@ void MainWindow::updateStepTargetButtonsState()
     };
 
     updateGroupState(m_stepTargetGroup, "btnStepTargetAxis1");
-    updateGroupState(m_sixAxisStepTargetGroup, "btnStepTargetSixAxis1");
 }
 
 // 设置步进模式控制
@@ -7351,13 +7489,6 @@ void MainWindow::setupStepMoveControl()
 {
     if (!isFeatureEnabled("motion_control", "motion.step_mode")) {
         return;
-    }
-
-    m_btnStepMove = findChild<QToolButton*>("TBtn_Stepmove");
-    if (!m_btnStepMove) {
-        m_btnStepMove = new QToolButton(this);
-        m_btnStepMove->setObjectName("TBtn_Stepmove_Fallback");
-        m_btnStepMove->hide();
     }
 
     QToolButton *axis1Btn = findChild<QToolButton*>("btnStepTargetAxis1");
@@ -7432,145 +7563,22 @@ void MainWindow::setupStepMoveControl()
         }, Qt::UniqueConnection);
     }
 
-    QToolButton *axis1Btn2 = findChild<QToolButton*>("btnStepTargetSixAxis1");
-    QToolButton *axis2Btn2 = findChild<QToolButton*>("btnStepTargetSixAxis2");
-    QToolButton *axis3Btn2 = findChild<QToolButton*>("btnStepTargetSixAxis3");
-    QToolButton *axis4Btn2 = findChild<QToolButton*>("btnStepTargetSixAxis4");
-    QToolButton *axis5Btn2 = findChild<QToolButton*>("btnStepTargetSixAxis5_2");
-    if (!axis5Btn2) {
-        axis5Btn2 = findChild<QToolButton*>("btnStepTargetSixAxis5");
-    }
-    QLineEdit *sixStepValueEdit = findChild<QLineEdit*>("lineEdit_SixAxies_StepValue");
-
-    if (axis5Btn2) {
-        axis5Btn2->setText("轴5");
-    }
-
-    QToolButton *axis6Btn2 = findChild<QToolButton*>("btnStepTargetSixAxis6");
-    if (!axis6Btn2) {
-        QWidget *stepTargetList2 = findChild<QWidget*>("widget_SixAxies_StepTargetList");
-        QVBoxLayout *stepTargetLayout2 = findChild<QVBoxLayout*>("verticalLayout_SixAxies_StepTargetList");
-        if (stepTargetList2 && stepTargetLayout2) {
-            axis6Btn2 = new QToolButton(stepTargetList2);
-            axis6Btn2->setObjectName("btnStepTargetSixAxis6");
-            axis6Btn2->setText("轴6");
-            axis6Btn2->setCheckable(true);
-            stepTargetLayout2->addWidget(axis6Btn2);
-        }
-    }
-
-    if (sixStepValueEdit) {
-        QRegularExpression regExp("^-?\\d+(\\.\\d+)?$");
-        sixStepValueEdit->setValidator(new QRegularExpressionValidator(regExp, sixStepValueEdit));
-        connect(sixStepValueEdit, &QLineEdit::editingFinished, this,
-                [this, sixStepValueEdit]() {
-            const QString text = sixStepValueEdit ? sixStepValueEdit->text().trimmed() : QString();
-            if (text.isEmpty()) {
-                return;
-            }
-            bool ok = false;
-            const int value = text.toInt(&ok);
-            if (!ok) {
-                return;
-            }
-            writeToMainDevice(601, value);
-        }, Qt::UniqueConnection);
-    }
-
-    if (!m_sixAxisStepTargetGroup) {
-        m_sixAxisStepTargetGroup = new QButtonGroup(this);
-        m_sixAxisStepTargetGroup->setExclusive(true);
-    }
-    for (QAbstractButton *btn : m_sixAxisStepTargetGroup->buttons()) {
-        m_sixAxisStepTargetGroup->removeButton(btn);
-    }
-
-    const QList<QToolButton*> sixAxisButtons = {axis1Btn2, axis2Btn2, axis3Btn2, axis4Btn2, axis5Btn2, axis6Btn2};
-    for (QToolButton *btn : sixAxisButtons) {
-        if (!btn) {
-            continue;
-        }
-        // 清理可能被通用样式写入的内联样式，恢复 .ui 中 groupBox 的统一样式与 checked 高亮。
-        btn->setStyleSheet(QString());
-        btn->setCheckable(true);
-        m_sixAxisStepTargetGroup->addButton(btn);
-
-        connect(btn, &QToolButton::clicked, this, [this, btn]() {
-            if (!m_stepModeEnabled || m_stepModeUnknown || !btn || !btn->isChecked()) {
-                return;
-            }
-
-            int targetCode = 1;
-            const QString n = btn->objectName();
-            if (n == "btnStepTargetSixAxis1") targetCode = 1;
-            else if (n == "btnStepTargetSixAxis2") targetCode = 2;
-            else if (n == "btnStepTargetSixAxis3") targetCode = 3;
-            else if (n == "btnStepTargetSixAxis4") targetCode = 4;
-            else if (n == "btnStepTargetSixAxis5" || n == "btnStepTargetSixAxis5_2") targetCode = 5;
-            else if (n == "btnStepTargetSixAxis6") targetCode = 6;
-
-            writeToMainDevice(614, targetCode);
-            ui->statusBar->showMessage(QString("六轴步进目标切换：%1 (614=%2)")
-                                           .arg(btn->text()).arg(targetCode), 1500);
-        }, Qt::UniqueConnection);
-    }
-
-    if (axis1Btn2 && !m_sixAxisStepTargetGroup->checkedButton()) {
-        axis1Btn2->setChecked(true);
-    }
-
     if (axis1Btn && !m_stepTargetGroup->checkedButton()) {
         axis1Btn->setChecked(true);
     }
 
-    if (m_btnStepMove) {
-        // 启动时先显示未选择，随后由寄存器值回填
-        m_btnStepMove->setText("未选择模式");
-        m_btnStepMove->setToolTip("当前模式：未选择模式");
-
-        // 样式设置
-        m_btnStepMove->setStyleSheet(
-            "QToolButton {"
-            "    background-color: #3498DB;"
-            "    color: white;"
-            "    border: 2px solid #2980B9;"
-            "    border-radius: 8px;"
-            "    padding: 8px 16px;"
-            "    font-weight: bold;"
-            "    font-size: 14px;"
-            "}"
-            "QToolButton:hover {"
-            "    background-color: #4A9EFF;"
-            "}"
-            "QToolButton:pressed {"
-            "    background-color: #1A5FB4;"
-            "}"
-            );
-
-        qCDebug(lcMainWindow) << "步进/点动模式按钮初始化完成";
-
-        if (g_registerCache.contains(125)) {
-            const quint16 value = g_registerCache.value(125);
-            if (value == 2) {
-                m_stepModeUnknown = false;
-                m_stepModeEnabled = true;
-                m_btnStepMove->setText("步进模式");
-                m_btnStepMove->setToolTip("当前模式：步进模式");
-            } else if (value == 1) {
-                m_stepModeUnknown = false;
-                m_stepModeEnabled = false;
-                m_btnStepMove->setText("点动模式");
-                m_btnStepMove->setToolTip("当前模式：点动模式");
-            } else {
-                m_stepModeUnknown = true;
-                m_btnStepMove->setText("未选择模式");
-                m_btnStepMove->setToolTip("当前模式：未选择模式");
-            }
+    if (g_registerCache.contains(125)) {
+        const quint16 value = g_registerCache.value(125);
+        if (value == 2) {
+            m_stepModeUnknown = false;
+            m_stepModeEnabled = true;
+        } else if (value == 1) {
+            m_stepModeUnknown = false;
+            m_stepModeEnabled = false;
+        } else {
+            m_stepModeUnknown = true;
         }
-
-        updateStepTargetButtonsState();
-    } else {
-        qWarning() << "未找到TBtn_Stepmove按钮";
+        updateFunctionSwitchVisuals();
     }
 
     updateStepTargetButtonsState();

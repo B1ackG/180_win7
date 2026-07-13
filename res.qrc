@@ -58,5 +58,7 @@
         <file>Picture/sixAxiesOverAll.png</file>
         <file>Picture/624_Overall.png</file>
         <file>Picture/624_SixAxies.png</file>
+        <file>Picture/zonePanel.png</file>
+        <file>Picture/zonePanel_Button.png</file>
     </qresource>
 </RCC>

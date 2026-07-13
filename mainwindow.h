@@ -31,6 +31,8 @@
 #include "modbusthreadmanager.h"
 #include "techsliderlabel.h"
 #include "techarcgauge.h"
+#include "techzonepanel.h"
+#include "techchamfertoolbutton.h"
 #include "speedmodeselector.h"
 #include "modbusvariables.h"
 #include "agvmodbusmanager.h"
@@ -155,6 +157,8 @@ public:
     // ==========================================
     /** @brief 自定义绘制主窗口背景 */
     void paintEvent(QPaintEvent *event) override;
+    /** @brief 窗口尺寸变化时重定位折叠导航面板 */
+    void resizeEvent(QResizeEvent *event) override;
     /** @brief 拦截窗口关闭事件，确保所有后台线程和资源被正确清理后再退出 */
     void closeEvent(QCloseEvent *event) override;
     /** @brief 事件过滤器处理特定的 UI 交互 */
@@ -173,6 +177,8 @@ public:
     void setupStyles();
     /** @brief 刷新功能开关组按钮视觉状态 */
     void updateFunctionSwitchVisuals();
+    /** @brief 刷新导航子按钮视觉状态 */
+    void updateNavigationButtonVisuals();
     /** @brief 初始化并管理界面动画 */
     void setupAnimations();
     /** @brief 设置技术按键边框样式 */
@@ -508,8 +514,11 @@ private:
     PoseProvider *m_poseProvider = nullptr;
     FeatureSwitchManager *m_featureSwitchManager = nullptr;
     FeatureSwitchWidget *m_featureSwitchWidget = nullptr;
-
-    // ----- 核心与系统 -----
+    QWidget *m_pageNavigationPopup = nullptr;
+    QWidget *m_deviceControlPopup = nullptr;
+    TechChamferToolButton *m_pageNavigationMenuButton = nullptr;
+    TechChamferToolButton *m_deviceControlMenuButton = nullptr;
+    QVector<TechZonePanel*> m_contentZonePanels;
     QThread *m_enableButtonThread;
     EnableButtonWorker *m_enableButtonWorker;
     int m_enableButtonFd;
@@ -635,8 +644,6 @@ private:
     QMap<QString, TechSliderLabel*> m_sliderLabelInstances;
     QMap<QString, TechArcGauge*> m_arcGauges;
     QMap<QString, QVector<TechSliderLabel*>> m_pageSliders;
-    QToolButton *m_btnStepMove = nullptr;
-    QToolButton *m_btnMoveMode = nullptr;
     QButtonGroup *m_stepTargetGroup = nullptr;
     QButtonGroup *m_sixAxisStepTargetGroup = nullptr;
     QLineEdit *m_stepValueEdit = nullptr;
@@ -649,7 +656,6 @@ private:
     TechSliderEdit *m_editAGV_MoveSpeed = nullptr;
     TechSliderEdit *m_editAGV_Angle = nullptr;
     TechPushButton *m_btnForceControl = nullptr;
-    QToolButton *m_controlModeBtn = nullptr;
     QToolButton *m_enableBtn = nullptr;
     TechPushButton *m_forcecontrolModebtn = nullptr;
 
@@ -726,6 +732,16 @@ public:
 private:
     /** @brief 连接导航与页面切换相关信号 */
     void setupNavigationConnections();
+
+    /** @brief 初始化底部折叠式导航与控制模式面板 */
+    void setupCollapsibleControlPanels();
+    /** @brief 为导航主菜单及子按钮设置统一青色图标 */
+    void setupNavigationMenuIcons();
+    void togglePageNavigationPanel();
+    void toggleDeviceControlPanel();
+    void hideCollapsibleControlPanels();
+    void repositionCollapsibleControlPanels();
+    void positionCollapsiblePanel(QWidget *panel, QToolButton *anchorButton);
 
     /** @brief 连接历史记录与权限相关信号 */
     void setupRecordAndPermissionConnections();
