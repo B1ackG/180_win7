@@ -1,6 +1,7 @@
 release/agvmodbusmanager.o
 release/animationmanager.o
 release/batterywidget.o
+release/devicecoordpanel.o
 release/enablebuttonworker.o
 release/featureswitchmanager.o
 release/featureswitchwidget.o
@@ -34,6 +35,7 @@ release/qrc_res.o
 release/moc_agvmodbusmanager.o
 release/moc_animationmanager.o
 release/moc_batterywidget.o
+release/moc_devicecoordpanel.o
 release/moc_enablebuttonworker.o
 release/moc_featureswitchmanager.o
 release/moc_featureswitchwidget.o

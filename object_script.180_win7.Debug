@@ -1,6 +1,7 @@
 debug/agvmodbusmanager.o
 debug/animationmanager.o
 debug/batterywidget.o
+debug/devicecoordpanel.o
 debug/enablebuttonworker.o
 debug/featureswitchmanager.o
 debug/featureswitchwidget.o
@@ -34,6 +35,7 @@ debug/qrc_res.o
 debug/moc_agvmodbusmanager.o
 debug/moc_animationmanager.o
 debug/moc_batterywidget.o
+debug/moc_devicecoordpanel.o
 debug/moc_enablebuttonworker.o
 debug/moc_featureswitchmanager.o
 debug/moc_featureswitchwidget.o

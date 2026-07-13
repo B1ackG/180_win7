@@ -32,7 +32,7 @@
    <string>MainWindow</string>
   </property>
   <property name="windowIcon">
-   <iconset resource="../180/res.qrc">
+   <iconset resource="res.qrc">
     <normaloff>:/Picture/TechBackGround4.png</normaloff>:/Picture/TechBackGround4.png</iconset>
   </property>
   <property name="styleSheet">
@@ -378,7 +378,7 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
           <string>主页</string>
          </property>
          <property name="icon">
-          <iconset resource="../180/res.qrc">
+          <iconset resource="res.qrc">
            <normaloff>:/Picture/home2.png</normaloff>:/Picture/home2.png</iconset>
          </property>
          <property name="iconSize">
@@ -409,7 +409,7 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
           <string>权限</string>
          </property>
          <property name="icon">
-          <iconset resource="../180/res.qrc">
+          <iconset resource="res.qrc">
            <normaloff>:/Picture/permission.png</normaloff>:/Picture/permission.png</iconset>
          </property>
          <property name="iconSize">
@@ -440,7 +440,7 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
           <string>历史记录</string>
          </property>
          <property name="icon">
-          <iconset resource="../180/res.qrc">
+          <iconset resource="res.qrc">
            <normaloff>:/Picture/history.png</normaloff>:/Picture/history.png</iconset>
          </property>
          <property name="iconSize">
@@ -499,7 +499,7 @@ QGroupBox#groupBox_4::title { color: #ffd0d0; background: rgba(56, 16, 16, 0.92)
          <string/>
         </property>
         <property name="pixmap">
-         <pixmap resource="../180/res.qrc">:/Picture/190overall7_smalltest.png</pixmap>
+         <pixmap resource="res.qrc">:/Picture/190overall7_smalltest.png</pixmap>
         </property>
         <property name="scaledContents">
          <bool>true</bool>
@@ -679,7 +679,7 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
          <string/>
         </property>
         <property name="pixmap">
-         <pixmap resource="../180/res.qrc">:/Picture/sixAxiesOverAll.png</pixmap>
+         <pixmap resource="res.qrc">:/Picture/sixAxiesOverAll.png</pixmap>
         </property>
         <property name="scaledContents">
          <bool>true</bool>
@@ -724,6 +724,26 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
           <height>190</height>
          </rect>
         </property>
+       </widget>
+       <widget class="QTabWidget" name="tabWidget">
+        <property name="geometry">
+         <rect>
+          <x>130</x>
+          <y>30</y>
+          <width>120</width>
+          <height>80</height>
+         </rect>
+        </property>
+        <widget class="QWidget" name="tab">
+         <attribute name="title">
+          <string>Tab 1</string>
+         </attribute>
+        </widget>
+        <widget class="QWidget" name="tab_2">
+         <attribute name="title">
+          <string>Tab 2</string>
+         </attribute>
+        </widget>
        </widget>
       </widget>
       <widget class="QWidget" name="page_HistoryRecord">
@@ -776,7 +796,7 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
          <string/>
         </property>
         <property name="pixmap">
-         <pixmap resource="../180/res.qrc">:/Picture/sixAxiesOverAll.png</pixmap>
+         <pixmap resource="res.qrc">:/Picture/sixAxiesOverAll.png</pixmap>
         </property>
         <property name="scaledContents">
          <bool>true</bool>
@@ -1025,6 +1045,8 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
    <container>1</container>
   </customwidget>
  </customwidgets>
- <resources/>
+ <resources>
+  <include location="res.qrc"/>
+ </resources>
  <connections/>
 </ui>
