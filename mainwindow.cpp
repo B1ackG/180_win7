@@ -360,6 +360,7 @@ void MainWindow::setupNavigationConnections()
 
     const QList<QToolButton*> navButtons = {
         ui->TBtn_HomePage,
+        ui->TBtn_SixAxies,
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord
     };
@@ -373,6 +374,7 @@ void MainWindow::setupNavigationConnections()
 
     const QList<TechChamferToolButton*> navChamferButtons = {
         ui->TBtn_HomePage,
+        ui->TBtn_SixAxies,
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord
     };
@@ -390,8 +392,30 @@ void MainWindow::setupNavigationConnections()
     }
 
     connect(ui->TBtn_HomePage, &QPushButton::clicked, [this]() {
-        ui->StackedWidget->setCurrentIndex(0);
+        if (ui->StackedWidget && ui->page_Robot) {
+            ui->StackedWidget->setCurrentWidget(ui->page_Robot);
+        }
+        if (ui->stackedWidget_RobotStatus && ui->page_robot) {
+            ui->stackedWidget_RobotStatus->setCurrentWidget(ui->page_robot);
+        }
         ui->TBtn_HomePage->setChecked(true);
+        if (ui->TBtn_SixAxies) {
+            ui->TBtn_SixAxies->setChecked(false);
+        }
+        updateNavButtonStyles(nullptr);
+    });
+
+    connect(ui->TBtn_SixAxies, &QPushButton::clicked, [this]() {
+        if (ui->StackedWidget && ui->page_Robot) {
+            ui->StackedWidget->setCurrentWidget(ui->page_Robot);
+        }
+        if (ui->stackedWidget_RobotStatus && ui->page_sixaxies) {
+            ui->stackedWidget_RobotStatus->setCurrentWidget(ui->page_sixaxies);
+        }
+        ui->TBtn_SixAxies->setChecked(true);
+        if (ui->TBtn_HomePage) {
+            ui->TBtn_HomePage->setChecked(false);
+        }
         updateNavButtonStyles(nullptr);
     });
 }
@@ -417,6 +441,7 @@ void MainWindow::setupNavigationMenuIcons()
 
     setIcon(ui->TBtn_DeviceControlMenu, NavIconKind::DeviceMenu, 24);
     setIcon(ui->TBtn_HomePage, NavIconKind::Home, 22);
+    setIcon(ui->TBtn_SixAxies, NavIconKind::SixAxis, 22);
 
     constexpr QColor kClearAlarmIcon(255, 244, 244);
     if (ui->TBtn_RemoveWarning) {
@@ -510,7 +535,7 @@ void MainWindow::setupCollapsibleControlPanels()
     m_deviceControlPopup = makePopup(QStringLiteral("deviceControlPopup"));
     moveButtonsToPopup(hiddenLayout,
                        m_deviceControlPopup,
-                       {ui->TBtn_HomePage});
+                       {ui->TBtn_HomePage, ui->TBtn_SixAxies});
 
     m_deviceControlMenuButton = ui->TBtn_DeviceControlMenu;
     initMenuButton(m_deviceControlMenuButton, QStringLiteral("设备控制"));
@@ -525,7 +550,8 @@ void MainWindow::setupCollapsibleControlPanels()
     const QList<QToolButton*> closeAfterNavClick = {
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord,
-        ui->TBtn_HomePage
+        ui->TBtn_HomePage,
+        ui->TBtn_SixAxies
     };
     for (QToolButton *button : closeAfterNavClick) {
         if (button) {
@@ -874,6 +900,7 @@ void MainWindow::updateNavigationButtonVisuals()
 
     const QList<TechChamferToolButton*> navButtons = {
         ui->TBtn_HomePage,
+        ui->TBtn_SixAxies,
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord
     };
@@ -947,7 +974,8 @@ void MainWindow::applyToolButtonStyles(const QList<QToolButton*> &buttons)
         if(btn) {
             const QString name = btn->objectName();
             if (name == "TBtn_RemoveWarning" ||
-                name == "TBtn_HomePage" || name == "TBtn_PermissionPage" ||
+                name == "TBtn_HomePage" || name == "TBtn_SixAxies" ||
+                name == "TBtn_PermissionPage" ||
                 name == "TBtn_HistoryRecord" ||
                 name == "TBtn_PageNavMenu" || name == "TBtn_DeviceControlMenu" ||
                 name.startsWith("btnStepTargetAxis") ||
@@ -1039,6 +1067,12 @@ void MainWindow::setupTechBorders()
         } else {
             panel->setAttribute(Qt::WA_TransparentForMouseEvents, false);
             panel->raise();
+        }
+
+        panel->setDesignOutline(false);
+        panel->setStyleSheet(QString());
+        if (panel->layout()) {
+            panel->layout()->activate();
         }
 
         m_contentZonePanels.append(panel);
@@ -1269,16 +1303,12 @@ void MainWindow::initSpeedGaugeUI()
 
     for (const auto& cfg : configs) {
         if (cfg.placeholder) {
-            qWarning() << "ArcGauge placeholder" << cfg.name
-                       << "parent" << cfg.placeholder->parentWidget()->objectName()
-                       << "placeholder geometry" << cfg.placeholder->geometry()
-                       << "parent geometry" << cfg.placeholder->parentWidget()->geometry();
-            TechArcGauge *arcGauge = new TechArcGauge(cfg.placeholder->parentWidget());
-            arcGauge->setGeometry(cfg.placeholder->geometry());
+            TechArcGauge *arcGauge = new TechArcGauge(cfg.placeholder);
             arcGauge->setObjectName(cfg.name);
             arcGauge->setRange(cfg.min, cfg.max);
             arcGauge->setValue(0);
-            
+            arcGauge->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
             // 如果是 J3，设置速度显示相关参数
             if (cfg.name == "robot_ArcGauge_J3Length") {
                 arcGauge->setSecondMaximum(40.0); // J3 速度范围 0~40 mm/s
@@ -1294,14 +1324,16 @@ void MainWindow::initSpeedGaugeUI()
                 arcGauge->setSecondMaximum(2.0);  // J4 速度范围 0~2 °/s
                 arcGauge->setSecondSuffix("°/s");
             }
-            
+
             arcGauge->setLabelText(cfg.label);
             arcGauge->setSecondLabelText(cfg.secondLabel);
             arcGauge->setSuffix(cfg.suffix);
             arcGauge->setPrecision(cfg.precision);
-            
-            cfg.placeholder->hide();
-            arcGauge->show();
+
+            QVBoxLayout *cellLayout = new QVBoxLayout(cfg.placeholder);
+            cellLayout->setContentsMargins(0, 0, 0, 0);
+            cellLayout->setSpacing(0);
+            cellLayout->addWidget(arcGauge);
 
             // 存入映射表，Key 使用规范化后的名称
             m_arcGauges[cfg.name] = arcGauge;

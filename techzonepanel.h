@@ -25,6 +25,7 @@ public:
     Q_PROPERTY(QString backgroundImage READ backgroundImage WRITE setBackgroundImage NOTIFY backgroundImageChanged)
     Q_PROPERTY(int imageBorderMargin READ imageBorderMargin WRITE setImageBorderMargin NOTIFY imageBorderMarginChanged)
     Q_PROPERTY(AccentStyle accentStyle READ accentStyle WRITE setAccentStyle NOTIFY accentStyleChanged)
+    Q_PROPERTY(bool designOutline READ designOutline WRITE setDesignOutline NOTIFY designOutlineChanged)
 
     explicit TechZonePanel(QWidget *parent = nullptr);
 
@@ -48,6 +49,9 @@ public:
 
     void setImageBorderMargins(const QMargins &margins);
 
+    bool designOutline() const { return m_designOutline; }
+    void setDesignOutline(bool enabled);
+
 signals:
     void titleChanged();
     void chamferSizeChanged();
@@ -55,6 +59,7 @@ signals:
     void backgroundImageChanged();
     void imageBorderMarginChanged();
     void accentStyleChanged();
+    void designOutlineChanged();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -65,6 +70,8 @@ private:
     void applyAccentStyle(AccentStyle style);
     void paintVectorFrame(QPainter &painter, const QRectF &bounds);
     void paintTitle(QPainter &painter, const QRectF &bounds);
+    void paintDesignOutline(QPainter &painter, const QRectF &bounds);
+    void syncDesignBorderImageStyle();
 
     QString m_title;
     QString m_backgroundImagePath;
@@ -77,6 +84,7 @@ private:
     QColor m_fillBottom = QColor(8, 24, 42, 163);
     QPixmap m_backgroundPixmap;
     QMargins m_imageBorderMargins{50, 50, 50, 50};
+    bool m_designOutline = true;
 };
 
 #endif // TECHZONEPANEL_H

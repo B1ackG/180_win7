@@ -221,25 +221,22 @@ QProgressBar::chunk {
   font-weight: 700;
 }
 
+/* Design-time layout guides (placeholders hidden at runtime; TechZone outline/stylesheet cleared in setupTechBorders) */
+TechZonePanel {
+  border-image: url(:/Picture/zonePanel.png) 50 50 50 50 stretch stretch;
+}
+#widget_SixAxies_1, #widget_SixAxies_2, #widget_SixAxies_3,
+#widget_SixAxies_4, #widget_SixAxies_5, #widget_SixAxies_6,
+#widget_test1, #widget_test2, #widget_test3, #widget_test4 {
+  border: 2px dashed rgba(160, 210, 255, 0.90);
+  background: rgba(60, 100, 140, 0.25);
+  min-width: 193px;
+  min-height: 193px;
+}
+
 </string>
    </property>
    <layout class="QGridLayout" name="gridLayout">
-    <item row="1" column="8">
-     <spacer name="horizontalSpacer_5">
-      <property name="orientation">
-       <enum>Qt::Horizontal</enum>
-      </property>
-      <property name="sizeType">
-       <enum>QSizePolicy::Fixed</enum>
-      </property>
-      <property name="sizeHint" stdset="0">
-       <size>
-        <width>50</width>
-        <height>20</height>
-       </size>
-      </property>
-     </spacer>
-    </item>
     <item row="6" column="2">
      <widget class="TechChamferToolButton" name="TBtn_PageNavMenu">
       <property name="sizePolicy">
@@ -311,22 +308,6 @@ QProgressBar::chunk {
       </property>
      </widget>
     </item>
-    <item row="1" column="0">
-     <spacer name="horizontalSpacer_2">
-      <property name="orientation">
-       <enum>Qt::Horizontal</enum>
-      </property>
-      <property name="sizeType">
-       <enum>QSizePolicy::Fixed</enum>
-      </property>
-      <property name="sizeHint" stdset="0">
-       <size>
-        <width>70</width>
-        <height>20</height>
-       </size>
-      </property>
-     </spacer>
-    </item>
     <item row="1" column="7">
      <spacer name="horizontalSpacer_6">
       <property name="orientation">
@@ -342,6 +323,28 @@ QProgressBar::chunk {
        </size>
       </property>
      </spacer>
+    </item>
+    <item row="1" column="3" colspan="3">
+     <widget class="QLabel" name="label_StatusTip">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+        <horstretch>1</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="text">
+       <string>TextLabel</string>
+      </property>
+     </widget>
+    </item>
+    <item row="2" column="5" colspan="2">
+     <widget class="DeviceCoordPanel" name="Widget_DeviceCoordPanel" native="true"/>
     </item>
     <item row="2" column="1" colspan="4">
      <widget class="QLabel" name="label_Home">
@@ -393,57 +396,6 @@ QProgressBar::chunk {
       </property>
      </widget>
     </item>
-    <item row="1" column="6">
-     <spacer name="horizontalSpacer_4">
-      <property name="orientation">
-       <enum>Qt::Horizontal</enum>
-      </property>
-      <property name="sizeType">
-       <enum>QSizePolicy::Fixed</enum>
-      </property>
-      <property name="sizeHint" stdset="0">
-       <size>
-        <width>150</width>
-        <height>20</height>
-       </size>
-      </property>
-     </spacer>
-    </item>
-    <item row="1" column="1">
-     <spacer name="horizontalSpacer">
-      <property name="orientation">
-       <enum>Qt::Horizontal</enum>
-      </property>
-      <property name="sizeType">
-       <enum>QSizePolicy::Fixed</enum>
-      </property>
-      <property name="sizeHint" stdset="0">
-       <size>
-        <width>40</width>
-        <height>20</height>
-       </size>
-      </property>
-     </spacer>
-    </item>
-    <item row="1" column="3" colspan="3">
-     <widget class="QLabel" name="label_StatusTip">
-      <property name="sizePolicy">
-       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-        <horstretch>1</horstretch>
-        <verstretch>0</verstretch>
-       </sizepolicy>
-      </property>
-      <property name="minimumSize">
-       <size>
-        <width>0</width>
-        <height>30</height>
-       </size>
-      </property>
-      <property name="text">
-       <string>TextLabel</string>
-      </property>
-     </widget>
-    </item>
     <item row="1" column="2">
      <spacer name="horizontalSpacer_3">
       <property name="orientation">
@@ -460,352 +412,53 @@ QProgressBar::chunk {
       </property>
      </spacer>
     </item>
-    <item row="7" column="0" colspan="9">
-     <widget class="QStackedWidget" name="StackedWidget">
-      <property name="enabled">
-       <bool>true</bool>
+    <item row="1" column="0">
+     <spacer name="horizontalSpacer_2">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
       </property>
-      <property name="sizePolicy">
-       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-        <horstretch>0</horstretch>
-        <verstretch>7</verstretch>
-       </sizepolicy>
+      <property name="sizeType">
+       <enum>QSizePolicy::Fixed</enum>
       </property>
-      <property name="font">
-       <font>
-        <bold>true</bold>
-       </font>
+      <property name="sizeHint" stdset="0">
+       <size>
+        <width>70</width>
+        <height>20</height>
+       </size>
       </property>
-      <property name="styleSheet">
-       <string notr="true">background-color:</string>
-      </property>
-      <property name="currentIndex">
-       <number>0</number>
-      </property>
-      <widget class="QWidget" name="page_Robot">
-       <widget class="TechZonePanel" name="techZone_RobotOverview" native="true">
-        <property name="geometry">
-         <rect>
-          <x>1000</x>
-          <y>0</y>
-          <width>820</width>
-          <height>820</height>
-         </rect>
-        </property>
-        <property name="title" stdset="0">
-         <string>机器人概览</string>
-        </property>
-        <property name="backgroundImage" stdset="0">
-         <string>:/Picture/zonePanel.png</string>
-        </property>
-        <property name="chamferSize" stdset="0">
-         <number>12</number>
-        </property>
-        <property name="imageBorderMargin" stdset="0">
-         <number>50</number>
-        </property>
-        <widget class="QLabel" name="lab_Overall">
-        <property name="geometry">
-         <rect>
-          <x>20</x>
-          <y>10</y>
-          <width>790</width>
-          <height>800</height>
-         </rect>
-        </property>
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-        <property name="pixmap">
-         <pixmap resource="res.qrc">:/Picture/190overall7_smalltest.png</pixmap>
-        </property>
-        <property name="scaledContents">
-         <bool>true</bool>
-        </property>
-       </widget>
-       <widget class="TechSpeedGauge" name="AGV_speedGauge" native="true">
-        <property name="geometry">
-         <rect>
-          <x>200</x>
-          <y>540</y>
-          <width>270</width>
-          <height>251</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_5" native="true">
-        <property name="geometry">
-         <rect>
-          <x>660</x>
-          <y>10</y>
-          <width>171</width>
-          <height>50</height>
-         </rect>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">color: rgb(0, 200, 255);
-font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
-        </property>
-        <layout class="QGridLayout" name="gridLayout_2">
-         <item row="0" column="0">
-          <widget class="QLabel" name="label_15">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-             <horstretch>1</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="text">
-            <string>电池电量</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="1">
-          <widget class="BatteryWidget" name="progressBar_battery1" native="true">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-             <horstretch>1</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-       <widget class="QWidget" name="widget_test3" native="true">
-        <property name="geometry">
-         <rect>
-          <x>360</x>
-          <y>150</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>193</width>
-          <height>193</height>
-         </size>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_test4" native="true">
-        <property name="geometry">
-         <rect>
-          <x>120</x>
-          <y>150</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>193</width>
-          <height>193</height>
-         </size>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_test2" native="true">
-        <property name="geometry">
-         <rect>
-          <x>360</x>
-          <y>370</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>193</width>
-          <height>193</height>
-         </size>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_test1" native="true">
-        <property name="geometry">
-         <rect>
-          <x>120</x>
-          <y>370</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>193</width>
-          <height>193</height>
-         </size>
-        </property>
-       </widget>
-       </widget>
-       <widget class="TechZonePanel" name="techZone_RobotStatus" native="true">
-        <property name="geometry">
-         <rect>
-          <x>40</x>
-          <y>20</y>
-          <width>920</width>
-          <height>740</height>
-         </rect>
-        </property>
-        <property name="title" stdset="0">
-         <string>状态监控</string>
-        </property>
-        <property name="backgroundImage" stdset="0">
-         <string>:/Picture/zonePanel.png</string>
-        </property>
-        <property name="chamferSize" stdset="0">
-         <number>12</number>
-        </property>
-        <property name="imageBorderMargin" stdset="0">
-         <number>50</number>
-        </property>
-       <widget class="QLabel" name="lab_Overall_3">
-        <property name="geometry">
-         <rect>
-          <x>450</x>
-          <y>0</y>
-          <width>310</width>
-          <height>520</height>
-         </rect>
-        </property>
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>16777215</width>
-          <height>630</height>
-         </size>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-        <property name="pixmap">
-         <pixmap resource="res.qrc">:/Picture/sixAxiesOverAll.png</pixmap>
-        </property>
-        <property name="scaledContents">
-         <bool>true</bool>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_2" native="true">
-        <property name="geometry">
-         <rect>
-          <x>470</x>
-          <y>620</y>
-          <width>611</width>
-          <height>111</height>
-         </rect>
-        </property>
-        <layout class="QHBoxLayout" name="horizontalLayout">
-         <item>
-          <widget class="QWidget" name="quickWidget_Inclinometer_Y" native="true"/>
-         </item>
-         <item>
-          <widget class="QWidget" name="quickWidget_RobotTotalPower" native="true"/>
-         </item>
-         <item>
-          <widget class="QWidget" name="quickWidget_Inclinometer_X" native="true"/>
-         </item>
-        </layout>
-       </widget>
-       <widget class="QWidget" name="widget_SixAxies_6" native="true">
-        <property name="geometry">
-         <rect>
-          <x>220</x>
-          <y>420</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_SixAxies_4" native="true">
-        <property name="geometry">
-         <rect>
-          <x>220</x>
-          <y>21</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_SixAxies_5" native="true">
-        <property name="geometry">
-         <rect>
-          <x>220</x>
-          <y>220</y>
-          <width>193</width>
-          <height>194</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_SixAxies_3" native="true">
-        <property name="geometry">
-         <rect>
-          <x>21</x>
-          <y>420</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_SixAxies_2" native="true">
-        <property name="geometry">
-         <rect>
-          <x>21</x>
-          <y>220</y>
-          <width>193</width>
-          <height>194</height>
-         </rect>
-        </property>
-       </widget>
-       <widget class="QWidget" name="widget_SixAxies_1" native="true">
-        <property name="geometry">
-         <rect>
-          <x>21</x>
-          <y>21</y>
-          <width>193</width>
-          <height>193</height>
-         </rect>
-        </property>
-       </widget>
-       </widget>
-      </widget>
-      <widget class="QWidget" name="page_HistoryRecord">
-       <widget class="QWidget" name="quickWidget_HistoryList" native="true">
-        <property name="geometry">
-         <rect>
-          <x>90</x>
-          <y>0</y>
-          <width>1761</width>
-          <height>781</height>
-         </rect>
-        </property>
-       </widget>
-      </widget>
-      <widget class="QWidget" name="page_Permission">
-       <widget class="QWidget" name="permissionContentHost" native="true">
-        <property name="geometry">
-         <rect>
-          <x>409</x>
-          <y>19</y>
-          <width>1121</width>
-          <height>691</height>
-         </rect>
-        </property>
-       </widget>
-      </widget>
-     </widget>
+     </spacer>
     </item>
-    <item row="2" column="5" colspan="2">
-     <widget class="DeviceCoordPanel" name="Widget_DeviceCoordPanel" native="true"/>
+    <item row="1" column="6">
+     <spacer name="horizontalSpacer_4">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <property name="sizeType">
+       <enum>QSizePolicy::Fixed</enum>
+      </property>
+      <property name="sizeHint" stdset="0">
+       <size>
+        <width>150</width>
+        <height>20</height>
+       </size>
+      </property>
+     </spacer>
+    </item>
+    <item row="1" column="8">
+     <spacer name="horizontalSpacer_5">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <property name="sizeType">
+       <enum>QSizePolicy::Fixed</enum>
+      </property>
+      <property name="sizeHint" stdset="0">
+       <size>
+        <width>50</width>
+        <height>20</height>
+       </size>
+      </property>
+     </spacer>
     </item>
     <item row="6" column="3">
      <widget class="TechChamferToolButton" name="TBtn_DeviceControlMenu">
@@ -842,6 +495,480 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
       <property name="toolButtonStyle">
        <enum>Qt::ToolButtonTextBesideIcon</enum>
       </property>
+     </widget>
+    </item>
+    <item row="1" column="1">
+     <spacer name="horizontalSpacer">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <property name="sizeType">
+       <enum>QSizePolicy::Fixed</enum>
+      </property>
+      <property name="sizeHint" stdset="0">
+       <size>
+        <width>40</width>
+        <height>20</height>
+       </size>
+      </property>
+     </spacer>
+    </item>
+    <item row="7" column="0" colspan="9">
+     <widget class="QStackedWidget" name="StackedWidget">
+      <property name="enabled">
+       <bool>true</bool>
+      </property>
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+        <horstretch>0</horstretch>
+        <verstretch>7</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="font">
+       <font>
+        <bold>true</bold>
+       </font>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">background-color:</string>
+      </property>
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="page_Robot">
+       <widget class="TechZonePanel" name="techZone_RobotOverview" native="true">
+        <property name="geometry">
+         <rect>
+          <x>110</x>
+          <y>30</y>
+          <width>771</width>
+          <height>791</height>
+         </rect>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">border-image: url(:/Picture/zonePanel.png) 50 50 50 50 stretch stretch;</string>
+        </property>
+        <property name="title" stdset="0">
+         <string>机器人概览</string>
+        </property>
+        <property name="backgroundImage" stdset="0">
+         <string>:/Picture/zonePanel.png</string>
+        </property>
+        <property name="chamferSize" stdset="0">
+         <number>12</number>
+        </property>
+        <property name="imageBorderMargin" stdset="0">
+         <number>50</number>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_2">
+         <property name="leftMargin">
+          <number>90</number>
+         </property>
+         <property name="topMargin">
+          <number>20</number>
+         </property>
+         <property name="rightMargin">
+          <number>90</number>
+         </property>
+         <property name="bottomMargin">
+          <number>20</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="lab_Overall">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="pixmap">
+            <pixmap resource="res.qrc">:/Picture/190overall7_smalltest.png</pixmap>
+           </property>
+           <property name="scaledContents">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="widget" native="true">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+             <horstretch>0</horstretch>
+             <verstretch>1</verstretch>
+            </sizepolicy>
+           </property>
+           <layout class="QGridLayout" name="gridLayout_5">
+            <property name="leftMargin">
+             <number>150</number>
+            </property>
+            <property name="rightMargin">
+             <number>150</number>
+            </property>
+            <item row="0" column="0">
+             <widget class="TechSpeedGauge" name="AGV_speedGauge" native="true">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>270</width>
+                <height>251</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="TechZonePanel" name="techZone_RobotStatus" native="true">
+        <property name="geometry">
+         <rect>
+          <x>1040</x>
+          <y>30</y>
+          <width>761</width>
+          <height>791</height>
+         </rect>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">border-image: url(:/Picture/zonePanel.png) 50 50 50 50 stretch stretch;</string>
+        </property>
+        <property name="title" stdset="0">
+         <string>状态监控</string>
+        </property>
+        <property name="backgroundImage" stdset="0">
+         <string>:/Picture/zonePanel.png</string>
+        </property>
+        <property name="chamferSize" stdset="0">
+         <number>12</number>
+        </property>
+        <property name="imageBorderMargin" stdset="0">
+         <number>50</number>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout">
+         <property name="leftMargin">
+          <number>30</number>
+         </property>
+         <property name="topMargin">
+          <number>40</number>
+         </property>
+         <property name="rightMargin">
+          <number>15</number>
+         </property>
+         <property name="bottomMargin">
+          <number>40</number>
+         </property>
+         <item>
+          <widget class="QStackedWidget" name="stackedWidget_RobotStatus">
+           <property name="currentIndex">
+            <number>1</number>
+           </property>
+           <widget class="QWidget" name="page_sixaxies">
+            <layout class="QGridLayout" name="gridLayout_3">
+             <property name="leftMargin">
+              <number>30</number>
+             </property>
+             <property name="topMargin">
+              <number>30</number>
+             </property>
+             <property name="rightMargin">
+              <number>15</number>
+             </property>
+             <property name="bottomMargin">
+              <number>15</number>
+             </property>
+             <property name="spacing">
+              <number>8</number>
+             </property>
+             <item row="1" column="1">
+              <widget class="QWidget" name="widget_SixAxies_5" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="4">
+              <widget class="QWidget" name="widget_SixAxies_3" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="0">
+              <widget class="QWidget" name="widget_SixAxies_1" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QWidget" name="widget_SixAxies_2" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="4">
+              <widget class="QWidget" name="widget_SixAxies_6" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QWidget" name="widget_SixAxies_4" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="page_robot">
+            <layout class="QGridLayout" name="gridLayout_4">
+             <property name="leftMargin">
+              <number>30</number>
+             </property>
+             <property name="topMargin">
+              <number>30</number>
+             </property>
+             <property name="rightMargin">
+              <number>15</number>
+             </property>
+             <property name="bottomMargin">
+              <number>15</number>
+             </property>
+             <property name="spacing">
+              <number>8</number>
+             </property>
+             <item row="0" column="3">
+              <widget class="QWidget" name="widget_test3" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="0">
+              <widget class="QWidget" name="widget_test1" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QWidget" name="widget_test4" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="2">
+              <widget class="QWidget" name="widget_test2" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="widget_2" native="true">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>111</height>
+            </size>
+           </property>
+           <layout class="QHBoxLayout" name="horizontalLayout">
+            <item>
+             <widget class="QWidget" name="quickWidget_Inclinometer_Y" native="true"/>
+            </item>
+            <item>
+             <widget class="QWidget" name="quickWidget_RobotTotalPower" native="true"/>
+            </item>
+            <item>
+             <widget class="QWidget" name="quickWidget_Inclinometer_X" native="true"/>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="widget_5" native="true">
+        <property name="geometry">
+         <rect>
+          <x>1570</x>
+          <y>40</y>
+          <width>171</width>
+          <height>50</height>
+         </rect>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">color: rgb(0, 200, 255);
+font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
+        </property>
+        <layout class="QGridLayout" name="gridLayout_2">
+         <item row="0" column="0">
+          <widget class="QLabel" name="label_15">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+             <horstretch>1</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="text">
+            <string>电池电量</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="BatteryWidget" name="progressBar_battery1" native="true">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+             <horstretch>1</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+      <widget class="QWidget" name="page_HistoryRecord">
+       <widget class="QWidget" name="quickWidget_HistoryList" native="true">
+        <property name="geometry">
+         <rect>
+          <x>90</x>
+          <y>0</y>
+          <width>1761</width>
+          <height>781</height>
+         </rect>
+        </property>
+       </widget>
+      </widget>
+      <widget class="QWidget" name="page_Permission">
+       <widget class="QWidget" name="permissionContentHost" native="true">
+        <property name="geometry">
+         <rect>
+          <x>409</x>
+          <y>19</y>
+          <width>1121</width>
+          <height>691</height>
+         </rect>
+        </property>
+       </widget>
+      </widget>
      </widget>
     </item>
    </layout>
@@ -917,7 +1044,31 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
         <bool>false</bool>
        </property>
        <property name="text">
-        <string>主页</string>
+        <string>主控制臂</string>
+       </property>
+       <property name="iconSize">
+        <size>
+         <width>22</width>
+         <height>22</height>
+        </size>
+       </property>
+       <property name="toolButtonStyle">
+        <enum>Qt::ToolButtonTextBesideIcon</enum>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="TechChamferToolButton" name="TBtn_SixAxies">
+       <property name="font">
+        <font>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="text">
+        <string>六自由度</string>
        </property>
        <property name="iconSize">
         <size>

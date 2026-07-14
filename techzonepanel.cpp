@@ -31,6 +31,7 @@ void TechZonePanel::setBackgroundImage(const QString &resourcePath)
     m_backgroundImagePath = resourcePath;
     m_backgroundPixmap = pixmap;
     emit backgroundImageChanged();
+    syncDesignBorderImageStyle();
     update();
 }
 
@@ -39,6 +40,7 @@ void TechZonePanel::setImageBorderMargins(const QMargins &margins)
     if (m_imageBorderMargins != margins) {
         m_imageBorderMargins = margins;
         emit imageBorderMarginChanged();
+        syncDesignBorderImageStyle();
         update();
     }
 }
@@ -85,6 +87,37 @@ void TechZonePanel::setAccentStyle(AccentStyle style)
         applyAccentStyle(style);
         emit accentStyleChanged();
         update();
+    }
+}
+
+void TechZonePanel::setDesignOutline(bool enabled)
+{
+    if (m_designOutline != enabled) {
+        m_designOutline = enabled;
+        emit designOutlineChanged();
+        if (!m_designOutline) {
+            setStyleSheet(QString());
+        } else {
+            syncDesignBorderImageStyle();
+        }
+        update();
+    }
+}
+
+void TechZonePanel::syncDesignBorderImageStyle()
+{
+    if (!m_designOutline || m_backgroundImagePath.isEmpty()) {
+        return;
+    }
+
+    const int m = m_imageBorderMargins.left();
+    const QString css = QStringLiteral(
+        "border-image: url(%1) %2 %2 %2 %2 stretch stretch;")
+                            .arg(m_backgroundImagePath)
+                            .arg(m);
+    const QString current = styleSheet().trimmed();
+    if (current.isEmpty() || current.contains(QStringLiteral("border-image"))) {
+        setStyleSheet(css);
     }
 }
 
@@ -229,6 +262,48 @@ void TechZonePanel::paintTitle(QPainter &painter, const QRectF &bounds)
     painter.drawText(titleBg, Qt::AlignCenter, m_title);
 }
 
+void TechZonePanel::paintDesignOutline(QPainter &painter, const QRectF &bounds)
+{
+    if (m_backgroundPixmap.isNull()) {
+        painter.fillRect(bounds, QColor(0, 60, 120, 72));
+
+        QFont hintFont = painter.font();
+        hintFont.setPixelSize(14);
+        hintFont.setBold(true);
+        painter.setFont(hintFont);
+        painter.setPen(QColor(0, 232, 255, 200));
+        painter.drawText(bounds, Qt::AlignCenter, QStringLiteral("TechZonePanel"));
+    }
+
+    QPen outlinePen(QColor(0, 232, 255, 220));
+    outlinePen.setStyle(Qt::DashLine);
+    outlinePen.setWidthF(2.5);
+    outlinePen.setDashPattern({6.0, 4.0});
+    painter.setPen(outlinePen);
+    painter.setBrush(QColor(0, 60, 120, 72));
+    painter.drawRect(bounds.adjusted(1.0, 1.0, -1.0, -1.0));
+
+    const QString label = !objectName().isEmpty() ? objectName() : m_title;
+    if (label.isEmpty()) {
+        return;
+    }
+
+    QFont labelFont = painter.font();
+    labelFont.setPixelSize(12);
+    labelFont.setBold(true);
+    painter.setFont(labelFont);
+
+    QFontMetricsF metrics(labelFont);
+    const qreal padH = 8.0;
+    const qreal padV = 4.0;
+    const QRectF labelBg(bounds.left() + 6.0, bounds.top() + 6.0,
+                         metrics.horizontalAdvance(label) + padH * 2.0,
+                         metrics.height() + padV * 2.0);
+    painter.fillRect(labelBg, QColor(0, 24, 48, 230));
+    painter.setPen(Qt::white);
+    painter.drawText(labelBg, Qt::AlignCenter, label);
+}
+
 void TechZonePanel::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event);
@@ -246,4 +321,8 @@ void TechZonePanel::paintEvent(QPaintEvent *event)
     }
 
     paintTitle(painter, bounds);
+
+    if (m_designOutline) {
+        paintDesignOutline(painter, bounds);
+    }
 }
