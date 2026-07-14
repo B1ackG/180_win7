@@ -1,4 +1,4 @@
-﻿#include "mainwindow.h"
+#include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "featureswitchmanager.h"
 #include "featureswitchwidget.h"
@@ -1346,6 +1346,9 @@ void MainWindow::initSpeedGaugeUI()
         return;
     }
 
+    m_speedGaugeWidget->setGaugeStyle(TechSpeedGauge::StyleClassicDial);
+    m_speedGaugeWidget->enableScanLine(false);
+    m_speedGaugeWidget->enablePulseEffect(false);
     m_speedGaugeWidget->setRange(0, 900);
     m_speedGaugeWidget->setTitle(QStringLiteral("行驶速度"));
     m_speedGaugeWidget->setUnit(QStringLiteral("mm/s"));

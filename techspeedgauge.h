@@ -26,6 +26,7 @@
 #include <QPropertyAnimation>
 #include <QTimer>
 #include <QDebug>
+#include <QRgb>
 
 class TechSpeedGauge : public QWidget
 {
@@ -252,6 +253,14 @@ private:
     qreal angleFromValue(qreal value) const;
     QPointF pointOnCircle(qreal radius, qreal angle) const;
     QColor blendColors(const QColor &c1, const QColor &c2, qreal factor) const;
+
+    // 经典霓虹表：270°，起点 225°（左下）扫到 -45°（右下），底部留口
+    static constexpr qreal kStartAngle = 225.0;
+    static constexpr qreal kSweepAngle = 270.0;
+    // 警戒区：720/900 = 0.8（末端一小段）
+    static constexpr qreal kRedZoneRatio = 0.8;
+    static constexpr QRgb kNeonCyanRgb = 0x00e5ee;
+    static constexpr QRgb kNeonRedRgb = 0xff4444;
 
     // 成员变量
     GaugeStyle m_style;

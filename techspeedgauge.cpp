@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QDebug>
 #include <QDateTime>
+#include <QPalette>
 #include <QtMath>
 
 TechSpeedGauge::TechSpeedGauge(QWidget *parent)
@@ -128,10 +129,22 @@ void TechSpeedGauge::setGaugeStyle(GaugeStyle style)
             m_glowColor = QColor(255, 255, 255, 100);
             break;
         case StyleClassicDial:
-            m_primaryColor = QColor(46, 204, 113);   // 电路绿
-            m_secondaryColor = QColor(52, 152, 219); // 科技蓝
-            m_glowColor = QColor(0, 255, 127, 100);
+            m_primaryColor = QColor(kNeonCyanRgb); // #00e5ee
+            m_secondaryColor = QColor(kNeonRedRgb);
+            m_glowColor = QColor(0x00, 0xe5, 0xee, 80);
+            // 透明底板（贴近 TechArcGauge）
+            setAttribute(Qt::WA_TranslucentBackground, true);
+            setAutoFillBackground(false);
+            {
+                QPalette pal = palette();
+                pal.setColor(QPalette::Window, Qt::transparent);
+                setPalette(pal);
+            }
             break;
+        }
+
+        if (style != StyleClassicDial) {
+            setAttribute(Qt::WA_TranslucentBackground, false);
         }
 
         m_cacheValid = false;
@@ -248,8 +261,10 @@ void TechSpeedGauge::drawObstacleIndicators(QPainter &painter)
     painter.setRenderHint(QPainter::Antialiasing);
 
     // 使用环形扇区，避免 drawPie 产生“从圆心到边缘”的径向线
-    qreal outerRadius = m_radius * 1.05;
-    qreal innerRadius = m_radius * 0.95;
+    // Classic 略收半径，避免盖住外圈刻度
+    const qreal scale = (m_style == StyleClassicDial) ? 0.98 : 1.0;
+    qreal outerRadius = m_radius * 1.05 * scale;
+    qreal innerRadius = m_radius * 0.95 * scale;
     QRectF outerRect(-outerRadius, -outerRadius, outerRadius * 2, outerRadius * 2);
     QRectF innerRect(-innerRadius, -innerRadius, innerRadius * 2, innerRadius * 2);
 
@@ -303,25 +318,24 @@ void TechSpeedGauge::paintEvent(QPaintEvent *event)
     painter.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing |
                            QPainter::SmoothPixmapTransform);
 
-    // 绘制背景
+    if (m_style == StyleClassicDial) {
+        // 经典汽车表：背景 → 轨道/红区/进度 → 刻度 → 指针 → 数值 → 标题 → 避障
+        drawBackground(painter);
+        drawValueArc(painter);
+        drawTicksAndNumbers(painter);
+        drawNeedle(painter);
+        drawValueDisplay(painter);
+        drawTitle(painter);
+        drawObstacleIndicators(painter);
+        return;
+    }
+
     drawBackground(painter);
-
-    // 绘制障碍物指示器 (在背景和数值之间)
     drawObstacleIndicators(painter);
-
-    // 绘制数值弧
     drawValueArc(painter);
-
-    // 注释掉指针绘制
-    // drawNeedle(painter);
-
-    // 绘制中央数值显示
     drawValueDisplay(painter);
-
-    // 绘制标题
     drawTitle(painter);
 
-    // 绘制前景特效
     if (m_scanLineEnabled || m_pulseEffectEnabled) {
         drawForegroundEffects(painter);
     }
@@ -410,99 +424,143 @@ void TechSpeedGauge::drawBackground(QPainter &painter)
     }
 
     case StyleClassicDial:
-    {
-        // 经典风格：光滑渐变
-        QRadialGradient gradient(m_center, m_radius);
-        gradient.setColorAt(0, QColor(40, 40, 50));
-        gradient.setColorAt(1, QColor(20, 20, 30));
-
-        painter.fillPath(backgroundPath, QBrush(gradient));
-
-        // 添加金属边框
-        QLinearGradient borderGrad(m_center - QPointF(m_radius, 0),
-                                   m_center + QPointF(m_radius, 0));
-        borderGrad.setColorAt(0, QColor(100, 100, 120));
-        borderGrad.setColorAt(0.5, QColor(180, 180, 200));
-        borderGrad.setColorAt(1, QColor(100, 100, 120));
-
-        painter.setPen(QPen(QBrush(borderGrad), 3));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawEllipse(m_center, m_radius, m_radius);
+        // Arc 透明风格：无径向填充、无金属环
         break;
-    }
     }
 }
 
-// 绘制刻度和数字
-// void TechSpeedGauge::drawTicksAndNumbers(QPainter &painter)
-// {
-//     painter.save();
+// 绘制刻度和数字（Classic：双层锐利霓虹，末段 720+ 红）
+void TechSpeedGauge::drawTicksAndNumbers(QPainter &painter)
+{
+    painter.save();
 
-//     // 设置刻度颜色
-//     QColor tickColor = (m_style == StyleHolographic) ?
-//                            QColor(255, 255, 255, 150) : QColor(200, 220, 255, 180);
+    const int majorTicks = 10;
+    const int minorPerMajor = 9; // 主刻度间 8 根短线，更密
+    const qreal redStart = m_minValue + (m_maxValue - m_minValue) * kRedZoneRatio;
+    const QColor cyan(kNeonCyanRgb);
+    const QColor red(kNeonRedRgb);
 
-//     painter.setPen(QPen(tickColor, 1.5));
+    auto tickColor = [&](qreal value) -> QColor {
+        return (value < redStart) ? cyan : red;
+    };
 
-//     // 绘制主要刻度（每10单位）
-//     int majorTicks = 10;
-//     qreal tickAngleRange = 240.0; // 仪表盘角度范围（从-120度到120度）
-//     qreal startAngle = 150.0;     // 起始角度（从左侧开始）
+    // 单层微光：一层外晕 + 芯线（不发雾）
+    auto drawSharpNeonLine = [&](const QPointF &a, const QPointF &b,
+                                 const QColor &c, qreal coreW) {
+        QColor glow = c;
+        glow.setAlpha(40);
+        painter.setPen(QPen(glow, coreW * 2.0, Qt::SolidLine, Qt::FlatCap));
+        painter.drawLine(a, b);
+        painter.setPen(QPen(c, coreW, Qt::SolidLine, Qt::FlatCap));
+        painter.drawLine(a, b);
+    };
 
-//     for (int i = 0; i <= majorTicks; i++) {
-//         qreal value = m_minValue + (m_maxValue - m_minValue) * i / majorTicks;
-//         qreal angle = startAngle - (tickAngleRange * i / majorTicks);
-//         qreal rad = qDegreesToRadians(angle);
+    // 与 TechArcGauge 主数字一致：默认字体 + Bold + setPixelSize
+    const int sizePx = qMax(1, qRound(m_radius * 2.0));
+    QFont tickFont = painter.font();
+    tickFont.setPixelSize(qMax(9, sizePx / 16));
+    tickFont.setBold(true);
+    painter.setFont(tickFont);
 
-//         // 计算刻度点
-//         QPointF innerPoint = pointOnCircle(m_radius * 0.85, rad);
-//         QPointF outerPoint = pointOnCircle(m_radius * 0.75, rad);
+    // 外层主刻度 + 数字
+    for (int i = 0; i <= majorTicks; ++i) {
+        const qreal t = static_cast<qreal>(i) / majorTicks;
+        const qreal angle = kStartAngle - kSweepAngle * t;
+        const qreal value = m_minValue + (m_maxValue - m_minValue) * t;
+        const QColor c = tickColor(value);
 
-//         painter.drawLine(m_center + innerPoint, m_center + outerPoint);
+        const QPointF outer = m_center + pointOnCircle(m_radius * 0.90, angle);
+        const QPointF inner = m_center + pointOnCircle(m_radius * 0.78, angle);
+        drawSharpNeonLine(outer, inner, c, 1.8);
 
-//         // 绘制刻度值
-//         if (i % 2 == 0) { // 每2个刻度显示一个数字
-//             QPointF textPoint = pointOnCircle(m_radius * 0.65, rad);
-//             QFont font = painter.font();
-//             font.setPointSize(9);
-//             font.setBold(true);
-//             painter.setFont(font);
+        const QPointF textPt = pointOnCircle(m_radius * 0.66, angle);
+        // 极弱暗底抗锯齿；数字与外轮廓同色 #00e5ee
+        painter.setPen(QColor(0, 0, 0, 50));
+        painter.drawText(QRectF(m_center.x() + textPt.x() - 22,
+                                m_center.y() + textPt.y() - 9,
+                                44, 18),
+                         Qt::AlignCenter,
+                         QString::number(value, 'f', 0));
+        painter.setPen(cyan);
+        painter.drawText(QRectF(m_center.x() + textPt.x() - 22,
+                                m_center.y() + textPt.y() - 9,
+                                44, 18),
+                         Qt::AlignCenter,
+                         QString::number(value, 'f', 0));
+    }
 
-//             painter.save();
-//             painter.translate(m_center + textPoint);
-//             // painter.rotate(-angle + 90); // 使文字朝向圆心
-//             painter.drawText(QRect(-30, -15, 60, 30), Qt::AlignCenter,
-//                              QString::number(value, 'f', 0));
-//             painter.restore();
-//         }
-//     }
+    // 内层细分短刻度
+    const int totalMinor = majorTicks * minorPerMajor;
+    for (int i = 0; i <= totalMinor; ++i) {
+        if (i % minorPerMajor == 0)
+            continue;
+        const qreal t = static_cast<qreal>(i) / totalMinor;
+        const qreal angle = kStartAngle - kSweepAngle * t;
+        const qreal value = m_minValue + (m_maxValue - m_minValue) * t;
+        drawSharpNeonLine(m_center + pointOnCircle(m_radius * 0.88, angle),
+                          m_center + pointOnCircle(m_radius * 0.83, angle),
+                          tickColor(value), 0.9);
+    }
 
-//     // 绘制次要刻度
-//     int minorTicksPerMajor = 5;
-//     painter.setPen(QPen(tickColor.lighter(120), 1));
-
-//     for (int i = 0; i < majorTicks * minorTicksPerMajor; i++) {
-//         qreal angle = startAngle - (tickAngleRange * i / (majorTicks * minorTicksPerMajor));
-//         qreal rad = qDegreesToRadians(angle);
-
-//         QPointF innerPoint = pointOnCircle(m_radius * 0.82, rad);
-//         QPointF outerPoint = pointOnCircle(m_radius * 0.78, rad);
-
-//         painter.drawLine(m_center + innerPoint, m_center + outerPoint);
-//     }
-
-//     painter.restore();
-// }
+    painter.restore();
+}
 
 // 绘制数值弧
 void TechSpeedGauge::drawValueArc(QPainter &painter)
 {
     painter.save();
 
-    // 计算当前值对应的角度
-    qreal currentAngle = angleFromValue(m_currentValue);
-    qreal startAngle = 150.0; // 起始角度
-    qreal spanAngle = startAngle - currentAngle;
+    const qreal startAngle = kStartAngle;
+    const qreal currentAngle = angleFromValue(m_currentValue);
+    const qreal spanAngle = startAngle - currentAngle; // 正向扫过的角度（度数）
+
+    // Classic：细锐 #00e5ee 轮廓 + 细进度弧（红仅末段）
+    if (m_style == StyleClassicDial) {
+        const QColor cyan(kNeonCyanRgb);
+        const QColor red(kNeonRedRgb);
+        const qreal redStart = m_minValue + (m_maxValue - m_minValue) * kRedZoneRatio;
+        const qreal coreW = qMax(1.5, m_radius * 0.042);
+        const QRectF trackRect(m_center.x() - m_radius * 0.93,
+                               m_center.y() - m_radius * 0.93,
+                               m_radius * 1.86,
+                               m_radius * 1.86);
+
+        auto drawSharpNeonArc = [&](qreal fromAngle, qreal sweep,
+                                    const QColor &c, qreal width) {
+            if (qAbs(sweep) < 0.05)
+                return;
+            QPainterPath path;
+            path.arcMoveTo(trackRect, fromAngle);
+            path.arcTo(trackRect, fromAngle, -sweep);
+
+            QColor glow = c;
+            glow.setAlpha(40);
+            painter.setPen(QPen(glow, width * 2.0, Qt::SolidLine, Qt::RoundCap));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawPath(path);
+
+            painter.setPen(QPen(c, width, Qt::SolidLine, Qt::RoundCap));
+            painter.drawPath(path);
+        };
+
+        // 细亮青霓虹单圈外轮廓（270° 开口）
+        drawSharpNeonArc(startAngle, kSweepAngle, cyan, coreW);
+
+        // 细进度弧（略粗于轮廓）；末段才红
+        if (spanAngle > 0.05) {
+            const qreal progW = coreW * 1.35;
+            if (m_currentValue <= redStart) {
+                drawSharpNeonArc(startAngle, spanAngle, cyan, progW);
+            } else {
+                const qreal redStartAngle = angleFromValue(redStart);
+                drawSharpNeonArc(startAngle, startAngle - redStartAngle, cyan, progW);
+                drawSharpNeonArc(redStartAngle, redStartAngle - currentAngle, red, progW);
+            }
+        }
+
+        painter.restore();
+        return;
+    }
 
     // 创建弧形路径
     QPainterPath arcPath;
@@ -560,14 +618,7 @@ void TechSpeedGauge::drawValueArc(QPainter &painter)
     }
 
     case StyleClassicDial:
-    {
-        // 经典风格：光滑渐变弧线
-        QPen arcPen(QBrush(m_primaryColor), 10);
-        arcPen.setCapStyle(Qt::RoundCap);
-        painter.setPen(arcPen);
-        painter.drawPath(arcPath);
         break;
-    }
     }
 
     // 添加发光效果
@@ -581,51 +632,89 @@ void TechSpeedGauge::drawValueArc(QPainter &painter)
 }
 
 // 绘制指针
-// void TechSpeedGauge::drawNeedle(QPainter &painter)
-// {
-//     painter.save();
+void TechSpeedGauge::drawNeedle(QPainter &painter)
+{
+    painter.save();
 
-//     // 计算指针角度
-//     qreal needleAngle = angleFromValue(m_currentValue);
-//     qreal rad = qDegreesToRadians(needleAngle);
+    const qreal needleAngle = angleFromValue(m_currentValue);
+    painter.translate(m_center);
+    painter.rotate(90.0 - needleAngle);
 
-//     // 指针形状
-//     QPolygonF needle;
-//     needle << QPointF(0, -m_radius * 0.85)    // 顶部
-//            << QPointF(-8, 0)                  // 左侧底部
-//            << QPointF(0, m_radius * 0.1)      // 中心点（稍长）
-//            << QPointF(8, 0);                  // 右侧底部
+    // 细长锥形：尖端贴主刻内侧，根部细
+    const qreal tip = m_radius * 0.86;
+    const qreal base = m_radius * 0.04;
+    const qreal halfW = qMax(1.2, m_radius * 0.010);
 
-//     // 绘制指针
-//     painter.translate(m_center);
-//     painter.rotate(needleAngle);
+    QPolygonF needle;
+    needle << QPointF(0, -tip)
+           << QPointF(-halfW * 0.35, -tip * 0.15)
+           << QPointF(-halfW, base)
+           << QPointF(halfW, base)
+           << QPointF(halfW * 0.35, -tip * 0.15);
 
-//     // 指针渐变
-//     QLinearGradient needleGrad(QPointF(-10, 0), QPointF(10, 0));
-//     needleGrad.setColorAt(0, m_secondaryColor);
-//     needleGrad.setColorAt(0.5, Qt::white);
-//     needleGrad.setColorAt(1, m_secondaryColor);
+    QLinearGradient needleGrad(QPointF(-halfW, 0), QPointF(halfW, 0));
+    needleGrad.setColorAt(0.0, QColor(0x00, 0xb8, 0xd0));
+    needleGrad.setColorAt(0.5, QColor(0xe8, 0xfb, 0xff));
+    needleGrad.setColorAt(1.0, QColor(kNeonCyanRgb));
 
-//     painter.setBrush(QBrush(needleGrad));
-//     painter.setPen(QPen(Qt::black, 1));
-//     painter.drawPolygon(needle);
+    // 仅弱边缘线，无大范围光晕
+    painter.setPen(QPen(QColor(0x00, 0xe5, 0xee, 90), 0.8));
+    painter.setBrush(QBrush(needleGrad));
+    painter.drawPolygon(needle);
 
-//     // 绘制指针中心圆
-//     QRadialGradient centerGrad(QPointF(0, 0), 10);
-//     centerGrad.setColorAt(0, Qt::white);
-//     centerGrad.setColorAt(1, m_primaryColor);
+    const qreal hubR = m_radius * 0.028;
+    painter.setBrush(QColor(0xf2, 0xfb, 0xff));
+    painter.setPen(QPen(QColor(kNeonCyanRgb), 1.0));
+    painter.drawEllipse(QPointF(0, 0), hubR, hubR);
 
-//     painter.setBrush(QBrush(centerGrad));
-//     painter.setPen(QPen(Qt::black, 2));
-//     painter.drawEllipse(QPointF(0, 0), 8, 8);
-
-//     painter.restore();
-// }
+    painter.restore();
+}
 
 // 绘制中央数值显示
 void TechSpeedGauge::drawValueDisplay(QPainter &painter)
 {
     painter.save();
+
+    if (m_style == StyleClassicDial) {
+        // 两行：标题 + 单位（不显示实时数值，靠指针读数）
+        // 字号参考 TechArcGauge：label ≈ size/10，suffix ≈ size/15
+        const qreal w = m_radius * 1.35;
+        const qreal cx = m_center.x();
+        const qreal cy = m_center.y();
+        const int sizePx = qMax(1, qRound(m_radius * 2.0));
+
+        QFont baseFont = painter.font();
+        baseFont.setStyleStrategy(QFont::PreferAntialias);
+
+        const qreal titleH = m_radius * 0.22;
+        const qreal unitH = m_radius * 0.14;
+        const qreal gap = m_radius * 0.18;  // 加大标题与单位间距，单位下移避开指针
+        const qreal blockH = titleH + gap + unitH;
+        const qreal top = cy - blockH * 0.65;
+
+        if (!m_title.isEmpty()) {
+            QFont titleFont = baseFont;
+            titleFont.setPixelSize(qMax(12, sizePx / 10));
+            titleFont.setBold(false);
+            painter.setFont(titleFont);
+            painter.setPen(QColor(0xd8, 0xf6, 0xff));
+            painter.drawText(QRectF(cx - w * 0.5, top, w, titleH),
+                             Qt::AlignCenter, m_title);
+        }
+
+        {
+            QFont unitFont = baseFont;
+            unitFont.setPixelSize(qMax(9, sizePx / 15));
+            unitFont.setBold(false);
+            painter.setFont(unitFont);
+            painter.setPen(QColor(0xa8, 0xea, 0xff));
+            painter.drawText(QRectF(cx - w * 0.5, top + titleH + gap, w, unitH),
+                             Qt::AlignCenter, m_unit);
+        }
+
+        painter.restore();
+        return;
+    }
 
     // 显示背景圆（可以调整大小，让数值区域更大）
     qreal displayRadius = m_radius * 0.4;  // 从0.3改为0.4，增大显示区域
@@ -664,7 +753,7 @@ void TechSpeedGauge::drawValueDisplay(QPainter &painter)
     painter.setFont(unitFont);
 
     QRectF unitRect(m_center.x() - displayRadius * 0.8,
-                    m_center.y() + displayRadius * 0.6,  // 下移单位显示
+                    m_center.y() + displayRadius * 0.8,  // 下移单位显示
                     displayRadius * 1.6,
                     displayRadius * 0.5);
 
@@ -677,6 +766,10 @@ void TechSpeedGauge::drawValueDisplay(QPainter &painter)
 // 绘制标题
 void TechSpeedGauge::drawTitle(QPainter &painter)
 {
+    // Classic：标题已在 drawValueDisplay 与数值一并绘制
+    if (m_style == StyleClassicDial)
+        return;
+
     if (m_title.isEmpty()) return;
 
     painter.save();
@@ -691,11 +784,9 @@ void TechSpeedGauge::drawTitle(QPainter &painter)
                      m_radius * 1.6,
                      30);
 
-    // 标题颜色渐变
     QLinearGradient titleGrad(titleRect.topLeft(), titleRect.bottomLeft());
     titleGrad.setColorAt(0, m_primaryColor);
     titleGrad.setColorAt(1, m_secondaryColor);
-
     painter.setPen(QPen(QBrush(titleGrad), 2));
     painter.drawText(titleRect, Qt::AlignCenter, m_title);
 
@@ -749,7 +840,7 @@ void TechSpeedGauge::drawForegroundEffects(QPainter &painter)
 qreal TechSpeedGauge::angleFromValue(qreal value) const
 {
     qreal normalized = (value - m_minValue) / (m_maxValue - m_minValue);
-    return 150.0 - normalized * 240.0; // 从150度到-90度
+    return kStartAngle - normalized * kSweepAngle; // 从 225° 扫过 270° 到 -45°
 }
 
 // 辅助函数：计算圆上点的坐标
