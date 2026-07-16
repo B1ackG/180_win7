@@ -518,6 +518,7 @@ private:
     QWidget *m_deviceControlPopup = nullptr;
     TechChamferToolButton *m_pageNavigationMenuButton = nullptr;
     TechChamferToolButton *m_deviceControlMenuButton = nullptr;
+    QButtonGroup *m_navSubButtonGroup = nullptr;
     QVector<TechZonePanel*> m_contentZonePanels;
     QThread *m_enableButtonThread;
     EnableButtonWorker *m_enableButtonWorker;

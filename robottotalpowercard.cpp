@@ -5,12 +5,18 @@
 #include <QPainterPath>
 #include <QtMath>
 
+namespace {
+constexpr int kOuterRadius = 14;
+constexpr int kInnerRadius = 12;
+} // namespace
+
 RobotTotalPowerCard::RobotTotalPowerCard(QWidget *parent)
     : QWidget(parent)
     , m_title(QStringLiteral("总功率"))
     , m_unit(QStringLiteral("W"))
 {
     setAttribute(Qt::WA_TranslucentBackground, true);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 }
 
 void RobotTotalPowerCard::setCurrentPower(double power)
@@ -60,6 +66,16 @@ void RobotTotalPowerCard::appendSample(double power)
     m_maxDisplayPower = qMax(100.0, localMax * 1.2);
 }
 
+QSize RobotTotalPowerCard::sizeHint() const
+{
+    return QSize(280, 100);
+}
+
+QSize RobotTotalPowerCard::minimumSizeHint() const
+{
+    return QSize(200, 86);
+}
+
 void RobotTotalPowerCard::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event);
@@ -67,57 +83,123 @@ void RobotTotalPowerCard::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
-    const QRectF r = rect().adjusted(1, 1, -1, -1);
-    if (r.width() <= 4 || r.height() <= 4) {
+    const QRectF r = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+    if (r.width() <= 4.0 || r.height() <= 4.0) {
         return;
     }
 
+    // Panel shell — aligned with DeviceCoordPanel
     QLinearGradient panelGradient(r.topLeft(), r.bottomLeft());
     panelGradient.setColorAt(0.0, QColor(8, 34, 58, 226));
     panelGradient.setColorAt(1.0, QColor(4, 18, 34, 218));
-    painter.setPen(QPen(QColor(74, 190, 238, 132), 1));
+    painter.setPen(QPen(QColor(74, 190, 238, 132), 1.0));
     painter.setBrush(panelGradient);
-    painter.drawRoundedRect(r, 18, 18);
+    painter.drawRoundedRect(r, kOuterRadius, kOuterRadius);
 
-    const QRectF inner = r.adjusted(2, 2, -2, -2);
-    painter.setPen(QPen(QColor(122, 224, 255, 74), 1));
+    const QRectF inner = r.adjusted(2.0, 2.0, -2.0, -2.0);
+    painter.setPen(QPen(QColor(122, 224, 255, 74), 1.0));
     painter.setBrush(Qt::NoBrush);
-    painter.drawRoundedRect(inner, 16, 16);
+    painter.drawRoundedRect(inner, kInnerRadius, kInnerRadius);
 
-    painter.setPen(QPen(QColor(111, 231, 255, 120), 1));
-    painter.setOpacity(0.45);
-    painter.drawLine(QPointF(r.left() + 10, r.top() + 10), QPointF(r.right() - 10, r.top() + 10));
+    painter.setOpacity(0.55);
+    painter.setPen(QPen(QColor(111, 231, 255, 120), 1.0));
+    const qreal topLineY = r.top() + 8.0;
+    painter.drawLine(QPointF(r.left() + 10.0, topLineY),
+                     QPointF(r.right() - 10.0, topLineY));
     painter.setOpacity(1.0);
 
-    QFont titleFont(QStringLiteral("Noto Sans CJK SC"), 13, QFont::Bold);
-    painter.setFont(titleFont);
-    painter.setPen(QColor("#A8EAFF"));
-    painter.drawText(QRectF(r.left() + 12, r.top() + 8, 130, 24), Qt::AlignLeft | Qt::AlignVCenter, m_title);
+    // Title accent bar
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(92, 225, 255, 210));
+    painter.drawRoundedRect(QRectF(r.left() + 12.0, r.top() + 14.0, 3.0, 12.0), 1.5, 1.5);
 
+    // Title
+    QFont titleFont(QStringLiteral("Noto Sans CJK SC"), 12, QFont::Bold);
+    painter.setFont(titleFont);
+    painter.setPen(QColor(QStringLiteral("#A8EAFF")));
+    painter.drawText(QRectF(r.left() + 20.0, r.top() + 10.0, 90.0, 20.0),
+                     Qt::AlignLeft | Qt::AlignVCenter,
+                     m_title);
+
+    // "实时" capsule badge
+    const QRectF liveBadge(r.left() + 20.0 + painter.fontMetrics().horizontalAdvance(m_title) + 8.0,
+                           r.top() + 12.0,
+                           36.0,
+                           16.0);
+    QLinearGradient badgeGrad(liveBadge.topLeft(), liveBadge.topRight());
+    badgeGrad.setColorAt(0.0, QColor(QStringLiteral("#5CE1FF")));
+    badgeGrad.setColorAt(1.0, QColor(QStringLiteral("#3BB8E8")));
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(badgeGrad);
+    painter.drawRoundedRect(liveBadge, 5.0, 5.0);
+
+    QFont badgeFont(QStringLiteral("Noto Sans CJK SC"), 9, QFont::Bold);
+    painter.setFont(badgeFont);
+    painter.setPen(QColor(QStringLiteral("#0B2A3F")));
+    painter.drawText(liveBadge, Qt::AlignCenter, QStringLiteral("实时"));
+
+    // Power value + unit (right aligned)
+    const QString numberText = QString::number(qRound(m_currentPower));
     QFont valueFont(QStringLiteral("Noto Sans CJK SC"), 22, QFont::Bold);
     painter.setFont(valueFont);
-    painter.setPen(QColor("#F2FBFF"));
-    const QString valueText = QString::number(qRound(m_currentPower)) + " " + m_unit;
-    painter.drawText(QRectF(r.right() - 180, r.top() + 6, 168, 38), Qt::AlignRight | Qt::AlignVCenter, valueText);
+    const QFontMetricsF valueMetrics(valueFont);
+    const qreal numberWidth = valueMetrics.horizontalAdvance(numberText);
 
-    QFont subFont(QStringLiteral("Noto Sans CJK SC"), 11, QFont::Normal);
-    painter.setFont(subFont);
-    painter.setPen(QColor("#91DFFF"));
-    painter.drawText(QRectF(r.left() + 12, r.top() + 34, 80, 18), Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("实时趋势"));
+    QFont unitFont(QStringLiteral("Noto Sans CJK SC"), 11, QFont::Bold);
+    const QFontMetricsF unitMetrics(unitFont);
+    const qreal unitWidth = unitMetrics.horizontalAdvance(m_unit);
+    const qreal valueRight = r.right() - 14.0;
+    const qreal valueBaseline = r.top() + 28.0;
 
-    const QRectF chartRect(r.left() + 12, r.top() + 54, r.width() - 24, r.height() - 64);
-    if (chartRect.width() <= 4 || chartRect.height() <= 4) {
+    painter.setFont(unitFont);
+    painter.setPen(QColor(QStringLiteral("#7EC8E8")));
+    painter.drawText(QPointF(valueRight - unitWidth, valueBaseline), m_unit);
+
+    painter.setFont(valueFont);
+    painter.setPen(QColor(QStringLiteral("#F2FBFF")));
+    painter.drawText(QPointF(valueRight - unitWidth - 4.0 - numberWidth, valueBaseline), numberText);
+
+    // Chart cell
+    const QRectF chartCell(r.left() + 10.0, r.top() + 38.0, r.width() - 20.0, r.height() - 48.0);
+    if (chartCell.width() <= 8.0 || chartCell.height() <= 8.0) {
         return;
     }
 
-    QPen gridPen(QColor(90, 154, 190, 110), 1, Qt::DashLine);
+    QLinearGradient cellGrad(chartCell.topLeft(), chartCell.bottomLeft());
+    cellGrad.setColorAt(0.0, QColor(18, 58, 92, 120));
+    cellGrad.setColorAt(1.0, QColor(10, 36, 60, 90));
+    painter.setPen(QPen(QColor(90, 180, 220, 70), 1.0));
+    painter.setBrush(cellGrad);
+    painter.drawRoundedRect(chartCell, 8.0, 8.0);
+
+    const QRectF chartRect = chartCell.adjusted(8.0, 6.0, -8.0, -6.0);
+    if (chartRect.width() <= 4.0 || chartRect.height() <= 4.0) {
+        return;
+    }
+
+    double peak = 0.0;
+    for (double sample : m_samples) {
+        peak = qMax(peak, sample);
+    }
+
+    QFont scaleFont(QStringLiteral("Noto Sans CJK SC"), 9, QFont::Normal);
+    painter.setFont(scaleFont);
+    painter.setPen(QColor(QStringLiteral("#6FB8D8")));
+    painter.drawText(QRectF(chartRect.right() - 72.0, chartCell.top() + 2.0, 68.0, 14.0),
+                     Qt::AlignRight | Qt::AlignVCenter,
+                     QStringLiteral("峰值 %1").arg(qRound(peak)));
+
+    // Grid
+    QPen gridPen(QColor(90, 154, 190, 90), 1.0, Qt::DashLine);
     painter.setPen(gridPen);
-    for (int i = 0; i < 4; ++i) {
-        const qreal y = chartRect.top() + (chartRect.height() * i / 3.0);
+    for (int i = 0; i < 3; ++i) {
+        const qreal y = chartRect.top() + (chartRect.height() * i / 2.0);
         painter.drawLine(QPointF(chartRect.left(), y), QPointF(chartRect.right(), y));
     }
 
     if (m_samples.isEmpty()) {
+        painter.setPen(QColor(QStringLiteral("#6FB8D8")));
+        painter.drawText(chartRect, Qt::AlignCenter, QStringLiteral("等待功率数据…"));
         return;
     }
 
@@ -134,6 +216,7 @@ void RobotTotalPowerCard::paintEvent(QPaintEvent *event)
         points.push_back(QPointF(chartRect.right(), points.first().y()));
     }
 
+    // Area fill
     QPainterPath areaPath;
     areaPath.moveTo(chartRect.left(), chartRect.bottom());
     for (const QPointF &p : points) {
@@ -143,14 +226,33 @@ void RobotTotalPowerCard::paintEvent(QPaintEvent *event)
     areaPath.closeSubpath();
 
     QLinearGradient areaGrad(chartRect.topLeft(), chartRect.bottomLeft());
-    areaGrad.setColorAt(0.0, QColor(0, 176, 232, 104));
-    areaGrad.setColorAt(1.0, QColor(0, 92, 140, 18));
+    areaGrad.setColorAt(0.0, QColor(0, 176, 232, 110));
+    areaGrad.setColorAt(1.0, QColor(0, 92, 140, 12));
     painter.fillPath(areaPath, areaGrad);
 
-    QPen linePen(QColor("#6FE7FF"), 2);
-    linePen.setCapStyle(Qt::RoundCap);
-    painter.setPen(linePen);
+    // Smooth-looking polyline
+    QPainterPath linePath;
+    linePath.moveTo(points.first());
     for (int i = 1; i < points.size(); ++i) {
-        painter.drawLine(points[i - 1], points[i]);
+        linePath.lineTo(points[i]);
     }
+
+    painter.setPen(QPen(QColor(111, 231, 255, 70), 4.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.drawPath(linePath);
+
+    QPen linePen(QColor(QStringLiteral("#6FE7FF")), 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    painter.setPen(linePen);
+    painter.drawPath(linePath);
+
+    // Latest-point glow
+    const QPointF tip = points.last();
+    QRadialGradient tipGlow(tip, 8.0);
+    tipGlow.setColorAt(0.0, QColor(111, 231, 255, 200));
+    tipGlow.setColorAt(1.0, QColor(111, 231, 255, 0));
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(tipGlow);
+    painter.drawEllipse(tip, 7.0, 7.0);
+
+    painter.setBrush(QColor(QStringLiteral("#F2FBFF")));
+    painter.drawEllipse(tip, 2.6, 2.6);
 }

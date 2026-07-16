@@ -364,12 +364,16 @@ void MainWindow::setupNavigationConnections()
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord
     };
+    if (!m_navSubButtonGroup) {
+        m_navSubButtonGroup = new QButtonGroup(this);
+        m_navSubButtonGroup->setExclusive(true);
+    }
     for (QToolButton *btn : navButtons) {
         if (!btn) {
             continue;
         }
         btn->setCheckable(true);
-        btn->setAutoExclusive(true);
+        m_navSubButtonGroup->addButton(btn);
     }
 
     const QList<TechChamferToolButton*> navChamferButtons = {
@@ -399,9 +403,6 @@ void MainWindow::setupNavigationConnections()
             ui->stackedWidget_RobotStatus->setCurrentWidget(ui->page_robot);
         }
         ui->TBtn_HomePage->setChecked(true);
-        if (ui->TBtn_SixAxies) {
-            ui->TBtn_SixAxies->setChecked(false);
-        }
         updateNavButtonStyles(nullptr);
     });
 
@@ -413,9 +414,6 @@ void MainWindow::setupNavigationConnections()
             ui->stackedWidget_RobotStatus->setCurrentWidget(ui->page_sixaxies);
         }
         ui->TBtn_SixAxies->setChecked(true);
-        if (ui->TBtn_HomePage) {
-            ui->TBtn_HomePage->setChecked(false);
-        }
         updateNavButtonStyles(nullptr);
     });
 }
@@ -680,6 +678,13 @@ void MainWindow::setupRecordAndPermissionConnections()
         return;
     }
 
+    connect(ui->TBtn_PermissionPage, &QPushButton::clicked, this, [this]() {
+        if (ui->page_Permission) {
+            ui->StackedWidget->setCurrentWidget(ui->page_Permission);
+        }
+        ui->TBtn_PermissionPage->setChecked(true);
+    });
+
     connect(ui->TBtn_HistoryRecord, &QPushButton::clicked, this, [this]() {
         if (m_currentUserRole >= UserRole::Admin) {
             if (ui->page_HistoryRecord) {
@@ -696,13 +701,6 @@ void MainWindow::setupRecordAndPermissionConnections()
             showNotification(tip);
             updateStatusTip(tip);
         }
-    });
-
-    connect(ui->TBtn_HistoryRecord, &QPushButton::clicked, this, [this]() {
-        if (ui->page_Permission) {
-            ui->StackedWidget->setCurrentWidget(ui->page_Permission);
-        }
-        ui->TBtn_PermissionPage->setChecked(true);
     });
 
     connect(m_recorder, &OperationRecorder::recordAdded, this, [this](const OperationRecord &record) {

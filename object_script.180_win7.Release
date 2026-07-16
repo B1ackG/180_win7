@@ -5,6 +5,7 @@ release/devicecoordpanel.o
 release/enablebuttonworker.o
 release/featureswitchmanager.o
 release/featureswitchwidget.o
+release/inclinometercard.o
 release/main.o
 release/maindevicemodbusapi.o
 release/mainmodbusconnector.o
@@ -17,6 +18,7 @@ release/matrixkeymonitor.o
 release/matrixkeythreadmanager.o
 release/mappingconfig.o
 release/modebuttonstyler.o
+release/navigationicon.o
 release/modbustcpclient.o
 release/modbusthreadmanager.o
 release/modbusvariables.o
@@ -26,7 +28,10 @@ release/robottotalpowercard.o
 release/speedmodeselector.o
 release/steeringmodeselector.o
 release/techarcgauge.o
+release/techchamfertoolbutton.o
 release/techpushbutton.o
+release/techshapes.o
+release/techzonepanel.o
 release/techslideredit.o
 release/techsliderlabel.o
 release/techspeedgauge.o
@@ -39,6 +44,7 @@ release/moc_devicecoordpanel.o
 release/moc_enablebuttonworker.o
 release/moc_featureswitchmanager.o
 release/moc_featureswitchwidget.o
+release/moc_inclinometercard.o
 release/moc_matrixkeymonitor.o
 release/moc_matrixkeythreadmanager.o
 release/moc_mainwindow.o
@@ -52,7 +58,9 @@ release/moc_robottotalpowercard.o
 release/moc_speedmodeselector.o
 release/moc_steeringmodeselector.o
 release/moc_techarcgauge.o
+release/moc_techchamfertoolbutton.o
 release/moc_techpushbutton.o
+release/moc_techzonepanel.o
 release/moc_techslideredit.o
 release/moc_techsliderlabel.o
 release/moc_techspeeddialsimple.o

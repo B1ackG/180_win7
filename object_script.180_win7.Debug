@@ -5,6 +5,7 @@ debug/devicecoordpanel.o
 debug/enablebuttonworker.o
 debug/featureswitchmanager.o
 debug/featureswitchwidget.o
+debug/inclinometercard.o
 debug/main.o
 debug/maindevicemodbusapi.o
 debug/mainmodbusconnector.o
@@ -17,6 +18,7 @@ debug/matrixkeymonitor.o
 debug/matrixkeythreadmanager.o
 debug/mappingconfig.o
 debug/modebuttonstyler.o
+debug/navigationicon.o
 debug/modbustcpclient.o
 debug/modbusthreadmanager.o
 debug/modbusvariables.o
@@ -26,7 +28,10 @@ debug/robottotalpowercard.o
 debug/speedmodeselector.o
 debug/steeringmodeselector.o
 debug/techarcgauge.o
+debug/techchamfertoolbutton.o
 debug/techpushbutton.o
+debug/techshapes.o
+debug/techzonepanel.o
 debug/techslideredit.o
 debug/techsliderlabel.o
 debug/techspeedgauge.o
@@ -39,6 +44,7 @@ debug/moc_devicecoordpanel.o
 debug/moc_enablebuttonworker.o
 debug/moc_featureswitchmanager.o
 debug/moc_featureswitchwidget.o
+debug/moc_inclinometercard.o
 debug/moc_matrixkeymonitor.o
 debug/moc_matrixkeythreadmanager.o
 debug/moc_mainwindow.o
@@ -52,7 +58,9 @@ debug/moc_robottotalpowercard.o
 debug/moc_speedmodeselector.o
 debug/moc_steeringmodeselector.o
 debug/moc_techarcgauge.o
+debug/moc_techchamfertoolbutton.o
 debug/moc_techpushbutton.o
+debug/moc_techzonepanel.o
 debug/moc_techslideredit.o
 debug/moc_techsliderlabel.o
 debug/moc_techspeeddialsimple.o

@@ -4,20 +4,27 @@
 
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLinearGradient>
 #include <QPainter>
-#include <QPainterPath>
 #include <QVBoxLayout>
 
 namespace {
 
-constexpr int kOuterRadius = 10;
-constexpr int kInnerRadius = 8;
+constexpr int kOuterRadius = 14;
+constexpr int kInnerRadius = 12;
+constexpr int kCellRadius = 8;
 
-const QString &labelFontFamily()
+const QString &uiFontFamily()
 {
     static const QString s = QStringLiteral(
         "'Noto Sans CJK SC', 'Microsoft YaHei', 'WenQuanYi Micro Hei', sans-serif");
     return s;
+}
+
+QString transparentStyle()
+{
+    return QStringLiteral("border: none; background: transparent; font-family: %1;")
+        .arg(uiFontFamily());
 }
 
 } // namespace
@@ -26,61 +33,137 @@ DeviceCoordPanel::DeviceCoordPanel(QWidget *parent)
     : QWidget(parent)
 {
     setAttribute(Qt::WA_StyledBackground, true);
+    setAttribute(Qt::WA_TranslucentBackground, true);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    setMinimumSize(460, 70);
+    setMinimumSize(520, 78);
 
     auto *root = new QVBoxLayout(this);
-    root->setContentsMargins(8, 4, 8, 4);
-    root->setSpacing(1);
+    root->setContentsMargins(12, 8, 12, 8);
+    root->setSpacing(4);
 
-    auto *title = new QLabel(QStringLiteral("当前位姿 (主控)"), this);
+    auto *titleRow = new QHBoxLayout();
+    titleRow->setContentsMargins(10, 0, 2, 0);
+    titleRow->setSpacing(8);
+
+    auto *title = new QLabel(QStringLiteral("当前位姿"), this);
     title->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     QFont titleFont;
-    titleFont.setPixelSize(12);
+    titleFont.setPixelSize(13);
     titleFont.setBold(true);
     title->setFont(titleFont);
-    title->setStyleSheet(QStringLiteral("color: #A6D8FF; border: none; background: transparent; font-family: %1;")
-                             .arg(labelFontFamily()));
+    title->setStyleSheet(QStringLiteral("color: #A8EAFF; %1").arg(transparentStyle()));
+
+    auto *source = new QLabel(QStringLiteral("主控"), this);
+    source->setAlignment(Qt::AlignCenter);
+    QFont sourceFont;
+    sourceFont.setPixelSize(11);
+    sourceFont.setBold(true);
+    source->setFont(sourceFont);
+    source->setFixedHeight(20);
+    source->setMinimumWidth(42);
+    source->setStyleSheet(
+        QStringLiteral("color: #0B2A3F;"
+                       "background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+                       " stop:0 #5CE1FF, stop:1 #3BB8E8);"
+                       "border: none; border-radius: 6px;"
+                       "padding: 0 8px; font-family: %1;")
+            .arg(uiFontFamily()));
+
+    auto *hint = new QLabel(QStringLiteral("X / Y / Z / R"), this);
+    hint->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    QFont hintFont;
+    hintFont.setPixelSize(11);
+    hint->setFont(hintFont);
+    hint->setStyleSheet(QStringLiteral("color: #6FB8D8; %1").arg(transparentStyle()));
+
+    titleRow->addWidget(title, 0);
+    titleRow->addWidget(source, 0);
+    titleRow->addStretch(1);
+    titleRow->addWidget(hint, 0);
 
     auto *row = new QHBoxLayout();
     row->setContentsMargins(0, 0, 0, 0);
-    row->setSpacing(4);
+    row->setSpacing(6);
 
-    auto addColumn = [this, row](const QString &letter, QLabel **outValue) {
-        auto *col = new QVBoxLayout();
-        col->setSpacing(1);
+    m_colX = addAxisColumn(row, QStringLiteral("X"), QStringLiteral("mm"), QColor(QStringLiteral("#5CE1FF")));
+    m_colY = addAxisColumn(row, QStringLiteral("Y"), QStringLiteral("mm"), QColor(QStringLiteral("#6FE7A8")));
+    m_colZ = addAxisColumn(row, QStringLiteral("Z"), QStringLiteral("mm"), QColor(QStringLiteral("#7AA8FF")));
+    m_colR = addAxisColumn(row, QStringLiteral("R"), QStringLiteral("°"), QColor(QStringLiteral("#FFC56E")));
 
-        auto *axis = new QLabel(letter, this);
-        axis->setAlignment(Qt::AlignHCenter);
-        QFont axisFont;
-        axisFont.setPixelSize(11);
-        axisFont.setBold(true);
-        axis->setFont(axisFont);
-        axis->setStyleSheet(QStringLiteral("color: #A8DAFF; border: none; background: transparent; font-family: %1;")
-                                 .arg(labelFontFamily()));
+    root->addLayout(titleRow);
+    root->addLayout(row, 1);
+}
 
-        auto *value = new QLabel(QStringLiteral("—"), this);
-        value->setAlignment(Qt::AlignHCenter);
-        QFont valueFont;
-        valueFont.setPixelSize(17);
-        valueFont.setBold(true);
-        value->setFont(valueFont);
-        value->setStyleSheet(QStringLiteral("color: #EAF7FF; border: none; background: transparent; font-family: %1;")
-                                  .arg(labelFontFamily()));
+DeviceCoordPanel::AxisColumn DeviceCoordPanel::addAxisColumn(QHBoxLayout *row,
+                                                            const QString &letter,
+                                                            const QString &unitText,
+                                                            const QColor &accent)
+{
+    AxisColumn col;
 
-        col->addWidget(axis);
-        col->addWidget(value);
-        row->addLayout(col, 1);
-        *outValue = value;
-    };
+    col.cell = new QWidget(this);
+    col.cell->setAttribute(Qt::WA_TranslucentBackground, true);
+    col.cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    addColumn(QStringLiteral("X"), &m_valueX);
-    addColumn(QStringLiteral("Y"), &m_valueY);
-    addColumn(QStringLiteral("Z"), &m_valueZ);
-    addColumn(QStringLiteral("R"), &m_valueR);
+    auto *cellLayout = new QHBoxLayout(col.cell);
+    cellLayout->setContentsMargins(8, 4, 8, 4);
+    cellLayout->setSpacing(6);
 
-    root->addWidget(title);
-    root->addLayout(row);
+    col.axisBadge = new QLabel(letter, col.cell);
+    col.axisBadge->setAlignment(Qt::AlignCenter);
+    col.axisBadge->setFixedSize(22, 22);
+    QFont badgeFont;
+    badgeFont.setPixelSize(12);
+    badgeFont.setBold(true);
+    col.axisBadge->setFont(badgeFont);
+    col.axisBadge->setStyleSheet(
+        QStringLiteral("color: %1;"
+                       "background-color: rgba(%2, %3, %4, 38);"
+                       "border: 1px solid rgba(%2, %3, %4, 160);"
+                       "border-radius: 6px; font-family: %5;")
+            .arg(accent.name())
+            .arg(accent.red())
+            .arg(accent.green())
+            .arg(accent.blue())
+            .arg(uiFontFamily()));
+
+    auto *valueCol = new QVBoxLayout();
+    valueCol->setContentsMargins(0, 0, 0, 0);
+    valueCol->setSpacing(0);
+
+    col.value = new QLabel(QStringLiteral("—"), col.cell);
+    col.value->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    QFont valueFont;
+    valueFont.setPixelSize(16);
+    valueFont.setBold(true);
+    col.value->setFont(valueFont);
+    col.value->setStyleSheet(QStringLiteral("color: #F2FBFF; %1").arg(transparentStyle()));
+
+    col.unit = new QLabel(unitText, col.cell);
+    col.unit->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    QFont unitFont;
+    unitFont.setPixelSize(10);
+    col.unit->setFont(unitFont);
+    col.unit->setStyleSheet(QStringLiteral("color: #7EC8E8; %1").arg(transparentStyle()));
+
+    valueCol->addWidget(col.value);
+    valueCol->addWidget(col.unit);
+
+    cellLayout->addWidget(col.axisBadge, 0, Qt::AlignVCenter);
+    cellLayout->addLayout(valueCol, 1);
+
+    row->addWidget(col.cell, 1);
+    return col;
+}
+
+QSize DeviceCoordPanel::sizeHint() const
+{
+    return QSize(560, 84);
+}
+
+QSize DeviceCoordPanel::minimumSizeHint() const
+{
+    return QSize(520, 78);
 }
 
 QString DeviceCoordPanel::formatCoord(double v)
@@ -106,12 +189,13 @@ void DeviceCoordPanel::setCoordinates(double x, double y, double z, double ar)
     m_coordZ = z;
     m_coordAr = ar;
 
-    applyLabel(m_valueX, x);
-    applyLabel(m_valueY, y);
-    applyLabel(m_valueZ, z);
-    applyLabel(m_valueR, ar);
+    applyLabel(m_colX.value, x);
+    applyLabel(m_colY.value, y);
+    applyLabel(m_colZ.value, z);
+    applyLabel(m_colR.value, ar);
 
     emit coordinatesChanged();
+    update();
 }
 
 void DeviceCoordPanel::paintEvent(QPaintEvent *event)
@@ -120,19 +204,52 @@ void DeviceCoordPanel::paintEvent(QPaintEvent *event)
 
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::TextAntialiasing, true);
 
-    const QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+    const QRectF bounds = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+    if (bounds.width() <= 4.0 || bounds.height() <= 4.0) {
+        return;
+    }
 
-    QPainterPath outer;
-    outer.addRoundedRect(r, kOuterRadius, kOuterRadius);
-    p.fillPath(outer, QColor(QStringLiteral("#1A5FB4")));
-    p.setPen(QPen(QColor(QStringLiteral("#4FAFE8")), 1.0));
-    p.drawPath(outer);
+    QLinearGradient panelGradient(bounds.topLeft(), bounds.bottomLeft());
+    panelGradient.setColorAt(0.0, QColor(8, 34, 58, 226));
+    panelGradient.setColorAt(1.0, QColor(4, 18, 34, 218));
+    p.setPen(QPen(QColor(74, 190, 238, 132), 1.0));
+    p.setBrush(panelGradient);
+    p.drawRoundedRect(bounds, kOuterRadius, kOuterRadius);
 
-    const QRectF inner = r.adjusted(2, 2, -2, -2);
-    QPainterPath innerPath;
-    innerPath.addRoundedRect(inner, kInnerRadius, kInnerRadius);
-    p.setPen(QPen(QColor(42, 159, 231, 170), 1.0));
+    const QRectF inner = bounds.adjusted(2.0, 2.0, -2.0, -2.0);
+    p.setPen(QPen(QColor(122, 224, 255, 74), 1.0));
     p.setBrush(Qt::NoBrush);
-    p.drawPath(innerPath);
+    p.drawRoundedRect(inner, kInnerRadius, kInnerRadius);
+
+    p.setOpacity(0.55);
+    p.setPen(QPen(QColor(111, 231, 255, 120), 1.0));
+    const qreal lineY = bounds.top() + 8.0;
+    p.drawLine(QPointF(bounds.left() + 10.0, lineY),
+               QPointF(bounds.right() - 10.0, lineY));
+    p.setOpacity(1.0);
+
+    // Title accent bar
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(92, 225, 255, 210));
+    p.drawRoundedRect(QRectF(bounds.left() + 12.0, bounds.top() + 14.0, 3.0, 12.0), 1.5, 1.5);
+
+    const AxisColumn *columns[] = {&m_colX, &m_colY, &m_colZ, &m_colR};
+    for (const AxisColumn *column : columns) {
+        if (!column->cell) {
+            continue;
+        }
+        const QRectF cellRect = QRectF(column->cell->geometry()).adjusted(0.5, 0.5, -0.5, -0.5);
+        if (cellRect.width() < 8.0 || cellRect.height() < 8.0) {
+            continue;
+        }
+
+        QLinearGradient cellGrad(cellRect.topLeft(), cellRect.bottomLeft());
+        cellGrad.setColorAt(0.0, QColor(18, 58, 92, 120));
+        cellGrad.setColorAt(1.0, QColor(10, 36, 60, 90));
+        p.setPen(QPen(QColor(90, 180, 220, 70), 1.0));
+        p.setBrush(cellGrad);
+        p.drawRoundedRect(cellRect, kCellRadius, kCellRadius);
+    }
 }

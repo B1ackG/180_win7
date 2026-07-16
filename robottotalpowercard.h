@@ -17,6 +17,9 @@ public:
     void setTitle(const QString &title);
     void setUnit(const QString &unit);
 
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
+
 signals:
     void currentPowerChanged();
 
