@@ -4,6 +4,7 @@
 #include <QLoggingCategory>
 Q_LOGGING_CATEGORY(lcModbusTCPClient, "app.modbustcpclient")
 #include <QHostAddress>
+#include <QSettings>
 #include <algorithm>
 
 namespace {
@@ -22,7 +23,7 @@ bool isMainWriteLogEnabled()
 
 ModbusTCPClient::ModbusTCPClient(QObject *parent)
     : QObject(parent)
-    , m_maxTimeoutMs(3000) // 默认3秒超时
+    , m_maxTimeoutMs(3000) // 默认3秒超时，可被 config.ini [Polling]/main_request_timeout_ms 覆盖
     , m_socket(nullptr)
     , m_networkThread(nullptr)
     , m_port(502)  // Modbus TCP默认端口
@@ -54,6 +55,9 @@ ModbusTCPClient::ModbusTCPClient(QObject *parent)
     m_reconnectTimer->setSingleShot(true);
     connect(m_reconnectTimer, &QTimer::timeout, this, &ModbusTCPClient::tryReconnect);
 
+    // 事务超时统一由 config.ini 配置
+    QSettings settings("config.ini", QSettings::IniFormat);
+    m_maxTimeoutMs = qMax(200, settings.value("Polling/main_request_timeout_ms", m_maxTimeoutMs).toInt());
 }
 
 ModbusTCPClient::~ModbusTCPClient()
@@ -78,7 +82,7 @@ bool ModbusTCPClient::connectToServer(const QString &host, quint16 port, int sla
     if (m_socket->state() != QAbstractSocket::UnconnectedState) {
         m_socket->abort();
     }
-    qDebug() << "[Modbus连接] 正在连接" << host << ":" << port << "SlaveID:" << slaveId;
+    qCDebug(lcModbusTCPClient) << "[Modbus连接] 正在连接" << host << ":" << port << "SlaveID:" << slaveId;
     m_socket->connectToHost(host, port);
 
     return true;
@@ -113,7 +117,7 @@ void ModbusTCPClient::onConnected()
     m_responseBuffer.clear();
     m_transactionAddressMap.clear();
     m_transactionMapMismatchLogged = false;
-    qDebug() << "[Modbus连接] 连接成功"
+    qCDebug(lcModbusTCPClient) << "[Modbus连接] 连接成功"
                << "目标:" << m_host << ":" << m_port
                << "Peer:" << m_socket->peerAddress().toString() << ":" << m_socket->peerPort()
                << "SlaveID:" << m_slaveId;
@@ -162,7 +166,7 @@ void ModbusTCPClient::onError(QAbstractSocket::SocketError error)
     // 如果是连接被拒绝或主机未找到等连接错误，且启用了自动重连，则重新启动重连定时器
     if (m_autoReconnect && !m_host.isEmpty()) {
         if (!m_reconnectTimer->isActive()) {
-             qDebug() << "连接出错，" << m_reconnectInterval << "ms后尝试重连...";
+             qCDebug(lcModbusTCPClient) << "连接出错，" << m_reconnectInterval << "ms后尝试重连...";
              m_reconnectTimer->start(m_reconnectInterval);
         }
     }
@@ -207,7 +211,7 @@ bool ModbusTCPClient::readRegisters(int startAddress, int count, quint8 function
     if (m_transactionAddressMap.size() >= m_maxPendingTransactions) {
         static int dropCount = 0;
         if (dropCount++ % 10 == 0) {
-            qDebug() << "[Modbus阻塞] 待处理请求:" << m_transactionAddressMap.size()
+            qCDebug(lcModbusTCPClient) << "[Modbus阻塞] 待处理请求:" << m_transactionAddressMap.size()
                        << "试图清理事务。当前状态:" << (isConnected() ? "已连接" : "断开")
                        << "套接字状态:" << (m_socket ? m_socket->state() : -1);
         }
@@ -323,7 +327,7 @@ QByteArray ModbusTCPClient::createReadRequest(int startAddress, int count, quint
         if (currentTime - it.value().timestamp > m_maxTimeoutMs) {
             static int timeoutCount = 0;
             if (timeoutCount++ % 10 == 0) {
-                 qDebug() << "[Modbus超时清理]" 
+                 qCDebug(lcModbusTCPClient) << "[Modbus超时清理]" 
                             << "ReqID:" << it.key() 
                             << "地址:" << it.value().address 
                             << "等待时长(ms):" << (currentTime - it.value().timestamp);
@@ -657,84 +661,6 @@ bool ModbusTCPClient::parseResponse(const QByteArray &data)
     return false;
 }
 
-void ModbusTCPClient::parseSingleResponse(const QByteArray &response, quint16 transactionId)
-{
-    if (response.size() < 9) {
-        return;
-    }
-
-    // 跳过MBAP头（7字节）
-    QByteArray pdu = response.mid(7);
-
-    if (pdu.size() >= 1) {
-        quint8 functionCode = static_cast<quint8>(pdu[0]);
-        qDebug() << "功能码: 0x" << QString::number(functionCode, 16).toUpper();
-
-        // 检查是否是异常响应
-        if (functionCode & 0x80) {
-            if (pdu.size() < 2) {
-                emit errorOccurred(QStringLiteral("Modbus异常响应长度非法"));
-                return;
-            }
-            // 异常响应
-            quint8 errorCode = static_cast<quint8>(pdu[1]);
-            QString errorMsg = QString("Modbus异常响应: 错误码 0x%1").arg(errorCode, 2, 16, QChar('0'));
-            qWarning() << errorMsg;
-            emit errorOccurred(errorMsg);
-            return;
-        }
-
-        // 处理功能码 0x04（读输入寄存器）和 0x03（读保持寄存器）的响应
-        if (functionCode == 0x04 || functionCode == 0x03) {
-            if (pdu.size() >= 3) {
-                quint8 byteCount = static_cast<quint8>(pdu[1]);
-                if (pdu.size() < (2 + byteCount)) {
-                    emit errorOccurred(QStringLiteral("Modbus响应数据长度不足"));
-                    return;
-                }
-                qDebug() << "读寄存器响应(" << QString::number(functionCode, 16) 
-                         << ") - 字节数:" << byteCount
-                         << "寄存器数量:" << byteCount / 2;
-                qDebug() << "数据部分(HEX):" << pdu.mid(2, byteCount).toHex().toUpper();
-
-                // 通过事务ID映射找到对应的起始地址
-                if (m_transactionAddressMap.contains(transactionId)) {
-                    TransactionInfo info = m_transactionAddressMap.take(transactionId);
-                    int startAddress = info.address;
-                    m_transactionMapMismatchLogged = false;
-                    int registerCount = byteCount / 2;  // 每个寄存器2字节
-
-                    qDebug() << "批量读取 - 起始地址:" << startAddress
-                             << "寄存器数量:" << registerCount;
-
-                    // 解析所有寄存器值
-                    for (int i = 0; i < registerCount; i++) {
-                        int bytePos = 2 + i * 2;
-                        if (bytePos + 1 >= pdu.size()) break;
-
-                        quint16 value = (static_cast<quint8>(pdu[bytePos]) << 8) |
-                                        static_cast<quint8>(pdu[bytePos + 1]);
-
-                        int address = startAddress + i;
-
-                        // qDebug() << "更新寄存器地址" << address
-                        //          << "(&MB" << (address + 1) << ")"
-                        //          << "的值为" << value
-                        //          << "(0x" << QString::number(value, 16).toUpper() << ")";
-
-                        // 更新寄存器值
-                        updateRegisterValue(address, value);
-                    }
-                } else {
-                    if (!m_transactionMapMismatchLogged) {
-                        qWarning() << "未找到事务ID" << transactionId << "对应的地址映射";
-                    }
-                    m_transactionMapMismatchLogged = true;
-                }
-            }
-        }
-    }
-}
 void ModbusTCPClient::addRegisterToPoll(int address, const QString &name)
 {
     QMutexLocker locker(&m_mutex);

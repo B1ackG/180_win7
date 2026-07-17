@@ -18,6 +18,7 @@
 #include <QObject>
 #include <QThread>
 #include <QMap>
+#include <atomic>
 #include "modbustcpclient.h"
 
     class TechSliderEdit;  // 前向声明
@@ -230,6 +231,9 @@ private slots:
 
 private:
     ModbusTCPClient *m_modbusClient;
+
+    // 原子连接标志：由客户端信号驱动更新，任意线程可无阻塞查询
+    std::atomic<bool> m_connectedFlag{false};
 
     // TechSliderEdit 映射表
     QMap<int, TechSliderEdit*> m_addressToSlider;

@@ -15,6 +15,7 @@
 #include <QEventLoop>
 #include <QTimer>
 #include <QDebug>
+#include <QLoggingCategory>
 #include <QModelIndex>
 #include <QTcpSocket>
 #include <QFont>
@@ -455,6 +456,15 @@ int main(int argc, char *argv[])
     // 功能开关优先级高于环境变量/命令行：关闭时统一禁用全局 qDebug 输出。
     if (!featureSwitch->isSmallFeatureEnabled("debug.qdebug")) {
         debug = 0;
+    }
+
+    // 通讯热路径分类日志：全局调试关闭时彻底禁用这些分类，
+    // 使 qCDebug 在源头短路，避免每次轮询/解析的字符串构造开销。
+    if (debug == 0) {
+        QLoggingCategory::setFilterRules(QStringLiteral(
+            "app.agvmodbus.debug=false\n"
+            "app.modbusmgr.debug=false\n"
+            "app.modbustcpclient.debug=false"));
     }
 
     // 安装全局消息处理器以便统一过滤 qDebug 输出

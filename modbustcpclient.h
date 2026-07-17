@@ -212,23 +212,6 @@ public:
      * @endcode
      */
 
-    /**
-     * @brief 解析单次 Modbus 响应（供测试/调试使用）
-     *
-     * @param response 原始字节流
-     * @param transactionId 对应的事务 ID
-     * @note 此方法通常由内部 onReadyRead 调用，外部可用于单元测试。
-     */
-    void parseSingleResponse(const QByteArray &response, quint16 transactionId);
-
-    /**
-     * 使用示例（测试/调试）:
-     * @code
-     * QByteArray resp = ...;
-     * client->parseSingleResponse(resp, 1);
-     * @endcode
-     */
-
 signals:
     void connected();
     void disconnected();

@@ -26,6 +26,7 @@
 #include <QListWidget>
 #include <QDateTime>
 #include <QSet>
+#include <atomic>
 
 /*位变量（BOOL）：
 
@@ -242,7 +243,7 @@ private slots:
 
 private:
     QMap<quint16, QDateTime> m_requestTimestamps;  // 请求时间戳
-    static const int REQUEST_TIMEOUT = 2000;        // 请求超时时间（毫秒）
+    int m_requestTimeoutMs = 2000;                 // 请求超时时间（毫秒），可被 config.ini 覆盖
      // Modbus协议处理
     QByteArray createReadRequest(int startAddress, int count);
     bool parseResponse(QByteArray &data);
@@ -308,10 +309,11 @@ private:
     bool m_lastHeartbeatState = false;
     QDateTime m_lastHeartbeatTime;
 
-    bool m_connectedState = false;
+    // 原子连接标志：允许任意线程无阻塞查询连接状态
+    std::atomic<bool> m_connectedState{false};
     QSet<int> m_disconnectedWriteWarnedAddresses;
     QString m_lastSocketError;
-    bool m_writesEnabled = true; // 控制是否允许向AGV写入；默认开启，避免正常控制被静默拦截
+    std::atomic<bool> m_writesEnabled{true}; // 控制是否允许向AGV写入；默认开启，避免正常控制被静默拦截
 
 public:
     // 运行时控制写入开关

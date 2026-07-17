@@ -5,6 +5,11 @@
 #include <QDateTime>
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QLoggingCategory>
+#include <QSettings>
+
+// 分类日志：禁用时 qCDebug 会短路参数求值，避免热路径字符串构造开销
+Q_LOGGING_CATEGORY(lcAgvModbus, "app.agvmodbus")
 
 namespace {
 bool isAgvReadLogEnabled()
@@ -54,7 +59,11 @@ AGVModbusManager::AGVModbusManager(QObject *parent)
     m_reconnectTimer->setSingleShot(true);
     connect(m_reconnectTimer, &QTimer::timeout, this, &AGVModbusManager::tryReconnect);
 
-    qDebug() << "AGV Modbus管理器已创建";
+    // 事务超时统一由 config.ini 配置
+    QSettings settings("config.ini", QSettings::IniFormat);
+    m_requestTimeoutMs = qMax(200, settings.value("Polling/agv_request_timeout_ms", m_requestTimeoutMs).toInt());
+
+    qCDebug(lcAgvModbus) << "AGV Modbus管理器已创建";
 }
 
 bool AGVModbusManager::startWorkerThread()
@@ -71,7 +80,7 @@ bool AGVModbusManager::startWorkerThread()
     m_networkThread = new QThread();
     moveToThread(m_networkThread);
     m_networkThread->start();
-    qDebug() << "AGV Modbus管理器已迁移到专用线程:" << m_networkThread;
+    qCDebug(lcAgvModbus) << "AGV Modbus管理器已迁移到专用线程:" << m_networkThread;
     return true;
 }
 
@@ -105,17 +114,17 @@ AGVModbusManager::~AGVModbusManager()
 {
     stopWorkerThread();
 
-    qDebug() << "AGV Modbus管理器已销毁";
+    qCDebug(lcAgvModbus) << "AGV Modbus管理器已销毁";
 }
 
 bool AGVModbusManager::connectToDevice(const QString &host, quint16 port)
 {
     if (QThread::currentThread() != thread()) {
-        bool ok = false;
-        QMetaObject::invokeMethod(this, [this, host, port, &ok]() {
-            ok = connectToDevice(host, port);
-        }, Qt::BlockingQueuedConnection);
-        return ok;
+        // 异步发起连接，结果通过 connected()/errorOccurred() 信号回传
+        QMetaObject::invokeMethod(this, [this, host, port]() {
+            connectToDevice(host, port);
+        }, Qt::QueuedConnection);
+        return true;
     }
 
     QMutexLocker locker(&m_mutex);
@@ -126,7 +135,7 @@ bool AGVModbusManager::connectToDevice(const QString &host, quint16 port)
     if (m_socket->state() != QAbstractSocket::UnconnectedState) {
         m_socket->abort();
     }
-    qDebug() << "AGV Modbus连接请求，主机:" << host << "端口:" << port;
+    qCDebug(lcAgvModbus) << "AGV Modbus连接请求，主机:" << host << "端口:" << port;
     m_socket->connectToHost(host, port);
 
     return true;
@@ -153,15 +162,8 @@ void AGVModbusManager::disconnectFromDevice()
 
 bool AGVModbusManager::isConnected() const
 {
-    if (QThread::currentThread() != thread()) {
-        bool connected = false;
-        QMetaObject::invokeMethod(const_cast<AGVModbusManager *>(this), [this, &connected]() {
-            connected = m_connectedState;
-        }, Qt::BlockingQueuedConnection);
-        return connected;
-    }
-
-    return m_connectedState;
+    // 原子标志，任意线程可无阻塞读取，避免 UI 线程被工作线程拖住
+    return m_connectedState.load(std::memory_order_relaxed);
 }
 
 void AGVModbusManager::onConnected()
@@ -169,13 +171,13 @@ void AGVModbusManager::onConnected()
     m_connectedState = true;
     m_lastSocketError.clear();
     m_disconnectedWriteWarnedAddresses.clear();
-    qDebug() << "AGV Modbus连接成功:" << m_host << ":" << m_port;
+    qCDebug(lcAgvModbus) << "AGV Modbus连接成功:" << m_host << ":" << m_port;
 
     // 已禁用开机自动轮询
     // 启动轮询定时器以定期读取关键寄存器
     if (m_pollTimer) {
         m_pollTimer->start(m_pollInterval);
-        qDebug() << "轮询定时器已启动，间隔:" << m_pollInterval << "ms";
+        qCDebug(lcAgvModbus) << "轮询定时器已启动，间隔:" << m_pollInterval << "ms";
     }
 
     // 停止重连定时器
@@ -190,7 +192,7 @@ void AGVModbusManager::onConnected()
 void AGVModbusManager::onDisconnected()
 {
     m_connectedState = false;
-    qDebug() << "AGV Modbus连接断开";
+    qCDebug(lcAgvModbus) << "AGV Modbus连接断开";
 
     // 停止轮询
     if (m_pollTimer->isActive()) {
@@ -218,13 +220,13 @@ void AGVModbusManager::onError(QAbstractSocket::SocketError error)
         m_lastSocketError = errorStr;
         qWarning() << "AGV Modbus错误:" << errorStr;
     } else {
-        qDebug() << "AGV Modbus错误(已抑制重复):" << errorStr;
+        qCDebug(lcAgvModbus) << "AGV Modbus错误(已抑制重复):" << errorStr;
     }
 
     // 如果发生连接错误且启用自动重连，则启动重连定时器
     if (m_autoReconnect && !m_host.isEmpty()) {
         if (m_reconnectTimer && !m_reconnectTimer->isActive()) {
-            qDebug() << "连接出错，" << m_reconnectInterval << "ms后尝试重连...";
+            qCDebug(lcAgvModbus) << "连接出错，" << m_reconnectInterval << "ms后尝试重连...";
             m_reconnectTimer->start(m_reconnectInterval);
         }
     }
@@ -238,7 +240,7 @@ void AGVModbusManager::onError(QAbstractSocket::SocketError error)
 void AGVModbusManager::tryReconnect()
 {
     if (m_autoReconnect && !m_host.isEmpty()) {
-        qDebug() << "尝试重连AGV Modbus服务器...";
+        qCDebug(lcAgvModbus) << "尝试重连AGV Modbus服务器...";
         connectToDevice(m_host, m_port);
     }
 }
@@ -279,61 +281,35 @@ void AGVModbusManager::pollRegisters()
         return;
     }
 
-    // 分组轮询，避免一次读取过大导致阻塞，同时保证所有AGV UI所需地址都能被覆盖。
-    // 组0: 0    (OA/驻车相关控制位)
-    // 组1: 155  (底盘转向模式状态值：1~5)
-    // 组2: 50-51 (触边/避障/心跳位状态 + 驻车状态位)
-    // 组3: 102-105 (电池1、电池2、速度、点动位移)
-    // 组4: 110-113 (故障码1-4)
-    // 组5: 114-117 (故障码5-8)
-    // 组6: 100  (有线/无线控制模式)
-    // 组7: 153-154 (运动速度/转向角度同步)
-    // 组8: 151-152 (X/Y 倾角)
+    // 轮询策略：
+    // - 安全关键位（50-51：触边/避障/心跳/驻车状态）每个 tick 都读取，保证最快刷新；
+    // - 其余地址合并为连续区段批量读取并轮转，全量刷新周期 = 4 个 tick
+    //   （200ms 间隔下约 800ms，原方案约 1.8s）：
+    //   组0: 0        (OA/驻车相关控制位)
+    //   组1: 100-105  (控制模式、电池1/2、速度、点动位移)
+    //   组2: 110-117  (故障码1-8)
+    //   组3: 151-156  (X/Y倾角、速度/转向角度同步、转向模式、电池1充电状态)
+    readMultipleRegisters(50, 2);
+
     static int pollGroup = 0;
-
-    // 地址156(电池1充电状态)采用独立时隙轮询，避免与常规轮询同周期并发发送。
-    static int chargingPollTick = 0;
-    const int chargingPollPeriod = qMax(1, 5000 / qMax(1, m_pollInterval));
-    ++chargingPollTick;
-    if (chargingPollTick >= chargingPollPeriod) {
-        chargingPollTick = 0;
-        readMultipleRegisters(156, 1);
-        return;
-    }
-
     switch (pollGroup) {
     case 0:
         readMultipleRegisters(0, 1);
         break;
     case 1:
-        readMultipleRegisters(155, 1);
+        readMultipleRegisters(100, 6);
         break;
     case 2:
-        readMultipleRegisters(50, 2);
+        readMultipleRegisters(110, 8);
         break;
     case 3:
-        readMultipleRegisters(102, 4);
-        break;
-    case 4:
-        readMultipleRegisters(110, 4);
-        break;
-    case 5:
-        readMultipleRegisters(114, 4);
-        break;
-    case 6:
-        readMultipleRegisters(100, 1);
-        break;
-    case 7:
-        readMultipleRegisters(153, 2);
-        break;
-    case 8:
-        readMultipleRegisters(151, 2);
+        readMultipleRegisters(151, 6);
         break;
     default:
         break;
     }
 
-    pollGroup = (pollGroup + 1) % 9;
+    pollGroup = (pollGroup + 1) % 4;
 }
 
 
@@ -397,8 +373,8 @@ void AGVModbusManager::readMultipleRegisters(int startAddress, int count)
     QMutableMapIterator<quint16, QDateTime> it(m_requestTimestamps);
     while (it.hasNext()) {
         it.next();
-        if (it.value().msecsTo(now) > REQUEST_TIMEOUT) {
-            qDebug() << "清理超时请求，事务ID:" << it.key();
+        if (it.value().msecsTo(now) > m_requestTimeoutMs) {
+            qCDebug(lcAgvModbus) << "清理超时请求，事务ID:" << it.key();
             m_transactionAddressMap.remove(it.key());
             it.remove();
         }
@@ -441,28 +417,40 @@ void AGVModbusManager::onReadyRead()
 
 bool AGVModbusManager::parseResponse(QByteArray &data)
 {
+    // MBAP 长度字段的合法范围：UnitId(1)+Function(1)+Data(>=1) 到保守上限，
+    // 越界视为流失步，按字节重同步而不是丢弃整个缓冲区。
+    constexpr quint16 kMinMbapLength = 3;
+    constexpr quint16 kMaxMbapLength = 260;
+
     bool parsedAny = false;
     while (data.size() >= 7) {
-        quint16 length = (static_cast<quint8>(data[4]) << 8) | static_cast<quint8>(data[5]);
-        int frameLength = 6 + length;
+        const quint16 protocolId = (static_cast<quint8>(data[2]) << 8)
+                                   | static_cast<quint8>(data[3]);
+        const quint16 length = (static_cast<quint8>(data[4]) << 8)
+                               | static_cast<quint8>(data[5]);
+        const int frameLength = 6 + length;
 
-        if (frameLength < 9) {
-            qWarning() << "非法AGV Modbus帧长度:" << frameLength;
-            data.clear();
-            emit errorOccurred("非法AGV Modbus帧长度");
-            return false;
+        if (protocolId != 0 || length < kMinMbapLength || length > kMaxMbapLength || frameLength < 9) {
+            // 流失步：丢弃 1 字节后继续查找下一个合法帧头
+            data.remove(0, 1);
+            continue;
         }
 
         if (data.size() < frameLength) {
             break;
         }
 
-        if (!parseSingleResponseFrame(data)) {
-            qWarning() << "解析AGV Modbus响应帧失败";
-            return false;
+        if (parseSingleResponseFrame(data)) {
+            parsedAny = true;
         }
-        parsedAny = true;
     }
+
+    // 保护：长时间无法解析出合法帧时防止缓冲区无限增长
+    if (!parsedAny && data.size() > 8192) {
+        qWarning() << "AGV Modbus响应缓冲区异常增长，执行保护性清理";
+        data.clear();
+    }
+
     return parsedAny;
 }
 
@@ -679,16 +667,16 @@ void AGVModbusManager::processBitVariables(int address, quint16 value)
                     labelName = "label_" + bitName;
                 }
 
-                qDebug() << "  更新Label:" << labelName << "->" << displayText;
+                qCDebug(lcAgvModbus) << "  更新Label:" << labelName << "->" << displayText;
                 emit updateStatusLabel(labelName, displayText);
 
                 // 特别处理特定的位变量
                 if (bitName == "back_touch") {
-                    qDebug() << "  后触边状态变化:" << (bitValue ? "触发" : "无动作");
+                    qCDebug(lcAgvModbus) << "  后触边状态变化:" << (bitValue ? "触发" : "无动作");
                 }
 
                 if (bitName == "jog_running") {
-                    qDebug() << "  点动运行状态变化:" << (bitValue ? "运行中" : "停止");
+                    qCDebug(lcAgvModbus) << "  点动运行状态变化:" << (bitValue ? "运行中" : "停止");
                 }
             }
 
@@ -696,7 +684,7 @@ void AGVModbusManager::processBitVariables(int address, quint16 value)
             if (address == 50 && bitPos == 0) {
                 if (bitValue && !m_lastHeartbeatState) {
                     m_lastHeartbeatTime = QDateTime::currentDateTime();
-                    qDebug() << "  收到心跳信号，时间:" << m_lastHeartbeatTime.toString("hh:mm:ss.zzz");
+                    qCDebug(lcAgvModbus) << "  收到心跳信号，时间:" << m_lastHeartbeatTime.toString("hh:mm:ss.zzz");
                     emit heartbeatReceived();
                 }
                 m_lastHeartbeatState = bitValue;
@@ -706,32 +694,32 @@ void AGVModbusManager::processBitVariables(int address, quint16 value)
 
     // 更新故障显示（处理地址52的故障位）
     if (address == 102) {
-        qDebug() << "  更新故障显示";
+        qCDebug(lcAgvModbus) << "  更新故障显示";
         updateFaultsDisplay();
     }
 
-    qDebug() << "=== 位变量处理完成 ===";
+    qCDebug(lcAgvModbus) << "=== 位变量处理完成 ===";
 }
 
 void AGVModbusManager::processWordVariables(int address, quint16 value)
 {
-    qDebug() << "=== 开始处理字变量 ===";
-    qDebug() << "【进入processWordVariables】地址:" << address << "值:" << value;
+    qCDebug(lcAgvModbus) << "=== 开始处理字变量 ===";
+    qCDebug(lcAgvModbus) << "【进入processWordVariables】地址:" << address << "值:" << value;
 
     QString varName = getWordVariableName(address);
-    qDebug() << "获取变量名 - 地址:" << address << "->" << varName;
+    qCDebug(lcAgvModbus) << "获取变量名 - 地址:" << address << "->" << varName;
 
     if (varName.isEmpty()) {
-        qDebug() << "变量名为空，跳过处理";
-        qDebug() << "=== 字变量处理完成 ===";
+        qCDebug(lcAgvModbus) << "变量名为空，跳过处理";
+        qCDebug(lcAgvModbus) << "=== 字变量处理完成 ===";
         return;
     }
 
     if (varName == "battery1") {
         // 电池1电量 (0-100%)
         int batteryPercent = qMin(value, static_cast<quint16>(100));
-        qDebug() << "电池1电量:" << batteryPercent << "%";
-        qDebug() << "发出updateProgressBar信号: progressBar_battery1, " << batteryPercent;
+        qCDebug(lcAgvModbus) << "电池1电量:" << batteryPercent << "%";
+        qCDebug(lcAgvModbus) << "发出updateProgressBar信号: progressBar_battery1, " << batteryPercent;
         emit updateProgressBar("progressBar_battery1", batteryPercent);
         emit updateStatusLabel("label_battery1_text", QString("%1%").arg(batteryPercent));
         emit wordVariableChanged(address, value); // 兜底链路：允许 UI 直接基于寄存器更新
@@ -739,25 +727,25 @@ void AGVModbusManager::processWordVariables(int address, quint16 value)
     else if (varName == "battery2") {
         // 电池2电量 (0-100%)
         int batteryPercent = qMin(value, static_cast<quint16>(100));
-        qDebug() << "电池2电量:" << batteryPercent << "%";
+        qCDebug(lcAgvModbus) << "电池2电量:" << batteryPercent << "%";
         emit updateStatusLabel("label_battery2_text", QString("%1%").arg(batteryPercent));
         emit wordVariableChanged(address, value); // 兜底链路：允许 UI 直接基于寄存器更新
     }
     else if (varName == "speed") {
         // 行驶速度 (mm/s) - 更新到wordVariableChanged信号，由MainWindow处理
-        qDebug() << "行驶速度:" << value << "mm/s";
+        qCDebug(lcAgvModbus) << "行驶速度:" << value << "mm/s";
         // 这里不需要单独处理，wordVariableChanged信号会触发MainWindow的处理
         emit wordVariableChanged(address, value);
     }
     else if (varName == "jog_displacement") {
         // 点动位移
-        qDebug() << "点动位移:" << value << "mm";
+        qCDebug(lcAgvModbus) << "点动位移:" << value << "mm";
         emit updateStatusLabel("label_jog_displacement", QString("%1 mm").arg(value));
         emit wordVariableChanged(address, value);
     }
     else if (varName == "battery1_charging") {
         // 电池1充电状态（1=充电中，其他值=非充电）
-        qDebug() << "电池1充电状态:" << value;
+        qCDebug(lcAgvModbus) << "电池1充电状态:" << value;
         emit wordVariableChanged(address, value);
     }
     else if (varName.startsWith("fault_code_")) {
@@ -768,18 +756,18 @@ void AGVModbusManager::processWordVariables(int address, quint16 value)
         if (value != 0) {
             // 有故障代码
             m_faultCodes[address] = value;
-            qDebug() << "故障代码" << faultName << ":" << value;
-            qDebug() << "发出addFaultCodeToList信号:" << displayText;
+            qCDebug(lcAgvModbus) << "故障代码" << faultName << ":" << value;
+            qCDebug(lcAgvModbus) << "发出addFaultCodeToList信号:" << displayText;
 
             // 发射信号到UI
             emit addFaultCodeToList(displayText);
 
             // 记录到日志
-            qDebug() << "发现故障: " << displayText;
+            qCDebug(lcAgvModbus) << "发现故障: " << displayText;
         } else {
             // 故障代码为0，表示无故障
             m_faultCodes.remove(address);
-            qDebug() << "故障代码" << faultName << "已清除";
+            qCDebug(lcAgvModbus) << "故障代码" << faultName << "已清除";
         }
 
         // 更新故障代码显示
@@ -787,11 +775,11 @@ void AGVModbusManager::processWordVariables(int address, quint16 value)
         emit wordVariableChanged(address, value);
     }
     else {
-        qDebug() << "未知的字变量类型:" << varName;
+        qCDebug(lcAgvModbus) << "未知的字变量类型:" << varName;
         emit wordVariableChanged(address, value);
     }
 
-    qDebug() << "=== 字变量处理完成 ===";
+    qCDebug(lcAgvModbus) << "=== 字变量处理完成 ===";
 }
 
 
@@ -852,7 +840,7 @@ QString AGVModbusManager::getWordVariableName(int address) const
     };
 
     QString name = wordMap.value(address, "");
-    qDebug() << "【getWordVariableName】地址" << address << "->" << name;
+    qCDebug(lcAgvModbus) << "【getWordVariableName】地址" << address << "->" << name;
     return name;
 }
 
@@ -887,7 +875,7 @@ void AGVModbusManager::updateFaultsDisplay()
 
     // 调试输出
     if (!faults.isEmpty()) {
-        qDebug() << "故障状态更新: " << faultText;
+        qCDebug(lcAgvModbus) << "故障状态更新: " << faultText;
     }
 }
 
@@ -904,7 +892,7 @@ void AGVModbusManager::updateFaultCodesDisplay()
     // 如果没有故障代码
     if (m_faultCodes.isEmpty()) {
         emit addFaultCodeToList("无故障代码");
-        qDebug() << "无故障代码";
+        qCDebug(lcAgvModbus) << "无故障代码";
         return;
     }
 
@@ -921,7 +909,7 @@ void AGVModbusManager::updateFaultCodesDisplay()
                                           .arg(faultName)
                                           .arg(code);
                 emit addFaultCodeToList(displayText);
-                qDebug() << "添加故障代码到列表: " << displayText;
+                qCDebug(lcAgvModbus) << "添加故障代码到列表: " << displayText;
             }
         }
     }
@@ -931,15 +919,24 @@ void AGVModbusManager::updateFaultCodesDisplay()
 bool AGVModbusManager::writeSingleRegister(int address, quint16 value)
 {
     if (QThread::currentThread() != thread()) {
-        bool ok = false;
-        QMetaObject::invokeMethod(this, [this, address, value, &ok]() {
-            ok = writeSingleRegister(address, value);
-        }, Qt::BlockingQueuedConnection);
-        return ok;
+        // 快速预检后异步投递到工作线程，避免阻塞调用线程（通常是UI线程）。
+        // 写入结果通过 writeCompleted/errorOccurred 信号回传。
+        if (!m_writesEnabled.load(std::memory_order_relaxed)) {
+            qWarning() << "AGV 写操作已被禁用，忽略写入请求 地址:" << address << "值:" << value;
+            return false;
+        }
+        if (!isConnected()) {
+            qWarning() << "AGV Modbus未连接，无法写入地址" << address;
+            return false;
+        }
+        QMetaObject::invokeMethod(this, [this, address, value]() {
+            writeSingleRegister(address, value);
+        }, Qt::QueuedConnection);
+        return true;
     }
 
     // 如果全局禁用了写操作，则直接阻止并返回失败（用于故障排查）
-    if (!m_writesEnabled) {
+    if (!m_writesEnabled.load(std::memory_order_relaxed)) {
         qWarning() << "AGV 写操作已被禁用，忽略写入请求 地址:" << address << "值:" << value;
         return false;
     }
@@ -975,23 +972,12 @@ bool AGVModbusManager::writeSingleRegister(int address, quint16 value)
 
 void AGVModbusManager::setWritesEnabled(bool enabled)
 {
-    if (QThread::currentThread() != thread()) {
-        QMetaObject::invokeMethod(this, [this, enabled]() { setWritesEnabled(enabled); }, Qt::QueuedConnection);
-        return;
-    }
-    m_writesEnabled = enabled;
+    m_writesEnabled.store(enabled, std::memory_order_relaxed);
 }
 
 bool AGVModbusManager::writesEnabled() const
 {
-    if (QThread::currentThread() != thread()) {
-        bool enabled = false;
-        QMetaObject::invokeMethod(const_cast<AGVModbusManager *>(this), [this, &enabled]() {
-            enabled = m_writesEnabled;
-        }, Qt::BlockingQueuedConnection);
-        return enabled;
-    }
-    return m_writesEnabled;
+    return m_writesEnabled.load(std::memory_order_relaxed);
 }
 
 QByteArray AGVModbusManager::createWriteRequest(int address, quint16 value)

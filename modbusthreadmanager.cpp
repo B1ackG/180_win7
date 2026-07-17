@@ -5,6 +5,9 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QMetaObject>
+#include <QLoggingCategory>
+
+Q_LOGGING_CATEGORY(lcModbusMgr, "app.modbusmgr")
 
 ModbusThreadManager* ModbusThreadManager::instance()
 {
@@ -57,10 +60,19 @@ ModbusThreadManager::ModbusThreadManager(QObject *parent)
             this, &ModbusThreadManager::disconnected);
     connect(m_modbusClient, &ModbusTCPClient::errorOccurred,
             this, &ModbusThreadManager::errorOccurred);
+
+    // 用客户端信号维护原子连接标志，使 isConnected() 可在任意线程无阻塞读取
+    auto syncConnectedFlag = [this]() {
+        m_connectedFlag.store(m_modbusClient && m_modbusClient->isConnected(),
+                              std::memory_order_relaxed);
+    };
+    connect(m_modbusClient, &ModbusTCPClient::connected, this, syncConnectedFlag);
+    connect(m_modbusClient, &ModbusTCPClient::disconnected, this, syncConnectedFlag);
+    connect(m_modbusClient, &ModbusTCPClient::errorOccurred, this, syncConnectedFlag);
     connect(m_modbusClient, &ModbusTCPClient::registerValueChanged,
             this, &ModbusThreadManager::onRegisterValueChanged);
 
-    qDebug() << "Modbus线程管理器已启动";
+    qCDebug(lcModbusMgr) << "Modbus线程管理器已启动";
 }
 
 ModbusThreadManager::~ModbusThreadManager()
@@ -69,17 +81,17 @@ ModbusThreadManager::~ModbusThreadManager()
         m_modbusClient->stopPolling();
         m_modbusClient->disconnectFromServer();
     }
-    qDebug() << "Modbus线程管理器已销毁";
+    qCDebug(lcModbusMgr) << "Modbus线程管理器已销毁";
 }
 
 bool ModbusThreadManager::connectToDevice(const QString &host, quint16 port, int slaveId)
 {
     if (QThread::currentThread() != thread()) {
-        bool ok = false;
-        QMetaObject::invokeMethod(this, [this, host, port, slaveId, &ok]() {
-            ok = connectToDevice(host, port, slaveId);
-        }, Qt::BlockingQueuedConnection);
-        return ok;
+        // 异步发起连接，结果通过 connected()/errorOccurred() 信号回传
+        QMetaObject::invokeMethod(this, [this, host, port, slaveId]() {
+            connectToDevice(host, port, slaveId);
+        }, Qt::QueuedConnection);
+        return true;
     }
 
     if (!m_modbusClient) {
@@ -96,6 +108,7 @@ bool ModbusThreadManager::connectToDevice(const QString &host, quint16 port, int
 void ModbusThreadManager::disconnectFromDevice()
 {
     if (QThread::currentThread() != thread()) {
+        // 关机/切换路径需要同步完成，保留阻塞式转发
         QMetaObject::invokeMethod(this, [this]() { disconnectFromDevice(); }, Qt::BlockingQueuedConnection);
         return;
     }
@@ -104,19 +117,13 @@ void ModbusThreadManager::disconnectFromDevice()
         m_modbusClient->stopPolling();
         m_modbusClient->disconnectFromServer();
     }
+    m_connectedFlag.store(false, std::memory_order_relaxed);
 }
 
 bool ModbusThreadManager::isConnected() const
 {
-    if (QThread::currentThread() != thread()) {
-        bool connected = false;
-        QMetaObject::invokeMethod(const_cast<ModbusThreadManager *>(this), [this, &connected]() {
-            connected = m_modbusClient ? m_modbusClient->isConnected() : false;
-        }, Qt::BlockingQueuedConnection);
-        return connected;
-    }
-
-    return m_modbusClient ? m_modbusClient->isConnected() : false;
+    // 原子标志，任意线程可无阻塞读取
+    return m_connectedFlag.load(std::memory_order_relaxed);
 }
 
 void ModbusThreadManager::registerSlider(TechSliderEdit *slider, int address)
@@ -311,7 +318,7 @@ void ModbusThreadManager::onSliderLabelDestroyed(QObject *obj)
 void ModbusThreadManager::setPollInterval(int ms)
 {
     if (QThread::currentThread() != thread()) {
-        QMetaObject::invokeMethod(this, [this, ms]() { setPollInterval(ms); }, Qt::BlockingQueuedConnection);
+        QMetaObject::invokeMethod(this, [this, ms]() { setPollInterval(ms); }, Qt::QueuedConnection);
         return;
     }
 
@@ -325,7 +332,7 @@ void ModbusThreadManager::setAutoReconnect(bool enable, int interval)
     if (QThread::currentThread() != thread()) {
         QMetaObject::invokeMethod(this, [this, enable, interval]() {
             setAutoReconnect(enable, interval);
-        }, Qt::BlockingQueuedConnection);
+        }, Qt::QueuedConnection);
         return;
     }
 
@@ -336,14 +343,8 @@ void ModbusThreadManager::setAutoReconnect(bool enable, int interval)
 
 bool ModbusThreadManager::readSingleRegister(int address, quint16 &value)
 {
-    if (QThread::currentThread() != thread()) {
-        bool ok = false;
-        QMetaObject::invokeMethod(this, [this, address, &value, &ok]() {
-            ok = readSingleRegister(address, value);
-        }, Qt::BlockingQueuedConnection);
-        return ok;
-    }
-
+    // 本方法实际是异步读取（结果通过 registerValueChanged 信号回传），
+    // 因此跨线程时无需阻塞等待。
     Q_UNUSED(value);
     return readHoldingRegisters(address, 1);
 }
@@ -361,7 +362,7 @@ void ModbusThreadManager::readAndDebugAddress(int address)
     }
 
     bool result = m_modbusClient->readHoldingRegisters(address, 1);
-    qDebug() << "正在读取Modbus地址 &MB" << (address + 1)
+    qCDebug(lcModbusMgr) << "正在读取Modbus地址 &MB" << (address + 1)
              << "（实际地址：" << (40000 + address + 1) << ")"
              << "读取请求状态：" << (result ? "成功" : "失败");
 }
@@ -369,11 +370,11 @@ void ModbusThreadManager::readAndDebugAddress(int address)
 quint16 ModbusThreadManager::readSingleRegister(int address)
 {
     if (QThread::currentThread() != thread()) {
-        quint16 result = 0;
-        QMetaObject::invokeMethod(this, [this, address, &result]() {
-            result = readSingleRegister(address);
-        }, Qt::BlockingQueuedConnection);
-        return result;
+        // 异步读取，结果通过 registerValueChanged 信号回传
+        QMetaObject::invokeMethod(this, [this, address]() {
+            readSingleRegister(address);
+        }, Qt::QueuedConnection);
+        return 0;
     }
 
     if (!m_modbusClient || !m_modbusClient->isConnected()) {
@@ -382,7 +383,7 @@ quint16 ModbusThreadManager::readSingleRegister(int address)
     }
 
     m_modbusClient->readHoldingRegisters(address, 1);
-    qDebug() << "已发送异步读取地址" << address << "的请求";
+    qCDebug(lcModbusMgr) << "已发送异步读取地址" << address << "的请求";
     return 0;
 }
 
@@ -405,11 +406,17 @@ void ModbusThreadManager::readMultipleRegisters(int startAddress, int count)
 bool ModbusThreadManager::writeSingleRegister(int address, quint16 value)
 {
     if (QThread::currentThread() != thread()) {
-        bool ok = false;
-        QMetaObject::invokeMethod(this, [this, address, value, &ok]() {
-            ok = writeSingleRegister(address, value);
-        }, Qt::BlockingQueuedConnection);
-        return ok;
+        // 快速预检后异步投递，避免阻塞调用线程；
+        // 结果通过 registerWritten/writeOperationComplete 信号回传。
+        if (!isConnected()) {
+            qWarning() << "Modbus客户端未连接，无法写入地址" << address;
+            emit writeOperationComplete(false, QString("Modbus未连接"));
+            return false;
+        }
+        QMetaObject::invokeMethod(this, [this, address, value]() {
+            writeSingleRegister(address, value);
+        }, Qt::QueuedConnection);
+        return true;
     }
 
     if (!m_modbusClient || !m_modbusClient->isConnected()) {
@@ -431,11 +438,20 @@ bool ModbusThreadManager::writeSingleRegister(int address, quint16 value)
 bool ModbusThreadManager::writeMultipleRegisters(int startAddress, const QVector<quint16> &values)
 {
     if (QThread::currentThread() != thread()) {
-        bool ok = false;
-        QMetaObject::invokeMethod(this, [this, startAddress, values, &ok]() {
-            ok = writeMultipleRegisters(startAddress, values);
-        }, Qt::BlockingQueuedConnection);
-        return ok;
+        // 快速预检后异步投递，结果通过信号回传
+        if (!isConnected()) {
+            qWarning() << "Modbus客户端未连接，无法批量写入地址" << startAddress;
+            emit writeOperationComplete(false, QString("Modbus未连接"));
+            return false;
+        }
+        if (values.isEmpty()) {
+            qWarning() << "批量写入值为空，已忽略，起始地址" << startAddress;
+            return false;
+        }
+        QMetaObject::invokeMethod(this, [this, startAddress, values]() {
+            writeMultipleRegisters(startAddress, values);
+        }, Qt::QueuedConnection);
+        return true;
     }
 
     if (!m_modbusClient || !m_modbusClient->isConnected()) {
@@ -468,11 +484,15 @@ bool ModbusThreadManager::writeMultipleRegisters(int startAddress, const QVector
 bool ModbusThreadManager::readHoldingRegisters(int startAddress, int count)
 {
     if (QThread::currentThread() != thread()) {
-        bool ok = false;
-        QMetaObject::invokeMethod(this, [this, startAddress, count, &ok]() {
-            ok = readHoldingRegisters(startAddress, count);
-        }, Qt::BlockingQueuedConnection);
-        return ok;
+        // 异步读取，结果通过 registerValueChanged 信号回传
+        if (!isConnected()) {
+            qWarning() << "Modbus客户端未连接，无法读取保持寄存器";
+            return false;
+        }
+        QMetaObject::invokeMethod(this, [this, startAddress, count]() {
+            readHoldingRegisters(startAddress, count);
+        }, Qt::QueuedConnection);
+        return true;
     }
 
     if (!m_modbusClient || !m_modbusClient->isConnected()) {
@@ -485,11 +505,15 @@ bool ModbusThreadManager::readHoldingRegisters(int startAddress, int count)
 bool ModbusThreadManager::readInputRegisters(int startAddress, int count)
 {
     if (QThread::currentThread() != thread()) {
-        bool ok = false;
-        QMetaObject::invokeMethod(this, [this, startAddress, count, &ok]() {
-            ok = readInputRegisters(startAddress, count);
-        }, Qt::BlockingQueuedConnection);
-        return ok;
+        // 异步读取，结果通过 registerValueChanged 信号回传
+        if (!isConnected()) {
+            qWarning() << "Modbus客户端未连接，无法读取输入寄存器";
+            return false;
+        }
+        QMetaObject::invokeMethod(this, [this, startAddress, count]() {
+            readInputRegisters(startAddress, count);
+        }, Qt::QueuedConnection);
+        return true;
     }
 
     if (!m_modbusClient || !m_modbusClient->isConnected()) {
