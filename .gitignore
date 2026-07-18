@@ -59,3 +59,6 @@ patch.txt
 qmlcache_loader.cpp
 res_qmlcache.qrc
 system_check.log
+
+# Added by Assistant staging review
+*.exe
