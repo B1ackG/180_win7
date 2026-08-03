@@ -579,40 +579,6 @@ TechZonePanel {
            </property>
           </widget>
          </item>
-         <item>
-          <widget class="QWidget" name="widget" native="true">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-             <horstretch>0</horstretch>
-             <verstretch>1</verstretch>
-            </sizepolicy>
-           </property>
-           <layout class="QGridLayout" name="gridLayout_5">
-            <property name="leftMargin">
-             <number>150</number>
-            </property>
-            <property name="rightMargin">
-             <number>150</number>
-            </property>
-            <item row="0" column="0">
-             <widget class="TechSpeedGauge" name="AGV_speedGauge" native="true">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-              <property name="minimumSize">
-               <size>
-                <width>270</width>
-                <height>251</height>
-               </size>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
         </layout>
        </widget>
        <widget class="TechZonePanel" name="techZone_RobotStatus" native="true">
@@ -661,7 +627,7 @@ TechZonePanel {
          <item>
           <widget class="QStackedWidget" name="stackedWidget_RobotStatus">
            <property name="currentIndex">
-            <number>1</number>
+            <number>2</number>
            </property>
            <widget class="QWidget" name="page_sixaxies">
             <layout class="QGridLayout" name="gridLayout_3">
@@ -861,6 +827,87 @@ TechZonePanel {
              </item>
             </layout>
            </widget>
+           <widget class="QWidget" name="page_AGV">
+            <widget class="QWidget" name="widget" native="true">
+             <property name="geometry">
+              <rect>
+               <x>60</x>
+               <y>60</y>
+               <width>591</width>
+               <height>263</height>
+              </rect>
+             </property>
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+               <horstretch>0</horstretch>
+               <verstretch>1</verstretch>
+              </sizepolicy>
+             </property>
+             <layout class="QGridLayout" name="gridLayout_5">
+              <property name="leftMargin">
+               <number>150</number>
+              </property>
+              <property name="rightMargin">
+               <number>150</number>
+              </property>
+              <item row="0" column="0">
+               <widget class="TechSpeedGauge" name="AGV_speedGauge" native="true">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="minimumSize">
+                 <size>
+                  <width>270</width>
+                  <height>251</height>
+                 </size>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+            <widget class="QWidget" name="widget_5" native="true">
+             <property name="geometry">
+              <rect>
+               <x>510</x>
+               <y>0</y>
+               <width>171</width>
+               <height>50</height>
+              </rect>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: rgb(0, 200, 255);
+font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
+             </property>
+             <layout class="QGridLayout" name="gridLayout_2">
+              <item row="0" column="1">
+               <widget class="BatteryWidget" name="progressBar_battery1" native="true">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                  <horstretch>1</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="0">
+               <widget class="QLabel" name="label_15">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                  <horstretch>1</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="text">
+                 <string>电池电量</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </widget>
           </widget>
          </item>
          <item>
@@ -882,45 +929,6 @@ TechZonePanel {
              <widget class="QWidget" name="quickWidget_Inclinometer_X" native="true"/>
             </item>
            </layout>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-       <widget class="QWidget" name="widget_5" native="true">
-        <property name="geometry">
-         <rect>
-          <x>1570</x>
-          <y>40</y>
-          <width>171</width>
-          <height>50</height>
-         </rect>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">color: rgb(0, 200, 255);
-font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
-        </property>
-        <layout class="QGridLayout" name="gridLayout_2">
-         <item row="0" column="0">
-          <widget class="QLabel" name="label_15">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-             <horstretch>1</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="text">
-            <string>电池电量</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="1">
-          <widget class="BatteryWidget" name="progressBar_battery1" native="true">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-             <horstretch>1</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
           </widget>
          </item>
         </layout>
