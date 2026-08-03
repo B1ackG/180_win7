@@ -244,8 +244,8 @@ public:
     void setupAGVModbus();
     /** @brief 初始化 AGV 相关 UI */
     void setupAGVUI();
-    /** @brief 向 AGV 写寄存器 */
-    void writeToAGVDevice(int address, int value);
+    /** @brief 向 AGV 写寄存器；bypassWirelessWarning 为 true 时跳过无线门禁（如写 500、速度控件写 3） */
+    void writeToAGVDevice(int address, int value, bool bypassWirelessWarning = false);
     /** @brief 按位更新 AGV 寄存器并写回，自动保留未修改位 */
     bool writeAGVRegisterBits(int address, const QList<QPair<int, bool>> &bitUpdates, const QString &scene = QString());
     
@@ -516,8 +516,11 @@ private:
     FeatureSwitchWidget *m_featureSwitchWidget = nullptr;
     QWidget *m_pageNavigationPopup = nullptr;
     QWidget *m_deviceControlPopup = nullptr;
+    QWidget *m_controlModePopup = nullptr;
     TechChamferToolButton *m_pageNavigationMenuButton = nullptr;
     TechChamferToolButton *m_deviceControlMenuButton = nullptr;
+    TechChamferToolButton *m_controlModeMenuButton = nullptr;
+    QToolButton *m_controlModeBtn = nullptr;
     QButtonGroup *m_navSubButtonGroup = nullptr;
     QVector<TechZonePanel*> m_contentZonePanels;
     QThread *m_enableButtonThread;
@@ -740,6 +743,7 @@ private:
     void setupNavigationMenuIcons();
     void togglePageNavigationPanel();
     void toggleDeviceControlPanel();
+    void toggleControlModePanel();
     void hideCollapsibleControlPanels();
     void repositionCollapsibleControlPanels();
     void positionCollapsiblePanel(QWidget *panel, QToolButton *anchorButton);

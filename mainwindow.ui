@@ -200,6 +200,15 @@ QProgressBar::chunk {
   border-radius: 6px;
 }
 
+#TBtn_PageNavMenu, #TBtn_DeviceControlMenu, #TBtn_ControlModeMenu {
+  color: #dff6ff;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 4px 10px;
+  min-height: 36px;
+}
+
 #TBtn_RemoveWarning {
   color: #fff4f4;
   background: rgba(132, 28, 30, 0.94);
@@ -430,6 +439,47 @@ TechZonePanel {
         </property>
         <property name="text">
          <string>设备控制</string>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>24</width>
+          <height>24</height>
+         </size>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="toolButtonStyle">
+         <enum>Qt::ToolButtonTextBesideIcon</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="TechChamferToolButton" name="TBtn_ControlModeMenu">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>194</width>
+          <height>46</height>
+         </size>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>12</pointsize>
+          <bold>true</bold>
+         </font>
+        </property>
+        <property name="text">
+         <string>控制模式</string>
+        </property>
+        <property name="icon">
+         <iconset resource="res.qrc">
+          <normaloff>:/Picture/ModeSwitch.png</normaloff>:/Picture/ModeSwitch.png</iconset>
         </property>
         <property name="iconSize">
          <size>
@@ -832,7 +882,7 @@ TechZonePanel {
              <property name="geometry">
               <rect>
                <x>60</x>
-               <y>60</y>
+               <y>70</y>
                <width>591</width>
                <height>263</height>
               </rect>
@@ -906,6 +956,34 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
                </widget>
               </item>
              </layout>
+            </widget>
+            <widget class="TechSliderEdit" name="SEdit_AGV_MoveSpeed" native="true">
+             <property name="geometry">
+              <rect>
+               <x>100</x>
+               <y>410</y>
+               <width>520</width>
+               <height>75</height>
+              </rect>
+             </property>
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>520</width>
+               <height>70</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>75</height>
+              </size>
+             </property>
             </widget>
            </widget>
           </widget>
@@ -1070,6 +1148,58 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
        </property>
       </widget>
      </item>
+     <item>
+      <widget class="TechChamferToolButton" name="TBtn_ChassisControl">
+       <property name="font">
+        <font>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="text">
+        <string>底盘控制</string>
+       </property>
+       <property name="iconSize">
+        <size>
+         <width>22</width>
+         <height>22</height>
+        </size>
+       </property>
+       <property name="toolButtonStyle">
+        <enum>Qt::ToolButtonTextBesideIcon</enum>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="TechChamferToolButton" name="TBtn_ControlMode">
+       <property name="font">
+        <font>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="text">
+        <string>示教器控制</string>
+       </property>
+       <property name="icon">
+        <iconset resource="res.qrc">
+         <normaloff>:/Picture/ControlMode.png</normaloff>:/Picture/ControlMode.png</iconset>
+       </property>
+       <property name="iconSize">
+        <size>
+         <width>22</width>
+         <height>22</height>
+        </size>
+       </property>
+       <property name="toolButtonStyle">
+        <enum>Qt::ToolButtonTextBesideIcon</enum>
+       </property>
+      </widget>
+     </item>
     </layout>
    </widget>
   </widget>
@@ -1104,6 +1234,12 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
    <class>TechChamferToolButton</class>
    <extends>QToolButton</extends>
    <header location="global">techchamfertoolbutton.h</header>
+  </customwidget>
+  <customwidget>
+   <class>TechSliderEdit</class>
+   <extends>QWidget</extends>
+   <header location="global">techslideredit.h</header>
+   <container>1</container>
   </customwidget>
  </customwidgets>
  <resources>

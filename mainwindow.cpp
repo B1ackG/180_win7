@@ -361,6 +361,7 @@ void MainWindow::setupNavigationConnections()
     const QList<QToolButton*> navButtons = {
         ui->TBtn_HomePage,
         ui->TBtn_SixAxies,
+        ui->TBtn_ChassisControl,
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord
     };
@@ -379,6 +380,7 @@ void MainWindow::setupNavigationConnections()
     const QList<TechChamferToolButton*> navChamferButtons = {
         ui->TBtn_HomePage,
         ui->TBtn_SixAxies,
+        ui->TBtn_ChassisControl,
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord
     };
@@ -416,6 +418,17 @@ void MainWindow::setupNavigationConnections()
         ui->TBtn_SixAxies->setChecked(true);
         updateNavButtonStyles(nullptr);
     });
+
+    connect(ui->TBtn_ChassisControl, &QPushButton::clicked, [this]() {
+        if (ui->StackedWidget && ui->page_Robot) {
+            ui->StackedWidget->setCurrentWidget(ui->page_Robot);
+        }
+        if (ui->stackedWidget_RobotStatus && ui->page_AGV) {
+            ui->stackedWidget_RobotStatus->setCurrentWidget(ui->page_AGV);
+        }
+        ui->TBtn_ChassisControl->setChecked(true);
+        updateNavButtonStyles(nullptr);
+    });
 }
 
 void MainWindow::setupNavigationMenuIcons()
@@ -440,6 +453,7 @@ void MainWindow::setupNavigationMenuIcons()
     setIcon(ui->TBtn_DeviceControlMenu, NavIconKind::DeviceMenu, 24);
     setIcon(ui->TBtn_HomePage, NavIconKind::Home, 22);
     setIcon(ui->TBtn_SixAxies, NavIconKind::SixAxis, 22);
+    setIcon(ui->TBtn_ChassisControl, NavIconKind::Chassis, 22);
 
     constexpr QColor kClearAlarmIcon(255, 244, 244);
     if (ui->TBtn_RemoveWarning) {
@@ -452,7 +466,7 @@ void MainWindow::setupNavigationMenuIcons()
 void MainWindow::setupCollapsibleControlPanels()
 {
     if (!ui || !ui->centralwidget
-        || m_pageNavigationPopup || m_deviceControlPopup) {
+        || m_pageNavigationPopup || m_deviceControlPopup || m_controlModePopup) {
         repositionCollapsibleControlPanels();
         return;
     }
@@ -533,7 +547,7 @@ void MainWindow::setupCollapsibleControlPanels()
     m_deviceControlPopup = makePopup(QStringLiteral("deviceControlPopup"));
     moveButtonsToPopup(hiddenLayout,
                        m_deviceControlPopup,
-                       {ui->TBtn_HomePage, ui->TBtn_SixAxies});
+                       {ui->TBtn_HomePage, ui->TBtn_SixAxies, ui->TBtn_ChassisControl});
 
     m_deviceControlMenuButton = ui->TBtn_DeviceControlMenu;
     initMenuButton(m_deviceControlMenuButton, QStringLiteral("设备控制"));
@@ -543,13 +557,28 @@ void MainWindow::setupCollapsibleControlPanels()
                 this, &MainWindow::toggleDeviceControlPanel);
     }
 
+    m_controlModePopup = makePopup(QStringLiteral("controlModePopup"));
+    moveButtonsToPopup(hiddenLayout,
+                       m_controlModePopup,
+                       {ui->TBtn_ControlMode});
+
+    m_controlModeMenuButton = ui->TBtn_ControlModeMenu;
+    initMenuButton(m_controlModeMenuButton, QStringLiteral("控制模式"));
+    if (m_controlModeMenuButton) {
+        m_controlModeMenuButton->show();
+        connect(m_controlModeMenuButton, &QToolButton::clicked,
+                this, &MainWindow::toggleControlModePanel);
+    }
+
     setupNavigationMenuIcons();
 
     const QList<QToolButton*> closeAfterNavClick = {
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord,
         ui->TBtn_HomePage,
-        ui->TBtn_SixAxies
+        ui->TBtn_SixAxies,
+        ui->TBtn_ChassisControl,
+        ui->TBtn_ControlMode
     };
     for (QToolButton *button : closeAfterNavClick) {
         if (button) {
@@ -576,8 +605,14 @@ void MainWindow::togglePageNavigationPanel()
     if (m_deviceControlPopup) {
         m_deviceControlPopup->hide();
     }
+    if (m_controlModePopup) {
+        m_controlModePopup->hide();
+    }
     if (m_deviceControlMenuButton) {
         m_deviceControlMenuButton->setChecked(false);
+    }
+    if (m_controlModeMenuButton) {
+        m_controlModeMenuButton->setChecked(false);
     }
 
     if (showPanel) {
@@ -602,8 +637,14 @@ void MainWindow::toggleDeviceControlPanel()
     if (m_pageNavigationPopup) {
         m_pageNavigationPopup->hide();
     }
+    if (m_controlModePopup) {
+        m_controlModePopup->hide();
+    }
     if (m_pageNavigationMenuButton) {
         m_pageNavigationMenuButton->setChecked(false);
+    }
+    if (m_controlModeMenuButton) {
+        m_controlModeMenuButton->setChecked(false);
     }
 
     if (showPanel) {
@@ -618,8 +659,13 @@ void MainWindow::toggleDeviceControlPanel()
     }
 }
 
-void MainWindow::hideCollapsibleControlPanels()
+void MainWindow::toggleControlModePanel()
 {
+    if (!m_controlModePopup) {
+        return;
+    }
+
+    const bool showPanel = !m_controlModePopup->isVisible();
     if (m_pageNavigationPopup) {
         m_pageNavigationPopup->hide();
     }
@@ -632,6 +678,39 @@ void MainWindow::hideCollapsibleControlPanels()
     if (m_deviceControlMenuButton) {
         m_deviceControlMenuButton->setChecked(false);
     }
+
+    if (showPanel) {
+        positionCollapsiblePanel(m_controlModePopup, m_controlModeMenuButton);
+        m_controlModePopup->show();
+        m_controlModePopup->raise();
+    } else {
+        m_controlModePopup->hide();
+    }
+    if (m_controlModeMenuButton) {
+        m_controlModeMenuButton->setChecked(showPanel);
+    }
+}
+
+void MainWindow::hideCollapsibleControlPanels()
+{
+    if (m_pageNavigationPopup) {
+        m_pageNavigationPopup->hide();
+    }
+    if (m_deviceControlPopup) {
+        m_deviceControlPopup->hide();
+    }
+    if (m_controlModePopup) {
+        m_controlModePopup->hide();
+    }
+    if (m_pageNavigationMenuButton) {
+        m_pageNavigationMenuButton->setChecked(false);
+    }
+    if (m_deviceControlMenuButton) {
+        m_deviceControlMenuButton->setChecked(false);
+    }
+    if (m_controlModeMenuButton) {
+        m_controlModeMenuButton->setChecked(false);
+    }
 }
 
 void MainWindow::repositionCollapsibleControlPanels()
@@ -641,6 +720,9 @@ void MainWindow::repositionCollapsibleControlPanels()
     }
     if (m_deviceControlPopup && m_deviceControlPopup->isVisible()) {
         positionCollapsiblePanel(m_deviceControlPopup, m_deviceControlMenuButton);
+    }
+    if (m_controlModePopup && m_controlModePopup->isVisible()) {
+        positionCollapsiblePanel(m_controlModePopup, m_controlModeMenuButton);
     }
 }
 
@@ -768,6 +850,15 @@ void MainWindow::setupControlConnections()
                  << (m_forcecontrolMode ? "开启" : "关闭");
     } else {
         qWarning() << "未找到btn_ForceControl按钮";
+    }
+
+    m_controlModeBtn = findChild<QToolButton*>("TBtn_ControlMode");
+    if (m_controlModeBtn) {
+        m_controlModeBtn->setText(m_controlMode == WIRED_MODE ? "示教器控制" : "遥控器控制");
+        connect(m_controlModeBtn, &QToolButton::clicked,
+                this, &MainWindow::onControlModeClicked);
+    } else {
+        qWarning() << "未找到TBtn_ControlMode按钮";
     }
 }
 
@@ -899,6 +990,7 @@ void MainWindow::updateNavigationButtonVisuals()
     const QList<TechChamferToolButton*> navButtons = {
         ui->TBtn_HomePage,
         ui->TBtn_SixAxies,
+        ui->TBtn_ChassisControl,
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord
     };
@@ -973,9 +1065,11 @@ void MainWindow::applyToolButtonStyles(const QList<QToolButton*> &buttons)
             const QString name = btn->objectName();
             if (name == "TBtn_RemoveWarning" ||
                 name == "TBtn_HomePage" || name == "TBtn_SixAxies" ||
+                name == "TBtn_ChassisControl" ||
                 name == "TBtn_PermissionPage" ||
                 name == "TBtn_HistoryRecord" ||
                 name == "TBtn_PageNavMenu" || name == "TBtn_DeviceControlMenu" ||
+                name == "TBtn_ControlModeMenu" || name == "TBtn_ControlMode" ||
                 name.startsWith("btnStepTargetAxis") ||
                 name == "btnStepTargetAgv") {
                 continue;
@@ -4931,8 +5025,14 @@ void MainWindow::setupAGVModbus()
                 if (address == 100) {
                     if (value == 1) {
                         m_controlMode = WIRELESS_MODE;
+                        if (m_controlModeBtn) {
+                            m_controlModeBtn->setText("遥控器控制");
+                        }
                     } else if (value == 2) {
                         m_controlMode = WIRED_MODE;
+                        if (m_controlModeBtn) {
+                            m_controlModeBtn->setText("示教器控制");
+                        }
                     }
 
                     updateFunctionSwitchVisuals();
@@ -5840,7 +5940,7 @@ void MainWindow::performStartupWrites()
  * @param value 要写入的数值（可以为负数，内部会转换为补码）
  * @note 若未连接会尝试延迟重试
  */
-void MainWindow::writeToAGVDevice(int address, int value)
+void MainWindow::writeToAGVDevice(int address, int value, bool bypassWirelessWarning)
 {
     if (!m_agvModbusManager || !m_agvModbusManager->isConnected()) {
         if (!m_agvDisconnectedWarnedAddresses.contains(address)) {
@@ -5852,7 +5952,7 @@ void MainWindow::writeToAGVDevice(int address, int value)
 
     m_agvDisconnectedWarnedAddresses.remove(address);
 
-    if (m_controlMode == WIRELESS_MODE) {
+    if (!bypassWirelessWarning && m_controlMode == WIRELESS_MODE) {
         QDialog warnDialog(this);
         warnDialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
         warnDialog.setModal(true);
@@ -6057,17 +6157,23 @@ void MainWindow::onControlModeClicked()
     // 切换控制模式
     if (m_controlMode == WIRED_MODE) {
         m_controlMode = WIRELESS_MODE;
+        if (m_controlModeBtn) {
+            m_controlModeBtn->setText("遥控器控制");
+        }
 
-        // 遥控器控制 -> AGV设备500写1
-        writeToAGVDevice(500, 1);
+        // 遥控器控制 -> AGV设备500写1（模式切换写绕过无线门禁）
+        writeToAGVDevice(500, 1, true);
 
         qCDebug(lcMainWindow) << "切换到遥控器控制模式";
         ui->statusBar->showMessage("已切换到遥控器控制模式", 2000);
     } else {
         m_controlMode = WIRED_MODE;
+        if (m_controlModeBtn) {
+            m_controlModeBtn->setText("示教器控制");
+        }
 
-        // 示教器控制 -> AGV设备500写2
-        writeToAGVDevice(500, 2);
+        // 示教器控制 -> AGV设备500写2（模式切换写绕过无线门禁）
+        writeToAGVDevice(500, 2, true);
 
         qCDebug(lcMainWindow) << "切换到示教器控制模式";
         ui->statusBar->showMessage("已切换到示教器控制模式", 2000);
@@ -6525,7 +6631,8 @@ void MainWindow::onAGVMoveSpeedChanged(double value)
     const int intValue = qBound(0, static_cast<int>(qRound(value)), 100);
 
     // 按需求直接写入地址3（单位:mm/s）
-    writeToAGVDevice(3, intValue);
+    // 速度控件在遥控器/无线模式下也允许直接下发，不触发无线模式门禁弹窗。
+    writeToAGVDevice(3, intValue, true);
 
     // 记录操作
     OperationRecord record;

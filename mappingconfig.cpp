@@ -53,9 +53,11 @@ void MappingConfig::initDefaultMappings()
         m_controlNameMap["TBtn_HistoryRecord"] = "历史记录按钮";
         m_controlNameMap["TBtn_HomePage"] = "主控制臂";
         m_controlNameMap["TBtn_SixAxies"] = "六自由度";
+        m_controlNameMap["TBtn_ChassisControl"] = "底盘控制";
         m_controlNameMap["TBtn_PermissionPage"] = "权限页面按钮";
         m_controlNameMap["TBtn_Stepmove"] = "步进模式按钮";
-        m_controlNameMap["TBtn_ControlMode"] = "控制模式按钮";
+        m_controlNameMap["TBtn_ControlModeMenu"] = "控制模式菜单";
+        m_controlNameMap["TBtn_ControlMode"] = "示教/遥控控制模式";
 
         // StepMove 控件名称映射
         m_controlNameMap["StepMove_悬臂组件(J1)"] = "悬臂组件";
