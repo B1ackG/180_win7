@@ -3,7 +3,7 @@
 *.obj
 Makefile*
 moc_*
-ui_*
+ui_*.h
 qrc_*
 .qmake.stash
 build/
