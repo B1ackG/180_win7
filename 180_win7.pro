@@ -4,8 +4,26 @@ CONFIG   += c++17
 TEMPLATE = app
 TARGET   = 180_win7
 
+# 静态库方案：modbus_backend_c.cpp + libmodbus.a 链进可执行文件（对照 180 的动态 .so）
+INCLUDEPATH += $$PWD/third_party/libmodbus-local/include
+DEPENDPATH  += $$PWD/third_party/libmodbus-local/include
+
+unix {
+    LIBS += $$PWD/third_party/libmodbus-local/lib/libmodbus.a
+    PRE_TARGETDEPS += $$PWD/third_party/libmodbus-local/lib/libmodbus.a
+}
+
+win32 {
+    # Windows/MinGW 需另行编译 third_party/libmodbus-win32，并链接 Winsock
+    INCLUDEPATH += $$PWD/third_party/libmodbus-win32/include
+    LIBS += $$PWD/third_party/libmodbus-win32/lib/libmodbus.a
+    LIBS += -lws2_32
+    PRE_TARGETDEPS += $$PWD/third_party/libmodbus-win32/lib/libmodbus.a
+}
+
 SOURCES += \
     agvmodbusmanager.cpp \
+    modbus_backend_c.cpp \
     animationmanager.cpp \
     batterywidget.cpp \
     devicecoordpanel.cpp \

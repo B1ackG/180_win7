@@ -19,14 +19,13 @@
 #include <QThread>
 #include <QTimer>
 #include <QMutex>
-#include <QTcpSocket>
-#include <QHostAddress>
 #include <QVector>
 #include <QMap>
 #include <QListWidget>
 #include <QDateTime>
 #include <QSet>
 #include <atomic>
+#include "modbus_backend.h"
 
 /*位变量（BOOL）：
 
@@ -174,6 +173,11 @@ public:
     void readMultipleRegisters(int startAddress, int count);
 
     /**
+     * @brief 同步读取一段保持寄存器
+     */
+    bool readHoldingRegistersSync(int startAddress, int count, QVector<quint16> &values);
+
+    /**
      * 使用示例:
      * @code
      * mgr.readMultipleRegisters(100, 10);
@@ -201,11 +205,10 @@ public:
     bool writeSingleRegister(int address, quint16 value);
 
     /**
-     * 使用示例:
-     * @code
-     * mgr.writeSingleRegister(200, 1);
-     * @endcode
+     * 功能: 从起始地址连续写入多个保持寄存器（FC16）。
+     * 如何使用: 传入起始地址与 16 位字序列；优先一次批量写，失败则退化为多次单寄存器写。
      */
+    bool writeMultipleRegisters(int startAddress, const QVector<quint16> &values);
 
 signals:
     // 状态信号
@@ -234,24 +237,15 @@ signals:
 
 
 private slots:
-    void onConnected();
-    void onDisconnected();
-    void onError(QAbstractSocket::SocketError error);
-    void onReadyRead();
     void pollRegisters();
     void tryReconnect();
 
 private:
-    QMap<quint16, QDateTime> m_requestTimestamps;  // 请求时间戳
-    int m_requestTimeoutMs = 2000;                 // 请求超时时间（毫秒），可被 config.ini 覆盖
-     // Modbus协议处理
-    QByteArray createReadRequest(int startAddress, int count);
-    bool parseResponse(QByteArray &data);
-    bool parseSingleResponseFrame(QByteArray &data);
-    bool processSingleResponseFrame(const QByteArray &frame, quint16 transactionId);
+    void handleCommunicationFailure(const QString &reason);
 
-    // 响应缓冲区
-    QByteArray m_responseBuffer;
+    // 静态后端：libmodbus.a + modbus_backend_c.cpp 链进本进程
+    bool ensureStaticBackendReady();
+    void releaseStaticBackend();
 
     // 数据处理
     void processBitVariables(int address, quint16 value);
@@ -265,14 +259,7 @@ private:
     // 故障处理
     void updateFaultsDisplay();
     void updateFaultCodesDisplay();
-    // 添加创建写入请求的函数
-    QByteArray createWriteRequest(int address, quint16 value);
-
-    // 添加处理写入响应的函数
-    bool parseWriteResponse(const QByteArray &frame, quint16 transactionId);
-
 private:
-    QTcpSocket *m_socket;
     QThread *m_networkThread;
     QMutex m_mutex;
 
@@ -285,9 +272,6 @@ private:
 
     QTimer *m_pollTimer;
     int m_pollInterval;
-
-    quint16 m_transactionId;
-    QMap<quint16, int> m_transactionAddressMap;  // 事务ID -> 起始地址映射
 
     // 数据存储
     QMap<int, quint16> m_registerValues;  // 地址 -> 值
@@ -309,16 +293,23 @@ private:
     bool m_lastHeartbeatState = false;
     QDateTime m_lastHeartbeatTime;
 
-    // 原子连接标志：允许任意线程无阻塞查询连接状态
+    // 原子连接/写开关：允许任意线程无阻塞查询
     std::atomic<bool> m_connectedState{false};
     QSet<int> m_disconnectedWriteWarnedAddresses;
     QString m_lastSocketError;
-    std::atomic<bool> m_writesEnabled{true}; // 控制是否允许向AGV写入；默认开启，避免正常控制被静默拦截
+    std::atomic<bool> m_writesEnabled{true}; // 控制是否允许向AGV写入；默认开启
+
+    void *m_backendHandle = nullptr;
+    bool m_backendReady = false;
 
 public:
     // 运行时控制写入开关
     void setWritesEnabled(bool enabled);
     bool writesEnabled() const;
+    void setReadsEnabled(bool enabled);
+    bool readsEnabled() const;
+private:
+    bool m_readsEnabled = true;
 };
 
 #endif // AGVMODBUSMANAGER_H
