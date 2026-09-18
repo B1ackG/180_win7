@@ -68,3 +68,7 @@ system_check.log
 
 # Added by Assistant staging review
 180_win7_makefile
+
+# Added by Assistant staging review
+*.debug
+*.release

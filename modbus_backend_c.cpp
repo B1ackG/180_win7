@@ -148,8 +148,15 @@ int modbus_backend_connect(void *handle, const char *host, int port, int slave_i
     const int sock = modbus_get_socket(b->ctx); /* → .a ：取出底层套接字 */
     if (sock >= 0) {
         const int one = 1;
+#ifdef _WIN32
+        setsockopt(sock, IPPROTO_TCP, TCP_NODELAY,
+                   reinterpret_cast<const char *>(&one), sizeof(one));
+        setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE,
+                   reinterpret_cast<const char *>(&one), sizeof(one));
+#else
         setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
         setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
+#endif
     }
 
     return 1; /* 外壳只负责报告成功；协议细节都在上面那些 → .a 调用里 */

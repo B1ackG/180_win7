@@ -347,7 +347,7 @@ TechZonePanel {
     </string>
         </property>
         <property name="text">
-         <string>辅助装配系统</string>
+         <string>成品辅助装配附件</string>
         </property>
        </widget>
       </item>
@@ -391,7 +391,7 @@ TechZonePanel {
         <property name="minimumSize">
          <size>
           <width>194</width>
-          <height>46</height>
+          <height>44</height>
          </size>
         </property>
         <property name="font">
@@ -428,7 +428,7 @@ TechZonePanel {
         <property name="minimumSize">
          <size>
           <width>194</width>
-          <height>46</height>
+          <height>44</height>
          </size>
         </property>
         <property name="font">
@@ -465,7 +465,7 @@ TechZonePanel {
         <property name="minimumSize">
          <size>
           <width>194</width>
-          <height>46</height>
+          <height>44</height>
          </size>
         </property>
         <property name="font">

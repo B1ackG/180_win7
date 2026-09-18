@@ -4,18 +4,20 @@ CONFIG   += c++17
 TEMPLATE = app
 TARGET   = 180_win7
 
-# 静态库方案：modbus_backend_c.cpp + libmodbus.a 链进可执行文件（对照 180 的动态 .so）
-INCLUDEPATH += $$PWD/third_party/libmodbus-local/include
-DEPENDPATH  += $$PWD/third_party/libmodbus-local/include
+# 静态库方案：modbus_backend_c.cpp + libmodbus.a 链进可执行文件。
+# 工控机只需 dist/（exe + Qt/MinGW 运行库），不需要安装 Qt，也不需要 libmodbus.dll。
 
 unix {
+    INCLUDEPATH += $$PWD/third_party/libmodbus-local/include
+    DEPENDPATH  += $$PWD/third_party/libmodbus-local/include
     LIBS += $$PWD/third_party/libmodbus-local/lib/libmodbus.a
     PRE_TARGETDEPS += $$PWD/third_party/libmodbus-local/lib/libmodbus.a
 }
 
 win32 {
-    # Windows/MinGW 需另行编译 third_party/libmodbus-win32，并链接 Winsock
+    # 先运行 build_libmodbus_win32.bat（与 Qt 同一套 MinGW，只产出 .a）
     INCLUDEPATH += $$PWD/third_party/libmodbus-win32/include
+    DEPENDPATH  += $$PWD/third_party/libmodbus-win32/include
     LIBS += $$PWD/third_party/libmodbus-win32/lib/libmodbus.a
     LIBS += -lws2_32
     PRE_TARGETDEPS += $$PWD/third_party/libmodbus-win32/lib/libmodbus.a
