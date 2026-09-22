@@ -29,16 +29,12 @@ ModbusThreadManager* ModbusThreadManager::instance()
                 if (!modbusWorker || !modbusWorker->isRunning()) {
                     return;
                 }
-                // 若工作线程仍在运行（closeEvent 未能停止它），在此补充清理。
-                // 使用带超时的 wait() 防止因 TCP 操作阻塞而死锁主线程。
                 QMetaObject::invokeMethod(inst, [inst]() {
                     inst->disconnectFromDevice();
-                }, Qt::BlockingQueuedConnection);
+                }, Qt::QueuedConnection);
                 modbusWorker->quit();
-                if (!modbusWorker->wait(3000)) {
-                    qWarning() << "[ModbusThreadManager] 工作线程超时，强制终止";
-                    modbusWorker->terminate();
-                    modbusWorker->wait(1000);
+                if (!modbusWorker->wait(2000)) {
+                    qWarning() << "[ModbusThreadManager] 工作线程仍在结束通信，交由进程退出清理";
                 }
             }, Qt::UniqueConnection);
         }
@@ -484,15 +480,7 @@ bool ModbusThreadManager::writeMultipleRegisters(int startAddress, const QVector
 bool ModbusThreadManager::readHoldingRegisters(int startAddress, int count)
 {
     if (QThread::currentThread() != thread()) {
-        // 异步读取，结果通过 registerValueChanged 信号回传
-        if (!isConnected()) {
-            qWarning() << "Modbus客户端未连接，无法读取保持寄存器";
-            return false;
-        }
-        QMetaObject::invokeMethod(this, [this, startAddress, count]() {
-            readHoldingRegisters(startAddress, count);
-        }, Qt::QueuedConnection);
-        return true;
+        return queueReadRequest(0x03, startAddress, count);
     }
 
     if (!m_modbusClient || !m_modbusClient->isConnected()) {
@@ -505,15 +493,7 @@ bool ModbusThreadManager::readHoldingRegisters(int startAddress, int count)
 bool ModbusThreadManager::readInputRegisters(int startAddress, int count)
 {
     if (QThread::currentThread() != thread()) {
-        // 异步读取，结果通过 registerValueChanged 信号回传
-        if (!isConnected()) {
-            qWarning() << "Modbus客户端未连接，无法读取输入寄存器";
-            return false;
-        }
-        QMetaObject::invokeMethod(this, [this, startAddress, count]() {
-            readInputRegisters(startAddress, count);
-        }, Qt::QueuedConnection);
-        return true;
+        return queueReadRequest(0x04, startAddress, count);
     }
 
     if (!m_modbusClient || !m_modbusClient->isConnected()) {
@@ -521,6 +501,43 @@ bool ModbusThreadManager::readInputRegisters(int startAddress, int count)
         return false;
     }
     return m_modbusClient->readInputRegisters(startAddress, count);
+}
+
+bool ModbusThreadManager::queueReadRequest(int functionCode, int startAddress, int count)
+{
+    if (!m_connectedFlag.load(std::memory_order_acquire)
+        || startAddress < 0 || startAddress > 65535
+        || count <= 0 || count > 125
+        || count > 65536 - startAddress) {
+        return false;
+    }
+
+    const quint64 key = (static_cast<quint64>(functionCode & 0xff) << 32)
+        | (static_cast<quint64>(startAddress & 0xffff) << 16)
+        | static_cast<quint64>(count & 0xffff);
+    {
+        QMutexLocker locker(&m_pendingReadsMutex);
+        if (m_pendingReads.contains(key)) {
+            return true;
+        }
+        m_pendingReads.insert(key);
+    }
+
+    const bool queued = QMetaObject::invokeMethod(this, [this, functionCode, startAddress, count, key]() {
+        if (functionCode == 0x03) {
+            readHoldingRegisters(startAddress, count);
+        } else {
+            readInputRegisters(startAddress, count);
+        }
+        QMutexLocker locker(&m_pendingReadsMutex);
+        m_pendingReads.remove(key);
+    }, Qt::QueuedConnection);
+
+    if (!queued) {
+        QMutexLocker locker(&m_pendingReadsMutex);
+        m_pendingReads.remove(key);
+    }
+    return queued;
 }
 
 void ModbusThreadManager::readMultipleHoldingRegisters(int startAddress, int count)

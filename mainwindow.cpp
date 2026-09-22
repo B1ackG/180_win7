@@ -180,14 +180,14 @@ void MainWindow::loadPollingRuntimeSettings()
     m_uiStateSyncEnabled = settings.value("ui_state_sync_enabled", true).toBool();
     m_mainModbusPollIntervalMs = settings.value("main_modbus_poll_ms", 500).toInt();
     m_mainUiPollIntervalMs = settings.value("main_ui_poll_ms", 200).toInt();
-    m_mainDeviceStatusPollIntervalMs = settings.value("main_device_status_poll_ms", 2000).toInt();
+    m_mainDeviceStatusPollIntervalMs = settings.value("main_device_status_poll_ms", 200).toInt();
     m_mainDeviceStatusStart = settings.value("main_device_status_start", 0).toInt();
     m_mainDeviceStatusCount = settings.value("main_device_status_count", 85).toInt();
     m_mainControlSyncStart = settings.value("main_control_sync_start", 125).toInt();
     m_mainControlSyncCount = settings.value("main_control_sync_count", 6).toInt();
-    m_mainReconnectIntervalMs = settings.value("main_reconnect_ms", 5000).toInt();
+    m_mainReconnectIntervalMs = settings.value("main_reconnect_ms", 1000).toInt();
     m_agvPollIntervalMs = settings.value("agv_poll_ms", 200).toInt();
-    m_agvReconnectIntervalMs = settings.value("agv_reconnect_ms", 5000).toInt();
+    m_agvReconnectIntervalMs = settings.value("agv_reconnect_ms", 1000).toInt();
 
     settings.endGroup();
 
@@ -4045,6 +4045,14 @@ void MainWindow::onModbusConnected()
 {
     qCDebug(lcMainWindow) << "Modbus连接成功，启动交互任务...";
     MainModbusStatus::applyUiState(ui ? ui->statusBar : nullptr, MainModbusState::Connected);
+
+    if (m_mainModbusStartupDone) {
+        // 重连只恢复状态同步，避免重复开机写与叠加启动重试定时器。
+        MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 125, 2);
+        MainModbusStatus::appendOperationRecord(m_recorder, MainModbusState::Connected);
+        return;
+    }
+    m_mainModbusStartupDone = true;
 
     // 立即启动原本推迟的数据读取子系统
     if (isFeatureEnabled("startup_checks", "startup.write_registers")) {

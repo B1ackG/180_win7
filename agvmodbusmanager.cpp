@@ -12,7 +12,7 @@ AGVModbusManager::AGVModbusManager(QObject *parent)
     , m_host("192.168.1.88")
     , m_port(502)
     , m_autoReconnect(true)
-    , m_reconnectInterval(5000)
+    , m_reconnectInterval(1000)
     , m_reconnectTimer(nullptr)
     , m_pollTimer(nullptr)
     , m_pollInterval(200)  // 默认200ms
@@ -111,11 +111,9 @@ void AGVModbusManager::releaseStaticBackend()
 bool AGVModbusManager::connectToDevice(const QString &host, quint16 port)
 {
     if (QThread::currentThread() != thread()) {
-        bool ok = false;
-        QMetaObject::invokeMethod(this, [this, host, port, &ok]() {
-            ok = connectToDevice(host, port);
-        }, Qt::BlockingQueuedConnection);
-        return ok;
+        return QMetaObject::invokeMethod(this, [this, host, port]() {
+            connectToDevice(host, port);
+        }, Qt::QueuedConnection);
     }
 
     QMutexLocker locker(&m_mutex);
@@ -176,6 +174,9 @@ void AGVModbusManager::disconnectFromDevice()
     if (m_pollTimer->isActive()) {
         m_pollTimer->stop();
     }
+    if (m_reconnectTimer) {
+        m_reconnectTimer->stop();
+    }
 
     m_connectedState.store(false);
     if (m_backendHandle) {
@@ -187,18 +188,10 @@ void AGVModbusManager::disconnectFromDevice()
 bool AGVModbusManager::isConnected() const
 {
     if (QThread::currentThread() != thread()) {
-        bool connected = false;
-        QMetaObject::invokeMethod(const_cast<AGVModbusManager *>(this), [this, &connected]() {
-            if (!m_connectedState.load()) {
-                connected = false;
-                return;
-            }
-            connected = m_backendHandle && (modbus_backend_is_connected(m_backendHandle) != 0);
-        }, Qt::BlockingQueuedConnection);
-        return connected;
+        return m_connectedState.load(std::memory_order_acquire);
     }
 
-    if (!m_connectedState.load()) {
+    if (!m_connectedState.load(std::memory_order_acquire)) {
         return false;
     }
 
@@ -251,9 +244,9 @@ void AGVModbusManager::setPollInterval(int ms)
         return;
     }
 
-    m_pollInterval = ms;
+    m_pollInterval = qBound(50, ms, 60000);
     if (m_pollTimer->isActive()) {
-        m_pollTimer->setInterval(ms);
+        m_pollTimer->setInterval(m_pollInterval);
     }
 }
 
@@ -267,7 +260,7 @@ void AGVModbusManager::setAutoReconnect(bool enable, int interval)
     }
 
     m_autoReconnect = enable;
-    m_reconnectInterval = interval;
+    m_reconnectInterval = qBound(100, interval, 120000);
 
     if (!enable) {
         m_reconnectTimer->stop();
@@ -367,7 +360,11 @@ void AGVModbusManager::readMultipleRegisters(int startAddress, int count)
         const QString reason = QStringLiteral("AGV静态库读取失败 address=%1 count=%2")
                                    .arg(startAddress)
                                    .arg(count);
-        handleCommunicationFailure(reason);
+        if (!m_backendHandle || modbus_backend_is_connected(m_backendHandle) == 0) {
+            handleCommunicationFailure(reason);
+        } else {
+            emit errorOccurred(reason);
+        }
         return;
     }
 
@@ -427,7 +424,11 @@ bool AGVModbusManager::readHoldingRegistersSync(int startAddress, int count, QVe
         const QString reason = QStringLiteral("AGV静态库同步读取失败 address=%1 count=%2")
                                    .arg(startAddress)
                                    .arg(count);
-        handleCommunicationFailure(reason);
+        if (!m_backendHandle || modbus_backend_is_connected(m_backendHandle) == 0) {
+            handleCommunicationFailure(reason);
+        } else {
+            emit errorOccurred(reason);
+        }
         values.clear();
         return false;
     }
@@ -752,11 +753,12 @@ void AGVModbusManager::updateFaultCodesDisplay()
 bool AGVModbusManager::writeSingleRegister(int address, quint16 value)
 {
     if (QThread::currentThread() != thread()) {
-        bool ok = false;
-        QMetaObject::invokeMethod(this, [this, address, value, &ok]() {
-            ok = writeSingleRegister(address, value);
-        }, Qt::BlockingQueuedConnection);
-        return ok;
+        if (!isConnected()) {
+            return false;
+        }
+        return QMetaObject::invokeMethod(this, [this, address, value]() {
+            writeSingleRegister(address, value);
+        }, Qt::QueuedConnection);
     }
 
     // 如果全局禁用了写操作，则直接阻止并返回失败（用于故障排查）
@@ -786,7 +788,11 @@ bool AGVModbusManager::writeSingleRegister(int address, quint16 value)
     if (!ok) {
         qWarning() << "AGV静态库写失败 地址:" << address << "值:" << value;
         const QString reason = QStringLiteral("AGV静态库写入失败 address=%1").arg(address);
-        handleCommunicationFailure(reason);
+        if (!m_backendHandle || modbus_backend_is_connected(m_backendHandle) == 0) {
+            handleCommunicationFailure(reason);
+        } else {
+            emit errorOccurred(reason);
+        }
     }
     return ok;
 }
@@ -794,11 +800,12 @@ bool AGVModbusManager::writeSingleRegister(int address, quint16 value)
 bool AGVModbusManager::writeMultipleRegisters(int startAddress, const QVector<quint16> &values)
 {
     if (QThread::currentThread() != thread()) {
-        bool ok = false;
-        QMetaObject::invokeMethod(this, [this, startAddress, values, &ok]() {
-            ok = writeMultipleRegisters(startAddress, values);
-        }, Qt::BlockingQueuedConnection);
-        return ok;
+        if (!isConnected() || values.isEmpty()) {
+            return false;
+        }
+        return QMetaObject::invokeMethod(this, [this, startAddress, values]() {
+            writeMultipleRegisters(startAddress, values);
+        }, Qt::QueuedConnection);
     }
 
     if (!m_writesEnabled.load()) {
@@ -806,8 +813,10 @@ bool AGVModbusManager::writeMultipleRegisters(int startAddress, const QVector<qu
         return false;
     }
 
-    if (values.isEmpty()) {
-        qWarning() << "AGV 批量写入拒绝: 空数据";
+    if (values.isEmpty() || values.size() > 123
+        || startAddress < 0 || startAddress > 65535
+        || values.size() > 65536 - startAddress) {
+        qWarning() << "AGV 批量写入拒绝: 参数无效";
         return false;
     }
 
@@ -816,22 +825,25 @@ bool AGVModbusManager::writeMultipleRegisters(int startAddress, const QVector<qu
         return false;
     }
 
-    if (m_backendHandle) {
-        const int rc = modbus_backend_write_multiple_registers(m_backendHandle,
-                                                              startAddress,
-                                                              values.constData(),
-                                                              static_cast<int>(values.size()));
-        if (rc) {
-            return true;
-        }
-        qWarning() << "AGV 静态库批量写失败，尝试按单寄存器依次写入 起始:" << startAddress;
+    if (!m_backendHandle) {
+        qWarning() << "AGV 静态库批量写失败: backend 未就绪";
+        return false;
     }
-
-    for (int i = 0; i < values.size(); ++i) {
-        if (!writeSingleRegister(startAddress + i, values.at(i))) {
-            qWarning() << "AGV 批量写退化失败 地址:" << (startAddress + i);
-            return false;
+    const int rc = modbus_backend_write_multiple_registers(m_backendHandle,
+                                                           startAddress,
+                                                           values.constData(),
+                                                           static_cast<int>(values.size()));
+    if (!rc) {
+        qWarning() << "AGV 静态库批量写失败 起始:" << startAddress;
+        const QString reason = QStringLiteral("AGV静态库批量写入失败 start=%1 count=%2")
+                                   .arg(startAddress)
+                                   .arg(values.size());
+        if (!m_backendHandle || modbus_backend_is_connected(m_backendHandle) == 0) {
+            handleCommunicationFailure(reason);
+        } else {
+            emit errorOccurred(reason);
         }
+        return false;
     }
     return true;
 }

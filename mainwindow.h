@@ -594,6 +594,7 @@ private:
     bool m_stepModeUnknown = true;
     bool m_isJointMode = true;
     bool m_moveModeUnknown = true;
+    bool m_mainModbusStartupDone = false;
     bool m_forcecontrolMode = false;
     QHash<int, bool> m_robotExternalKeyPressed;
     quint64 m_robotExternalWriteSeq = 0;
