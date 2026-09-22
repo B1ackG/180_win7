@@ -8,6 +8,7 @@
 #include <QCryptographicHash>
 #include <QMessageAuthenticationCode>
 #include <QFile>
+#include <QHostAddress>
 #include <QNetworkInterface>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -332,7 +333,12 @@ void OperationRecorder::setupTcpReceiver()
     if (!m_tcpReceiverServer->listen(QHostAddress::Any, m_tcpReceiverPort)) {
         qWarning() << "TCP接收器监听失败:" << m_tcpReceiverServer->errorString()
                    << "端口:" << m_tcpReceiverPort;
+        scheduleListenRetry();
         return;
+    }
+
+    if (m_listenRetryTimer) {
+        m_listenRetryTimer->stop();
     }
 
     OperationRecord rec;
@@ -344,6 +350,45 @@ void OperationRecorder::setupTcpReceiver()
     rec.oldValue = "";
     rec.newValue = QString("0.0.0.0:%1").arg(m_tcpReceiverPort);
     appendTcpRecord(rec);
+}
+
+void OperationRecorder::scheduleListenRetry()
+{
+    if (!m_listenRetryTimer) {
+        m_listenRetryTimer = new QTimer(this);
+        m_listenRetryTimer->setInterval(1000);
+        connect(m_listenRetryTimer, &QTimer::timeout, this, &OperationRecorder::setupTcpReceiver);
+    }
+    if (!m_listenRetryTimer->isActive()) {
+        m_listenRetryTimer->start();
+    }
+}
+
+bool OperationRecorder::targetsLocalReceiver() const
+{
+    if (m_tcpServerPort != m_tcpReceiverPort) {
+        return false;
+    }
+
+    const QString host = m_tcpServerIp.trimmed();
+    if (host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0
+        || host == QLatin1String(WIN7_IP)
+        || host == QLatin1String("0.0.0.0")) {
+        return true;
+    }
+
+    const QHostAddress address(host);
+    if (address.isLoopback()) {
+        return true;
+    }
+
+    const QList<QHostAddress> locals = QNetworkInterface::allAddresses();
+    for (const QHostAddress &local : locals) {
+        if (local == address) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool OperationRecorder::decodeRecordLine(const QByteArray &lineBytes, OperationRecord *recordOut) const
@@ -672,7 +717,17 @@ void OperationRecorder::enableTcpTransmission(bool enabled)
     m_tcpEnabled = enabled;
 
     if (enabled) {
-        connectTcpSocket();
+        setupTcpReceiver();
+        if (targetsLocalReceiver()) {
+            if (m_reconnectTimer) {
+                m_reconnectTimer->stop();
+            }
+            if (m_tcpSocket && m_tcpSocket->state() != QAbstractSocket::UnconnectedState) {
+                m_tcpSocket->abort();
+            }
+        } else {
+            connectTcpSocket();
+        }
     } else {
         disconnectTcpSocket();
     }
@@ -772,6 +827,13 @@ void OperationRecorder::sendQueuedRecords()
 
 void OperationRecorder::connectTcpSocket()
 {
+    if (targetsLocalReceiver()) {
+        if (m_reconnectTimer && m_reconnectTimer->isActive()) {
+            m_reconnectTimer->stop();
+        }
+        return;
+    }
+
     if (!m_tcpEnabled || m_tcpSocket->state() == QAbstractSocket::ConnectingState ||
         m_tcpSocket->state() == QAbstractSocket::ConnectedState) {
         return;
@@ -836,8 +898,7 @@ void OperationRecorder::onTcpDisconnected()
 {
     qDebug() << "TCP服务器连接断开";
 
-    // 如果TCP传输已启用，启动重连定时器
-    if (m_tcpEnabled) {
+    if (m_tcpEnabled && !targetsLocalReceiver()) {
         m_reconnectTimer->start();
     }
 }
@@ -858,8 +919,7 @@ void OperationRecorder::onTcpError(QAbstractSocket::SocketError socketError)
         qDebug() << "TCP连接错误(节流):" << error;
     }
 
-    // 如果TCP传输已启用，启动重连定时器
-    if (m_tcpEnabled && !m_reconnectTimer->isActive()) {
+    if (m_tcpEnabled && !targetsLocalReceiver() && !m_reconnectTimer->isActive()) {
         m_reconnectTimer->start();
     }
 }

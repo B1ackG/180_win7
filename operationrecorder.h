@@ -343,6 +343,8 @@ private:
     void connectTcpSocket();
     void disconnectTcpSocket();
     void setupTcpReceiver();
+    void scheduleListenRetry();
+    bool targetsLocalReceiver() const;
     bool decodeRecordLine(const QByteArray &lineBytes, OperationRecord *recordOut) const;
     void appendTcpRecord(const OperationRecord &record);
     bool saveToFileInternal(const QString &filename, const QList<OperationRecord> &records);
@@ -351,6 +353,7 @@ private:
     QTcpServer *m_tcpReceiverServer = nullptr;
     QTcpSocket *m_tcpReceiverClient = nullptr;
     QByteArray m_tcpReceiverBuffer;
+    QTimer *m_listenRetryTimer = nullptr;
     quint16 m_tcpReceiverPort = WIN7_PORT;
 };
 

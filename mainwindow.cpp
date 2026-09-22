@@ -7225,14 +7225,12 @@ void MainWindow::enableTcpTransmission(bool enabled)
     m_tcpTransmissionEnabled = enabled;
 
     if (m_recorder) {
+        m_recorder->setTcpServer(WIN7_IP, WIN7_PORT);
         m_recorder->enableTcpTransmission(enabled);
 
-        // 设置服务器地址
-        m_recorder->setTcpServer(WIN7_IP, WIN7_PORT);
-
         if (enabled) {
-            qCDebug(lcMainWindow) << "启用TCP传输，服务器:" << WIN7_IP << ":" << WIN7_PORT;
-            ui->statusBar->showMessage("TCP传输已启用，正在连接服务器...", 3000);
+            qCDebug(lcMainWindow) << "历史记录接收端口:" << WIN7_PORT;
+            ui->statusBar->showMessage(QString("历史记录接收已启用，端口 %1").arg(WIN7_PORT), 3000);
         } else {
             qCDebug(lcMainWindow) << "禁用TCP传输";
             ui->statusBar->showMessage("TCP传输已禁用", 3000);
