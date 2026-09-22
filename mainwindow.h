@@ -162,6 +162,8 @@ public:
     void resizeEvent(QResizeEvent *event) override;
     /** @brief 拦截窗口关闭事件，确保所有后台线程和资源被正确清理后再退出 */
     void closeEvent(QCloseEvent *event) override;
+    /** @brief 停止工作线程（带超时）并退出进程，供关闭窗口与权限页退出按钮共用 */
+    void shutdownForExit();
     /** @brief 事件过滤器处理特定的 UI 交互 */
     bool eventFilter(QObject *obj, QEvent *event) override;
     /** @brief 焦点变化处理回调 */
@@ -329,6 +331,11 @@ public:
     void setupRecordUI();
     /** @brief 刷新历史记录显示 */
     void updateRecordDisplay();
+    /** @brief 仅在历史页可见时节流刷新记录表 */
+    void scheduleHistoryDisplayRefresh();
+    /** @brief 将暂存的新记录插入表顶，避免整表重建 */
+    void flushPendingHistoryRows();
+    bool isHistoryPageVisible() const;
     /** @brief 连接历史记录信号与槽 */
     void connectRecordSignals();
     /** @brief 初始化历史页面 */
@@ -595,6 +602,7 @@ private:
 
     // ----- 机器人状态控制 -----
     UserRole m_currentUserRole = UserRole::Operator;
+    bool m_shuttingDown = false;
     
     ControlMode m_controlMode = WIRED_MODE;
     
@@ -638,6 +646,8 @@ private:
     QStackedWidget *m_historyViewStack = nullptr; // 列表 / 空状态（对齐 QML HistoryList 行为）
     QLabel *m_historyPlaceholderLabel = nullptr;
     QTableWidget *m_historyTable = nullptr;
+    QTimer *m_historyRefreshTimer = nullptr;
+    QList<OperationRecord> m_pendingHistoryRows;
     RobotTotalPowerCard *m_robotTotalPowerCard = nullptr;
     DeviceCoordPanel *m_deviceCoordPanel = nullptr;
     InclinometerCard *m_inclinometerXCard = nullptr;

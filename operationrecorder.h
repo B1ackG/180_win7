@@ -28,6 +28,9 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QDir>
+#include <QFuture>
+#include <QDate>
+#include <atomic>
 
 #define WIN7_IP "192.168.1.70"
 #define WIN7_PORT 12345
@@ -276,6 +279,8 @@ private slots:
     void onReceiverDataReady();
     void onReceiverDisconnected();
     void onReceiverError(QAbstractSocket::SocketError socketError);
+    void onAutoSaveTimeout();
+    void onBackgroundWriteFinished(const QString &filename, bool ok);
 
 public:
     /**
@@ -307,9 +312,16 @@ private:
     // 自动保存相关
     QString m_autoSaveDir;
     QString m_currentSessionFile; // 当前自动保存的当天文件名
+    QDate m_currentSaveDate;
     QDateTime m_firstRecordTime;
     QDateTime m_lastRecordTime;
     bool m_autoSaveInitialized = false;
+    QTimer *m_autoSaveTimer = nullptr;
+    QFuture<void> m_writeFuture;
+    bool m_autoSaveDirty = false;
+    bool m_writeInProgress = false;
+    bool m_pendingRewrite = false;
+    std::atomic<bool> m_shuttingDown {false};
 
     // 线程安全
     mutable QMutex m_mutex;
@@ -317,6 +329,12 @@ private:
     bool ensureAutoSaveDir();
     QString dailyFileName(const QDate &date) const;
     void updateCurrentDailyFile();
+    void scheduleAutoSave();
+    bool flushAutoSave(bool waitForCompletion, const QDate &dateOverride = QDate());
+    void startBackgroundWrite(const QString &filename, const QList<OperationRecord> &records);
+    void waitForBackgroundWrite();
+    QList<OperationRecord> snapshotRecordsForDate(const QDate &date) const;
+    static bool writeRecordsToFile(const QString &filename, const QList<OperationRecord> &records);
 
     // TCP传输相关成员
     QTcpSocket *m_tcpSocket;

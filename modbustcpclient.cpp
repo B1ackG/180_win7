@@ -35,7 +35,11 @@ ModbusTCPClient::~ModbusTCPClient()
 
     if (m_networkThread && m_networkThread->isRunning()) {
         m_networkThread->quit();
-        m_networkThread->wait();
+        if (!m_networkThread->wait(3000)) {
+            qWarning() << "ModbusTCPClient 网络线程超时，强制终止";
+            m_networkThread->terminate();
+            m_networkThread->wait(1000);
+        }
     }
 }
 

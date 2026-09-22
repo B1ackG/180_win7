@@ -17,6 +17,8 @@
 #include <QDir>
 #include <QSaveFile>
 #include <QFileInfo>
+#include <QtConcurrent>
+#include <QMetaObject>
 
 namespace {
 QStringList parseCsvList(const QString &raw)
@@ -74,7 +76,13 @@ OperationRecorder::OperationRecorder(QObject *parent)
     // 初始化自动保存配置
     m_autoSaveDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/OperationRecords/";
     updateCurrentDailyFile();
-    
+    m_currentSaveDate = QDate::currentDate();
+
+    m_autoSaveTimer = new QTimer(this);
+    m_autoSaveTimer->setSingleShot(true);
+    m_autoSaveTimer->setInterval(1000);
+    connect(m_autoSaveTimer, &QTimer::timeout, this, &OperationRecorder::onAutoSaveTimeout);
+
     setupTcpReceiver();
 }
 
@@ -157,9 +165,19 @@ QByteArray OperationRecorder::buildSignedPayload(const OperationRecord &record) 
 
 OperationRecorder::~OperationRecorder()
 {
-    // 程序结束时自动保存当前记录
-    if (!m_records.isEmpty()) {
-        autoSaveCurrentRecord();
+    m_shuttingDown.store(true);
+    if (m_autoSaveTimer) {
+        m_autoSaveTimer->stop();
+    }
+    waitForBackgroundWrite();
+
+    bool hasRecords = false;
+    {
+        QMutexLocker locker(&m_mutex);
+        hasRecords = !m_records.isEmpty();
+    }
+    if (hasRecords) {
+        flushAutoSave(true);
     }
     disconnectTcpSocket();
 }
@@ -171,6 +189,7 @@ void OperationRecorder::initAutoSave()
 
     // 尝试加载今日的记录文件
     loadTodayFile();
+    m_currentSaveDate = QDate::currentDate();
     m_autoSaveInitialized = true;
     qDebug() << "按天自动保存系统初始化完成，目录:" << m_autoSaveDir
              << "当前文件:" << getTodayFileName();
@@ -237,10 +256,7 @@ void OperationRecorder::addRecord(const OperationRecord &rec)
     
     emit recordAdded(record);
 
-    // 初始化完成后立即自动保存到当天文件
-    if (m_autoSaveInitialized) {
-        autoSaveCurrentRecord();
-    }
+    scheduleAutoSave();
 
     // 如果TCP传输已启用，发送记录到服务器
     if (m_tcpEnabled) {
@@ -250,25 +266,35 @@ void OperationRecorder::addRecord(const OperationRecord &rec)
 
 void OperationRecorder::clear()
 {
+    if (m_autoSaveTimer) {
+        m_autoSaveTimer->stop();
+    }
+    waitForBackgroundWrite();
+
     {
         QMutexLocker locker(&m_mutex);
         m_records.clear();
         m_firstRecordTime = QDateTime();
         m_lastRecordTime = QDateTime();
+        m_autoSaveDirty = false;
+        m_pendingRewrite = false;
     }
-    
+
     // 如果存在当天自动保存文件，清除时同步删除并重新开始记录
     updateCurrentDailyFile();
+    m_currentSaveDate = QDate::currentDate();
     QFile sessionFile(getTodayFileName());
     if (sessionFile.exists()) {
         sessionFile.remove();
     }
-    
+
     emit recordsCleared();
 }
 
 bool OperationRecorder::saveToFile(const QString &filename)
 {
+    waitForBackgroundWrite();
+
     QList<OperationRecord> snapshot;
     {
         QMutexLocker locker(&m_mutex);
@@ -518,9 +544,7 @@ void OperationRecorder::appendTcpRecord(const OperationRecord &record)
         m_records.append(normalized);
     }
     emit recordAdded(normalized);
-    if (m_autoSaveInitialized) {
-        autoSaveCurrentRecord();
-    }
+    scheduleAutoSave();
 }
 
 void OperationRecorder::onReceiverDisconnected()
@@ -552,29 +576,152 @@ void OperationRecorder::onReceiverError(QAbstractSocket::SocketError socketError
 
 bool OperationRecorder::autoSaveCurrentRecord()
 {
+    if (m_autoSaveTimer) {
+        m_autoSaveTimer->stop();
+    }
+    return flushAutoSave(true);
+}
+
+void OperationRecorder::scheduleAutoSave()
+{
+    if (!m_autoSaveInitialized || m_shuttingDown.load()) {
+        return;
+    }
+
+    QDate previousDate;
+    bool crossedMidnight = false;
+    {
+        QMutexLocker locker(&m_mutex);
+        m_autoSaveDirty = true;
+        const QDate today = QDate::currentDate();
+        if (!m_currentSaveDate.isValid()) {
+            m_currentSaveDate = today;
+        } else if (m_currentSaveDate != today) {
+            previousDate = m_currentSaveDate;
+            m_currentSaveDate = today;
+            crossedMidnight = true;
+        }
+    }
+
+    if (crossedMidnight) {
+        flushAutoSave(true, previousDate);
+    }
+
+    if (m_autoSaveTimer && !m_autoSaveTimer->isActive()) {
+        m_autoSaveTimer->start();
+    }
+}
+
+void OperationRecorder::onAutoSaveTimeout()
+{
+    flushAutoSave(false);
+}
+
+QList<OperationRecord> OperationRecorder::snapshotRecordsForDate(const QDate &date) const
+{
+    // 调用方必须已持有 m_mutex。
+    QList<OperationRecord> snapshot;
+    snapshot.reserve(m_records.size());
+    for (const auto &record : m_records) {
+        if (!record.timestamp.isValid()) {
+            if (date == QDate::currentDate()) {
+                snapshot.append(record);
+            }
+            continue;
+        }
+        if (record.timestamp.date() == date) {
+            snapshot.append(record);
+        }
+    }
+    return snapshot;
+}
+
+bool OperationRecorder::flushAutoSave(bool waitForCompletion, const QDate &dateOverride)
+{
     QList<OperationRecord> snapshot;
     QString filename;
+    const QDate date = dateOverride.isValid() ? dateOverride : QDate::currentDate();
 
     {
         QMutexLocker locker(&m_mutex);
-        if (m_records.isEmpty()) {
-            return false;
-        }
-        const QDate today = QDate::currentDate();
-        m_currentSessionFile = dailyFileName(today);
-        filename = getTodayFileName();
-        snapshot.reserve(m_records.size());
-        for (const auto &record : m_records) {
-            if (!record.timestamp.isValid() || record.timestamp.date() == today) {
-                snapshot.append(record);
-            }
+        filename = m_autoSaveDir + dailyFileName(date);
+        snapshot = snapshotRecordsForDate(date);
+        if (!dateOverride.isValid()) {
+            m_currentSessionFile = dailyFileName(date);
+            m_currentSaveDate = date;
+            m_autoSaveDirty = false;
         }
         if (snapshot.isEmpty()) {
             return false;
         }
     }
 
-    return saveToFileInternal(filename, snapshot);
+    if (waitForCompletion) {
+        waitForBackgroundWrite();
+        const bool ok = writeRecordsToFile(filename, snapshot);
+        if (ok && !m_shuttingDown.load()) {
+            emit fileSaved(filename);
+        }
+        return ok;
+    }
+
+    startBackgroundWrite(filename, snapshot);
+    return true;
+}
+
+void OperationRecorder::startBackgroundWrite(const QString &filename, const QList<OperationRecord> &records)
+{
+    {
+        QMutexLocker locker(&m_mutex);
+        if (m_writeInProgress) {
+            m_pendingRewrite = true;
+            m_autoSaveDirty = true;
+            return;
+        }
+        m_writeInProgress = true;
+    }
+
+    m_writeFuture = QtConcurrent::run([this, filename, records]() {
+        const bool ok = writeRecordsToFile(filename, records);
+        if (m_shuttingDown.load()) {
+            return;
+        }
+        QMetaObject::invokeMethod(this, "onBackgroundWriteFinished",
+                                  Qt::QueuedConnection,
+                                  Q_ARG(QString, filename),
+                                  Q_ARG(bool, ok));
+    });
+}
+
+void OperationRecorder::waitForBackgroundWrite()
+{
+    if (m_writeFuture.isRunning()) {
+        m_writeFuture.waitForFinished();
+    }
+    QMutexLocker locker(&m_mutex);
+    m_writeInProgress = false;
+}
+
+void OperationRecorder::onBackgroundWriteFinished(const QString &filename, bool ok)
+{
+    if (m_shuttingDown.load()) {
+        return;
+    }
+    if (ok) {
+        emit fileSaved(filename);
+    }
+
+    bool needRewrite = false;
+    {
+        QMutexLocker locker(&m_mutex);
+        m_writeInProgress = false;
+        needRewrite = m_pendingRewrite || m_autoSaveDirty;
+        m_pendingRewrite = false;
+    }
+
+    if (needRewrite) {
+        flushAutoSave(false);
+    }
 }
 
 bool OperationRecorder::loadTodayFile()
@@ -601,9 +748,8 @@ bool OperationRecorder::loadTodayFile()
     return false;
 }
 
-bool OperationRecorder::saveToFileInternal(const QString &filename, const QList<OperationRecord> &records)
+bool OperationRecorder::writeRecordsToFile(const QString &filename, const QList<OperationRecord> &records)
 {
-    // 确保目录存在
     QDir().mkpath(QFileInfo(filename).absolutePath());
 
     QJsonArray jsonArray;
@@ -611,16 +757,15 @@ bool OperationRecorder::saveToFileInternal(const QString &filename, const QList<
         jsonArray.append(record.toJson());
     }
     QJsonDocument doc(jsonArray);
-    QByteArray jsonData = doc.toJson(QJsonDocument::Indented);
+    const QByteArray jsonData = doc.toJson(QJsonDocument::Compact);
 
-    // 使用 QSaveFile 提供跨平台的原子写入（在 Windows 上更可靠）
     QSaveFile saveFile(filename);
     if (!saveFile.open(QIODevice::WriteOnly)) {
         qWarning() << "无法打开文件进行写入:" << filename << saveFile.errorString();
         return false;
     }
 
-    qint64 bytesWritten = saveFile.write(jsonData);
+    const qint64 bytesWritten = saveFile.write(jsonData);
     if (bytesWritten == -1) {
         qWarning() << "写入数据失败:" << filename << saveFile.errorString();
         return false;
@@ -631,6 +776,14 @@ bool OperationRecorder::saveToFileInternal(const QString &filename, const QList<
         return false;
     }
 
+    return true;
+}
+
+bool OperationRecorder::saveToFileInternal(const QString &filename, const QList<OperationRecord> &records)
+{
+    if (!writeRecordsToFile(filename, records)) {
+        return false;
+    }
     emit fileSaved(filename);
     return true;
 }

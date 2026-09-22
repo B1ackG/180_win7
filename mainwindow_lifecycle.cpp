@@ -7,6 +7,9 @@
 #include <QDebug>
 #include <QMovie>
 #include <QCloseEvent>
+#include <QThread>
+#include <QTimer>
+#include <QMetaObject>
 #include <unistd.h>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -96,13 +99,17 @@ MainWindow::~MainWindow()
     }
 
     qDebug() << "停止使能按钮监控线程...";
-    if (m_enableButtonWorker) {
-        QMetaObject::invokeMethod(m_enableButtonWorker, "stopPolling", Qt::BlockingQueuedConnection);
+    if (m_enableButtonWorker && m_enableButtonThread && m_enableButtonThread->isRunning()) {
+        QMetaObject::invokeMethod(m_enableButtonWorker, "stopPolling", Qt::QueuedConnection);
     }
 
     if (m_enableButtonThread) {
         m_enableButtonThread->quit();
-        m_enableButtonThread->wait(1000);
+        if (!m_enableButtonThread->wait(1000)) {
+            qWarning() << "使能按钮线程超时，强制终止";
+            m_enableButtonThread->terminate();
+            m_enableButtonThread->wait(500);
+        }
         delete m_enableButtonThread;
         m_enableButtonThread = nullptr;
         qDebug() << "使能按钮监控线程已停止";
@@ -173,19 +180,46 @@ MainWindow::~MainWindow()
     qDebug() << "资源清理完成";
 }
 
-void MainWindow::closeEvent(QCloseEvent *event)
+void MainWindow::shutdownForExit()
 {
-    qDebug() << "收到关闭事件，准备退出...";
+    if (m_shuttingDown) {
+        return;
+    }
+    m_shuttingDown = true;
+    qDebug() << "正在停止后台线程并退出...";
 
-    // 主动停止 ModbusThreadManager 单例持有的工作线程
-    // 必须在主事件循环退出前完成，否则 aboutToQuit 的 BlockingQueuedConnection
-    // 可能因工作线程正在进行 TCP 操作而死锁，导致进程无法退出。
+    if (m_modbusPollTimer) {
+        m_modbusPollTimer->stop();
+    }
+    if (m_modbusReadTimer) {
+        m_modbusReadTimer->stop();
+    }
+    if (m_mainControlSyncTimer) {
+        m_mainControlSyncTimer->stop();
+    }
+    if (m_alarmCheckTimer) {
+        m_alarmCheckTimer->stop();
+    }
+
+    if (m_keyManager) {
+        m_keyManager->stop();
+    }
+
+    if (m_agvModbusManager) {
+        m_agvModbusManager->disconnectFromDevice();
+        m_agvModbusManager->stopWorkerThread();
+    }
+
+    // 必须在主事件循环退出前停掉工作线程。断开用 QueuedConnection，避免
+    // BlockingQueuedConnection 在 TCP/libmodbus 阻塞时把关闭流程卡死。
     ModbusThreadManager *modbusInst = ModbusThreadManager::instance();
     QThread *modbusWorker = modbusInst->thread();
-    if (modbusWorker && modbusWorker != QThread::currentThread() && modbusWorker->isRunning()) {
+    const bool modbusRunning = modbusWorker && modbusWorker != QThread::currentThread()
+        && modbusWorker->isRunning();
+    if (modbusRunning) {
         QMetaObject::invokeMethod(modbusInst, [modbusInst]() {
             modbusInst->disconnectFromDevice();
-        }, Qt::BlockingQueuedConnection);
+        }, Qt::QueuedConnection);
         modbusWorker->quit();
         if (!modbusWorker->wait(3000)) {
             qWarning() << "ModbusThreadManager 工作线程未在 3 秒内退出，强制终止";
@@ -194,6 +228,22 @@ void MainWindow::closeEvent(QCloseEvent *event)
         }
     }
 
+    if (m_recorder) {
+        m_recorder->enableTcpTransmission(false);
+    }
+
+    const auto widgets = QApplication::topLevelWidgets();
+    for (QWidget *w : widgets) {
+        if (w && w != this) {
+            w->hide();
+        }
+    }
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    qDebug() << "收到关闭事件，准备退出...";
+    shutdownForExit();
     event->accept();
     QApplication::quit();
 }
@@ -320,9 +370,13 @@ void MainWindow::scheduleStartupTasks()
 void MainWindow::connectConstructorSignals()
 {
     connect(ui->StackedWidget, &QStackedWidget::currentChanged,
-            this, [this](int index) {
-                if (index == 6) {
-                    updateRecordDisplay();
+            this, [this](int) {
+                if (isHistoryPageVisible()) {
+                    QTimer::singleShot(0, this, [this]() {
+                        if (isHistoryPageVisible()) {
+                            updateRecordDisplay();
+                        }
+                    });
                 }
             });
 

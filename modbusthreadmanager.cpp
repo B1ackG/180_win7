@@ -6,8 +6,17 @@
 #include <QDebug>
 #include <QMetaObject>
 #include <QLoggingCategory>
+#include <QThread>
 
 Q_LOGGING_CATEGORY(lcModbusMgr, "app.modbusmgr")
+
+namespace {
+bool canBlockToOwner(const QObject *obj)
+{
+    const QThread *owner = obj ? obj->thread() : nullptr;
+    return owner && owner != QThread::currentThread() && owner->isRunning();
+}
+}
 
 ModbusThreadManager* ModbusThreadManager::instance()
 {
@@ -30,10 +39,9 @@ ModbusThreadManager* ModbusThreadManager::instance()
                     return;
                 }
                 // 若工作线程仍在运行（closeEvent 未能停止它），在此补充清理。
-                // 使用带超时的 wait() 防止因 TCP 操作阻塞而死锁主线程。
                 QMetaObject::invokeMethod(inst, [inst]() {
                     inst->disconnectFromDevice();
-                }, Qt::BlockingQueuedConnection);
+                }, Qt::QueuedConnection);
                 modbusWorker->quit();
                 if (!modbusWorker->wait(3000)) {
                     qWarning() << "[ModbusThreadManager] 工作线程超时，强制终止";
@@ -107,8 +115,7 @@ bool ModbusThreadManager::connectToDevice(const QString &host, quint16 port, int
 
 void ModbusThreadManager::disconnectFromDevice()
 {
-    if (QThread::currentThread() != thread()) {
-        // 关机/切换路径需要同步完成，保留阻塞式转发
+    if (canBlockToOwner(this)) {
         QMetaObject::invokeMethod(this, [this]() { disconnectFromDevice(); }, Qt::BlockingQueuedConnection);
         return;
     }
@@ -128,7 +135,7 @@ bool ModbusThreadManager::isConnected() const
 
 void ModbusThreadManager::registerSlider(TechSliderEdit *slider, int address)
 {
-    if (QThread::currentThread() != thread()) {
+    if (canBlockToOwner(this)) {
         if (slider && slider->thread() == QThread::currentThread()) {
             slider->setModbusAddress(address);
         }
@@ -162,7 +169,7 @@ void ModbusThreadManager::registerSlider(TechSliderEdit *slider, int address)
 
 void ModbusThreadManager::unregisterSlider(TechSliderEdit *slider)
 {
-    if (QThread::currentThread() != thread()) {
+    if (canBlockToOwner(this)) {
         QMetaObject::invokeMethod(this, [this, slider]() { unregisterSlider(slider); }, Qt::BlockingQueuedConnection);
         return;
     }
@@ -184,7 +191,7 @@ void ModbusThreadManager::unregisterSlider(TechSliderEdit *slider)
 
 void ModbusThreadManager::unregisterSlider(int address)
 {
-    if (QThread::currentThread() != thread()) {
+    if (canBlockToOwner(this)) {
         QMetaObject::invokeMethod(this, [this, address]() { unregisterSlider(address); }, Qt::BlockingQueuedConnection);
         return;
     }
@@ -197,7 +204,7 @@ void ModbusThreadManager::unregisterSlider(int address)
 
 void ModbusThreadManager::registerSliderLabel(TechSliderLabel *sliderLabel, int address)
 {
-    if (QThread::currentThread() != thread()) {
+    if (canBlockToOwner(this)) {
         if (sliderLabel && sliderLabel->thread() == QThread::currentThread()) {
             sliderLabel->setModbusAddress(address);
         }
@@ -231,7 +238,7 @@ void ModbusThreadManager::registerSliderLabel(TechSliderLabel *sliderLabel, int 
 
 void ModbusThreadManager::unregisterSliderLabel(TechSliderLabel *sliderLabel)
 {
-    if (QThread::currentThread() != thread()) {
+    if (canBlockToOwner(this)) {
         QMetaObject::invokeMethod(this, [this, sliderLabel]() {
             unregisterSliderLabel(sliderLabel);
         }, Qt::BlockingQueuedConnection);
@@ -255,7 +262,7 @@ void ModbusThreadManager::unregisterSliderLabel(TechSliderLabel *sliderLabel)
 
 void ModbusThreadManager::unregisterSliderLabel(int address)
 {
-    if (QThread::currentThread() != thread()) {
+    if (canBlockToOwner(this)) {
         QMetaObject::invokeMethod(this, [this, address]() { unregisterSliderLabel(address); }, Qt::BlockingQueuedConnection);
         return;
     }

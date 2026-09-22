@@ -48,6 +48,7 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <cstring>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QTimer>
 #include <QProcess>
 
 namespace {
@@ -773,7 +774,6 @@ void MainWindow::setupRecordAndPermissionConnections()
                 ui->StackedWidget->setCurrentWidget(ui->page_HistoryRecord);
             }
             ui->TBtn_HistoryRecord->setChecked(true);
-            updateRecordDisplay();
             showNotification("已进入操作记录页面");
         } else {
             if (ui->TBtn_HomePage) {
@@ -792,8 +792,11 @@ void MainWindow::setupRecordAndPermissionConnections()
             return;
         }
 
-        updateRecordDisplay();
-        
+        if (isHistoryPageVisible()) {
+            m_pendingHistoryRows.append(record);
+            scheduleHistoryDisplayRefresh();
+        }
+
         // 使用 mapping 转换显示内容
         if (m_mappingConfig && record.controlType != "Login" && record.controlType != "Logout") {
             QString mappedPage = m_mappingConfig->mapPageName(record.pageName);
@@ -2068,6 +2071,8 @@ void MainWindow::connectRecordSignals()
 
 namespace {
 
+constexpr int kMaxVisibleHistoryRows = 400;
+
 bool passesHistoryBaseFilter(const OperationRecord &record)
 {
     const QString op = record.operation.trimmed();
@@ -2085,82 +2090,29 @@ bool passesHistoryBaseFilter(const OperationRecord &record)
     return true;
 }
 
-QString historyDetailHtml(const OperationRecord &record)
+void fillHistoryTableRow(QTableWidget *table, int row, const OperationRecord &record)
 {
-    auto esc = [](const QString &s) { return s.toHtmlEscaped(); };
+    auto *timeItem = new QTableWidgetItem(record.timestamp.toString(QStringLiteral("hh:mm:ss")));
+    timeItem->setForeground(QBrush(QColor(QStringLiteral("#00f0ff"))));
+    table->setItem(row, 0, timeItem);
 
-    const QString control = record.controlName.trimmed();
+    auto *pageItem = new QTableWidgetItem(record.pageName);
+    pageItem->setForeground(QBrush(Qt::white));
+    table->setItem(row, 1, pageItem);
+
+    QString detail = record.controlName.trimmed();
     const QString op = record.operation.trimmed();
     const QString oldV = record.oldValue.toString();
     const QString newV = record.newValue.toString();
-
-    const QString line1 = esc(control.isEmpty() ? QStringLiteral("—") : control);
-
-    QString valueSpan;
+    if (!op.isEmpty()) {
+        detail += QLatin1Char(' ') + op;
+    }
     if (!(oldV.isEmpty() && newV.isEmpty())) {
-        valueSpan = QStringLiteral(
-                        "<span style=\"color:#00ff88;font-weight:bold;font-size:12px;\">&nbsp;%1 → %2</span>")
-                        .arg(esc(oldV), esc(newV));
+        detail += QStringLiteral("  %1 → %2").arg(oldV, newV);
     }
-
-    if (op.isEmpty()) {
-        if (valueSpan.isEmpty()) {
-            return QStringLiteral(
-                       "<body style=\"margin:0;\"><div style=\"line-height:1.5;\">"
-                       "<span style=\"font-weight:600;color:#ffffff;font-size:13px;\">%1</span></div></body>")
-                .arg(line1);
-        }
-        return QStringLiteral(
-                   "<body style=\"margin:0;\"><div style=\"line-height:1.5;\">"
-                   "<span style=\"font-weight:600;color:#ffffff;font-size:13px;\">%1</span>%2</div></body>")
-            .arg(line1, valueSpan);
-    }
-
-    const QString line2 =
-        QStringLiteral("<span style=\"color:#ff8888;font-style:italic;font-size:11px;\">%1</span>%2")
-            .arg(esc(op), valueSpan.isEmpty() ? QString() : valueSpan);
-
-    return QStringLiteral(
-               "<body style=\"margin:0;\"><div style=\"line-height:1.5;\">"
-               "<span style=\"font-weight:600;color:#ffffff;font-size:13px;\">%1</span><br/>%2</div></body>")
-        .arg(line1, line2);
-}
-
-void applyHistoryDetailRowHeight(QTableWidget *table, int row, QLabel *detailLabel)
-{
-    if (!table || !detailLabel || row < 0) {
-        return;
-    }
-    constexpr int kDetailCol = 2;
-    int colW = table->columnWidth(kDetailCol);
-    if (colW <= 48) {
-        QWidget *vp = table->viewport();
-        const int vw = vp ? vp->width() : 800;
-        const int w0 = qMax(table->columnWidth(0), 56);
-        const int w1 = qMax(table->columnWidth(1), 56);
-        colW = qMax(240, vw - w0 - w1 - 24);
-    }
-    const int innerW = qMax(100, colW - 28);
-    detailLabel->setFixedWidth(innerW);
-    int contentH = detailLabel->heightForWidth(innerW);
-    if (contentH <= 0) {
-        contentH = detailLabel->sizeHint().height();
-    }
-    constexpr int kMinRow = 76;
-    constexpr int kVerticalPad = 28;
-    table->setRowHeight(row, qBound(kMinRow, contentH + kVerticalPad, 360));
-}
-
-void refitAllHistoryDetailRows(QTableWidget *table)
-{
-    if (!table) {
-        return;
-    }
-    for (int r = 0; r < table->rowCount(); ++r) {
-        if (auto *lb = qobject_cast<QLabel *>(table->cellWidget(r, 2))) {
-            applyHistoryDetailRowHeight(table, r, lb);
-        }
-    }
+    auto *detailItem = new QTableWidgetItem(detail);
+    detailItem->setForeground(QBrush(QColor(QStringLiteral("#eaf9ff"))));
+    table->setItem(row, 2, detailItem);
 }
 
 }
@@ -2233,12 +2185,17 @@ void MainWindow::setupRecordUI()
     m_historyTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_historyTable->setAlternatingRowColors(true);
     m_historyTable->setShowGrid(true);
+    m_historyTable->setWordWrap(false);
+    m_historyTable->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_historyTable->verticalHeader()->setVisible(false);
-    m_historyTable->verticalHeader()->setDefaultSectionSize(76);
+    m_historyTable->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
+    m_historyTable->verticalHeader()->setDefaultSectionSize(44);
     m_historyTable->horizontalHeader()->setStretchLastSection(true);
-    m_historyTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    m_historyTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_historyTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
+    m_historyTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Fixed);
     m_historyTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    m_historyTable->setColumnWidth(0, 120);
+    m_historyTable->setColumnWidth(1, 180);
 
     m_historyTable->setStyleSheet(QStringLiteral(
         "QTableWidget#historyRecordTable {"
@@ -2251,7 +2208,7 @@ void MainWindow::setupRecordUI()
         "  font-size: 13px;"
         "}"
         "QTableWidget#historyRecordTable::item {"
-        "  padding: 12px 10px 12px 14px;"
+        "  padding: 6px 8px;"
         "  border: none;"
         "}"
         "QTableWidget#historyRecordTable::item:selected {"
@@ -2268,15 +2225,6 @@ void MainWindow::setupRecordUI()
         "  border: none;"
         "  border-bottom: 1px solid rgba(74, 190, 238, 0.46);"
         "}"));
-
-    connect(m_historyTable->horizontalHeader(), &QHeaderView::sectionResized,
-            this, [this](int, int, int) {
-                QTimer::singleShot(0, this, [this]() {
-                    if (m_historyTable) {
-                        refitAllHistoryDetailRows(m_historyTable);
-                    }
-                });
-            });
 
     QWidget *phHost = new QWidget(m_historyViewStack);
     QVBoxLayout *phLay = new QVBoxLayout(phHost);
@@ -2295,8 +2243,80 @@ void MainWindow::setupRecordUI()
     mainLayout->addLayout(toolbarLayout);
     mainLayout->addWidget(m_historyViewStack, 1);
 
-    updateRecordDisplay();
+    if (!m_historyRefreshTimer) {
+        m_historyRefreshTimer = new QTimer(this);
+        m_historyRefreshTimer->setSingleShot(true);
+        m_historyRefreshTimer->setInterval(50);
+        connect(m_historyRefreshTimer, &QTimer::timeout, this, &MainWindow::flushPendingHistoryRows);
+    }
+
     qCDebug(lcMainWindow) << "操作记录列表初始化完成（对标 180/HistoryList.qml 的 C++ 呈现）";
+}
+
+bool MainWindow::isHistoryPageVisible() const
+{
+    return ui && ui->page_HistoryRecord && ui->StackedWidget
+        && ui->StackedWidget->currentWidget() == ui->page_HistoryRecord;
+}
+
+void MainWindow::scheduleHistoryDisplayRefresh()
+{
+    if (!isHistoryPageVisible()) {
+        m_pendingHistoryRows.clear();
+        return;
+    }
+
+    if (!m_historyRefreshTimer) {
+        m_historyRefreshTimer = new QTimer(this);
+        m_historyRefreshTimer->setSingleShot(true);
+        m_historyRefreshTimer->setInterval(50);
+        connect(m_historyRefreshTimer, &QTimer::timeout, this, &MainWindow::flushPendingHistoryRows);
+    }
+
+    m_historyRefreshTimer->start();
+}
+
+void MainWindow::flushPendingHistoryRows()
+{
+    if (!isHistoryPageVisible() || !m_historyTable || !m_historyViewStack) {
+        m_pendingHistoryRows.clear();
+        return;
+    }
+
+    if (m_pendingHistoryRows.isEmpty()) {
+        return;
+    }
+
+    // 短时间涌入大量记录时，插行也会卡住，改做一次轻量整表刷新。
+    if (m_pendingHistoryRows.size() >= 25 || m_historyTable->rowCount() == 0) {
+        m_pendingHistoryRows.clear();
+        updateRecordDisplay();
+        return;
+    }
+
+    const QString category = m_historyCategoryCombo ? m_historyCategoryCombo->currentText()
+                                                    : QStringLiteral("全部");
+    QList<OperationRecord> batch = m_pendingHistoryRows;
+    m_pendingHistoryRows.clear();
+
+    m_historyTable->setUpdatesEnabled(false);
+    int inserted = 0;
+    for (const OperationRecord &record : batch) {
+        if (!passesHistoryBaseFilter(record) || !matchesHistoryCategory(record, category)) {
+            continue;
+        }
+        m_historyTable->insertRow(0);
+        fillHistoryTableRow(m_historyTable, 0, record);
+        ++inserted;
+    }
+    while (m_historyTable->rowCount() > kMaxVisibleHistoryRows) {
+        m_historyTable->removeRow(m_historyTable->rowCount() - 1);
+    }
+    m_historyTable->setUpdatesEnabled(true);
+
+    if (inserted > 0) {
+        m_historyViewStack->setCurrentWidget(m_historyTable);
+    }
 }
 
 void MainWindow::updateRecordDisplay()
@@ -2304,6 +2324,8 @@ void MainWindow::updateRecordDisplay()
     if (!m_recorder || !m_historyTable || !m_historyViewStack || !m_historyPlaceholderLabel) {
         return;
     }
+
+    m_pendingHistoryRows.clear();
 
     QWidget *recordPage = findChild<QWidget*>("page_record");
     if (recordPage) {
@@ -2324,58 +2346,35 @@ void MainWindow::updateRecordDisplay()
     const QList<OperationRecord> &records = m_recorder->records();
 
     int baseCount = 0;
-    for (const OperationRecord &record : records) {
-        if (passesHistoryBaseFilter(record)) {
-            baseCount++;
-        }
-    }
-
-    m_historyTable->clearContents();
-    m_historyTable->setRowCount(0);
-
-    int visibleCount = 0;
+    QList<int> visibleRows;
+    visibleRows.reserve(kMaxVisibleHistoryRows);
     for (int i = records.size() - 1; i >= 0; --i) {
         const OperationRecord &record = records.at(i);
         if (!passesHistoryBaseFilter(record)) {
             continue;
         }
+        baseCount++;
         if (!matchesHistoryCategory(record, category)) {
             continue;
         }
-
-        const int row = m_historyTable->rowCount();
-        m_historyTable->insertRow(row);
-
-        auto *timeItem = new QTableWidgetItem(record.timestamp.toString(QStringLiteral("hh:mm:ss")));
-        timeItem->setForeground(QBrush(QColor(QStringLiteral("#00f0ff"))));
-        QFont monoFont = timeItem->font();
-        monoFont.setFamily(QStringLiteral("monospace"));
-        monoFont.setPointSize(11);
-        timeItem->setFont(monoFont);
-        m_historyTable->setItem(row, 0, timeItem);
-
-        auto *pageItem = new QTableWidgetItem(record.pageName);
-        pageItem->setForeground(QBrush(Qt::white));
-        m_historyTable->setItem(row, 1, pageItem);
-
-        auto *detailLabel = new QLabel(m_historyTable);
-        detailLabel->setTextFormat(Qt::RichText);
-        detailLabel->setText(historyDetailHtml(record));
-        detailLabel->setWordWrap(true);
-        detailLabel->setMargin(8);
-        detailLabel->setStyleSheet(QStringLiteral("background: transparent;"));
-        m_historyTable->setCellWidget(row, 2, detailLabel);
-
-        applyHistoryDetailRowHeight(m_historyTable, row, detailLabel);
-        visibleCount++;
+        if (visibleRows.size() < kMaxVisibleHistoryRows) {
+            visibleRows.append(i);
+        } else if (category == QStringLiteral("全部")) {
+            break;
+        }
     }
 
-    if (visibleCount > 0) {
-        QTimer::singleShot(0, this, [this]() {
-            if (m_historyTable) {
-                refitAllHistoryDetailRows(m_historyTable);
-            }
-        });
+    m_historyTable->setUpdatesEnabled(false);
+    m_historyTable->clearContents();
+    m_historyTable->setRowCount(visibleRows.size());
+
+    for (int row = 0; row < visibleRows.size(); ++row) {
+        fillHistoryTableRow(m_historyTable, row, records.at(visibleRows.at(row)));
+    }
+
+    m_historyTable->setUpdatesEnabled(true);
+
+    if (!visibleRows.isEmpty()) {
         m_historyViewStack->setCurrentWidget(m_historyTable);
     } else if (baseCount == 0) {
         m_historyPlaceholderLabel->setText(QStringLiteral("暂无操作记录"));
@@ -2566,6 +2565,16 @@ void MainWindow::setupAdminPasswordPage()
     logoutButton->setObjectName("logoutButton");
     logoutButton->setVisible(false); // 默认隐藏，登录后显示
 
+    QPushButton *exitAppButton = new QPushButton("退出程序", container);
+    exitAppButton->setObjectName("exitAppButton");
+    exitAppButton->setVisible(false);
+    exitAppButton->setToolTip("结束本程序全部进程（含后台 Modbus 连接）");
+    exitAppButton->setStyleSheet(
+        "QPushButton { background: rgba(120, 28, 36, 0.92); color: #ffe8e8; "
+        "font-weight: bold; border: 1px solid rgba(255, 120, 120, 0.75); border-radius: 8px; padding: 8px 14px; }"
+        "QPushButton:hover { background: rgba(150, 36, 44, 0.96); border: 1px solid #ffb0b0; }"
+    );
+
     QWidget *netConfigSection = new QWidget(container);
     netConfigSection->setObjectName("netConfigSection");
     QVBoxLayout *netMainLayout = new QVBoxLayout(netConfigSection);
@@ -2640,12 +2649,14 @@ void MainWindow::setupAdminPasswordPage()
     containerLayout->addWidget(featureButton);
     containerLayout->addWidget(netConfigSection); // 厂家登录后可见（包含本地IP及模拟器配置）
     containerLayout->addWidget(logoutButton);
+    containerLayout->addSpacing(8);
+    containerLayout->addWidget(exitAppButton);
     containerLayout->addSpacing(15);
     containerLayout->addWidget(errorLabel);
     containerLayout->addStretch(3);
 
     // 设置容器大小和居中
-    container->setFixedSize(480, 560);
+    container->setFixedSize(480, 620);
 
     // 添加容器到主布局
     QHBoxLayout *centerLayout = new QHBoxLayout();
@@ -2788,7 +2799,7 @@ void MainWindow::setupAdminPasswordPage()
     });
 
     // 连接登录按钮
-    connect(loginButton, &QPushButton::clicked, this, [this, roleComboBox, passwordEdit, errorLabel, titleLabel, loginButton, logoutButton, hintLabel, featureButton, netConfigSection, ipHostEdit, simHostEdit]() {
+    connect(loginButton, &QPushButton::clicked, this, [this, roleComboBox, passwordEdit, errorLabel, titleLabel, loginButton, logoutButton, exitAppButton, hintLabel, featureButton, netConfigSection, ipHostEdit, simHostEdit]() {
         QString password = passwordEdit->text();
         UserRole selectedRole = static_cast<UserRole>(roleComboBox->currentData().toInt());
         QString roleName = roleComboBox->currentText();
@@ -2836,6 +2847,9 @@ void MainWindow::setupAdminPasswordPage()
             hintLabel->setVisible(false);
             loginButton->setVisible(false);
             logoutButton->setVisible(true);
+            const bool canExitApp = (m_currentUserRole == UserRole::Admin)
+                || (m_currentUserRole == UserRole::Manufacturer);
+            exitAppButton->setVisible(canExitApp);
             featureButton->setVisible(m_currentUserRole == UserRole::Manufacturer);
             netConfigSection->setVisible(m_currentUserRole == UserRole::Manufacturer);
             errorLabel->setVisible(false);
@@ -2865,7 +2879,7 @@ void MainWindow::setupAdminPasswordPage()
     });
 
     // 连接注销按钮
-    connect(logoutButton, &QPushButton::clicked, this, [this, titleLabel, roleComboBox, passwordEdit, hintLabel, loginButton, logoutButton, errorLabel, featureButton, netConfigSection]() {
+    connect(logoutButton, &QPushButton::clicked, this, [this, titleLabel, roleComboBox, passwordEdit, hintLabel, loginButton, logoutButton, exitAppButton, errorLabel, featureButton, netConfigSection]() {
         // 记录注销
         OperationRecord record;
         record.timestamp = QDateTime::currentDateTime();
@@ -2887,11 +2901,17 @@ void MainWindow::setupAdminPasswordPage()
         hintLabel->setVisible(true);
         loginButton->setVisible(true);
         logoutButton->setVisible(false);
+        exitAppButton->setVisible(false);
         featureButton->setVisible(false);
         netConfigSection->setVisible(false);
         errorLabel->setVisible(false);
         
         showNotification("已注销，当前为操作员权限");
+    });
+
+    connect(exitAppButton, &QPushButton::clicked, this, [this]() {
+        showNotification("正在退出程序…");
+        close();
     });
 
     // 回车键登录

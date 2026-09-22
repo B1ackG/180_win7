@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QThread>
 
 AGVModbusManager::AGVModbusManager(QObject *parent)
     : QObject(parent)
@@ -52,20 +53,22 @@ void AGVModbusManager::stopWorkerThread()
         return;
     }
 
-    if (QThread::currentThread() != thread()) {
-        QMetaObject::invokeMethod(this, [this]() { disconnectFromDevice(); }, Qt::BlockingQueuedConnection);
-        QMetaObject::invokeMethod(this, [this]() {
-            if (QCoreApplication::instance()) {
-                moveToThread(QCoreApplication::instance()->thread());
-            }
-        }, Qt::BlockingQueuedConnection);
-    } else {
-        disconnectFromDevice();
+    if (m_networkThread->isRunning()) {
+        if (QThread::currentThread() != thread()) {
+            QMetaObject::invokeMethod(this, [this]() { disconnectFromDevice(); }, Qt::QueuedConnection);
+        } else {
+            disconnectFromDevice();
+        }
+        m_networkThread->quit();
+        if (!m_networkThread->wait(3000)) {
+            qWarning() << "AGV 工作线程未在 3 秒内退出，强制终止";
+            m_networkThread->terminate();
+            m_networkThread->wait(1000);
+        }
     }
 
-    if (m_networkThread->isRunning()) {
-        m_networkThread->quit();
-        m_networkThread->wait();
+    if (QCoreApplication::instance() && thread() != QCoreApplication::instance()->thread()) {
+        moveToThread(QCoreApplication::instance()->thread());
     }
 
     delete m_networkThread;
@@ -166,7 +169,8 @@ bool AGVModbusManager::connectToDevice(const QString &host, quint16 port)
 
 void AGVModbusManager::disconnectFromDevice()
 {
-    if (QThread::currentThread() != thread()) {
+    QThread *owner = thread();
+    if (owner && owner != QThread::currentThread() && owner->isRunning()) {
         QMetaObject::invokeMethod(this, [this]() { disconnectFromDevice(); }, Qt::BlockingQueuedConnection);
         return;
     }
