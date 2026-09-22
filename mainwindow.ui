@@ -364,9 +364,6 @@ TechZonePanel {
         </property>
        </spacer>
       </item>
-      <item>
-       <widget class="DeviceCoordPanel" name="Widget_DeviceCoordPanel" native="true"/>
-      </item>
      </layout>
     </item>
     <item>
@@ -1257,12 +1254,6 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
    <class>BatteryWidget</class>
    <extends>QWidget</extends>
    <header location="global">batterywidget.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>DeviceCoordPanel</class>
-   <extends>QWidget</extends>
-   <header>devicecoordpanel.h</header>
    <container>1</container>
   </customwidget>
   <customwidget>
