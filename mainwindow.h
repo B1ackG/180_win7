@@ -25,6 +25,7 @@
 #include "matrixkeymonitor.h"
 #include "robottotalpowercard.h"
 #include "inclinometercard.h"
+#include "metricvaluecard.h"
 #include "devicecoordpanel.h"
 #include "techspeeddialsimple.h"
 #include "matrixkeythreadmanager.h"
@@ -348,6 +349,11 @@ public:
     void initRobotTotalPowerCard();
     /** @brief 初始化 X/Y 倾角卡片（纯 QWidget，样式对标 InclinometerCard.qml） */
     void initInclinometerCards();
+    /** @brief 初始化当前负载卡片（寄存器 123） */
+    void initWeightCard();
+    /** @brief 初始化装配面高度卡片（J2 高度减偏移） */
+    void initPlaneHeightCard();
+    void refreshPlaneHeightCard();
     /** @brief 初始化主控位姿面板（X/Y/Z/R，寄存器 103~118，纯 QWidget） */
     void initDeviceCoordPanel();
     /**
@@ -363,6 +369,8 @@ public:
     void updateSpeed(qreal newSpeed);
     /** @brief 更新机器人总功率显示（寄存器134） */
     void updateRobotTotalPower(quint16 powerValue);
+    /** @brief 更新当前负载显示（寄存器 123，单位 KG） */
+    void updateCurrentLoadWeight(quint16 rawValue);
     /** @brief 更新倾角显示（AGV 151/152，寄存器值÷100） */
     void updateInclinometerValue(bool isXAxis, quint16 rawValue);
     /** @brief 从寄存器缓存刷新位姿面板 */
@@ -635,6 +643,11 @@ private:
     DeviceCoordPanel *m_deviceCoordPanel = nullptr;
     InclinometerCard *m_inclinometerXCard = nullptr;
     InclinometerCard *m_inclinometerYCard = nullptr;
+    MetricValueCard *m_weightCard = nullptr;
+    MetricValueCard *m_planeHeightCard = nullptr;
+    double m_planeHeightOffsetMm = 1900.0;
+    bool m_hasLastJ2Height = false;
+    double m_lastJ2HeightMm = 0.0;
     QMovie* m_verticalMovie;
     QPixmap m_backgroundPixmap;
     bool m_backgroundLoaded = false;

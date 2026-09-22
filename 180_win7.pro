@@ -33,6 +33,7 @@ SOURCES += \
     featureswitchmanager.cpp \
     featureswitchwidget.cpp \
     inclinometercard.cpp \
+    metricvaluecard.cpp \
     main.cpp \
     maindevicemodbusapi.cpp \
     mainmodbusconnector.cpp \
@@ -74,6 +75,7 @@ HEADERS += \
     featureswitchmanager.h \
     featureswitchwidget.h \
     inclinometercard.h \
+    metricvaluecard.h \
     maindevicemodbusapi.h \
     mainmodbusconnector.h \
     matrixkeymonitor.h \

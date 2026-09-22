@@ -1533,6 +1533,88 @@ void MainWindow::initInclinometerCards()
             m_inclinometerYCard);
 }
 
+namespace {
+void fillMetricHost(QWidget *host, MetricValueCard *card)
+{
+    if (QLayout *oldLayout = host->layout()) {
+        QLayoutItem *item = nullptr;
+        while ((item = oldLayout->takeAt(0)) != nullptr) {
+            if (item->widget()) {
+                item->widget()->deleteLater();
+            }
+            delete item;
+        }
+        delete oldLayout;
+    }
+
+    host->setStyleSheet(QStringLiteral("background: transparent; border: none;"));
+    auto *layout = new QVBoxLayout(host);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+    layout->addWidget(card);
+}
+} // namespace
+
+void MainWindow::initWeightCard()
+{
+    QWidget *host = findChild<QWidget*>(QStringLiteral("quickWidget_Weight"));
+    if (!host) {
+        qCWarning(lcMainWindow) << "未找到 quickWidget_Weight，跳过当前负载卡片初始化";
+        return;
+    }
+
+    m_weightCard = new MetricValueCard(host);
+    m_weightCard->setTitle(QStringLiteral("当前负载"));
+    m_weightCard->setUnit(QStringLiteral("KG"));
+    m_weightCard->setDecimals(0);
+    m_weightCard->setValue(0.0, false);
+    fillMetricHost(host, m_weightCard);
+}
+
+void MainWindow::initPlaneHeightCard()
+{
+    QWidget *host = findChild<QWidget*>(QStringLiteral("quickWidget_PlaneHeight"));
+    if (!host) {
+        qCWarning(lcMainWindow) << "未找到 quickWidget_PlaneHeight，跳过装配面高度卡片初始化";
+        return;
+    }
+
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("PlaneHeight"));
+    m_planeHeightOffsetMm = qBound(
+        -100000.0,
+        settings.value(QStringLiteral("offset_mm"), 1900.0).toDouble(),
+        100000.0);
+    settings.endGroup();
+
+    m_planeHeightCard = new MetricValueCard(host);
+    m_planeHeightCard->setTitle(QStringLiteral("装配面高度"));
+    m_planeHeightCard->setUnit(QStringLiteral("mm"));
+    m_planeHeightCard->setDecimals(0);
+    m_planeHeightCard->setValue(0.0, false);
+    fillMetricHost(host, m_planeHeightCard);
+    refreshPlaneHeightCard();
+}
+
+void MainWindow::refreshPlaneHeightCard()
+{
+    if (!m_planeHeightCard) {
+        return;
+    }
+    const double planeHeight = m_hasLastJ2Height
+        ? (m_lastJ2HeightMm - m_planeHeightOffsetMm)
+        : 0.0;
+    m_planeHeightCard->setValue(planeHeight, m_hasLastJ2Height);
+}
+
+void MainWindow::updateCurrentLoadWeight(quint16 rawValue)
+{
+    if (!m_weightCard) {
+        return;
+    }
+    m_weightCard->setValue(static_cast<double>(rawValue), true);
+}
+
 void MainWindow::initDeviceCoordPanel()
 {
     m_deviceCoordPanel = findChild<DeviceCoordPanel*>(QStringLiteral("Widget_DeviceCoordPanel"));
@@ -4358,6 +4440,12 @@ void MainWindow::updateSliderLabelValue(const QString& labelName, float value)
             }
         }
     }
+
+    if (labelName == QStringLiteral("robot_ArcGauge_J2Height")) {
+        m_lastJ2HeightMm = static_cast<double>(value);
+        m_hasLastJ2Height = true;
+        refreshPlaneHeightCard();
+    }
 }
 
 // 处理Modbus值变化
@@ -4421,6 +4509,10 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
 
     if (address == 134) {
         updateRobotTotalPower(value);
+    }
+
+    if (address == 123) {
+        updateCurrentLoadWeight(value);
     }
 
     if (address >= 103 && address <= 118) {
@@ -4767,6 +4859,9 @@ void MainWindow::readMainControlSyncRegisters()
 
     // 机器人总功率：192.168.1.13 的 134 寄存器
     MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 134, 1);
+
+    // 当前负载重量：192.168.1.13 的 123 寄存器
+    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 123, 1);
 }
 // 配置所有TechSliderLabel的参数
 void MainWindow::setupSliderLabelConfigs()

@@ -341,6 +341,8 @@ void MainWindow::initUI()
     initSpeedGaugeUI();
     initRobotTotalPowerCard();
     initInclinometerCards();
+    initWeightCard();
+    initPlaneHeightCard();
     initDeviceCoordPanel();
 
     if (isFeatureEnabled("ui_navigation", "ui.virtual_keyboard")) {
