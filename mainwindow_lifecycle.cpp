@@ -185,10 +185,12 @@ void MainWindow::closeEvent(QCloseEvent *event)
     if (modbusWorker && modbusWorker != QThread::currentThread() && modbusWorker->isRunning()) {
         QMetaObject::invokeMethod(modbusInst, [modbusInst]() {
             modbusInst->disconnectFromDevice();
-        }, Qt::QueuedConnection);
+        }, Qt::BlockingQueuedConnection);
         modbusWorker->quit();
-        if (!modbusWorker->wait(2000)) {
-            qWarning() << "ModbusThreadManager 工作线程仍在结束通信，继续正常退出";
+        if (!modbusWorker->wait(3000)) {
+            qWarning() << "ModbusThreadManager 工作线程未在 3 秒内退出，强制终止";
+            modbusWorker->terminate();
+            modbusWorker->wait(1000);
         }
     }
 

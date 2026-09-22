@@ -162,7 +162,7 @@ public:
      * 如何使用: 在不稳定网络环境下启用以保持连接可用性。
      * 如何修改: 可实现指数退避等更复杂的重连策略。
      */
-    void setAutoReconnect(bool enable, int interval = 1000);
+    void setAutoReconnect(bool enable, int interval = 5000);
 
     // 批量读取寄存器
     /**

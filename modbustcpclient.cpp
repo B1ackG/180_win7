@@ -11,7 +11,7 @@ ModbusTCPClient::ModbusTCPClient(QObject *parent)
     , m_port(502)  // Modbus TCP默认端口
     , m_slaveId(1)
     , m_autoReconnect(false)
-    , m_reconnectInterval(1000)
+    , m_reconnectInterval(5000)
     , m_reconnectTimer(nullptr)
     , m_polling(false)
     , m_pollInterval(1000)  // 默认1秒轮询
@@ -166,7 +166,7 @@ void ModbusTCPClient::tryReconnect()
 void ModbusTCPClient::setAutoReconnect(bool enable, int interval)
 {
     m_autoReconnect = enable;
-    m_reconnectInterval = qBound(100, interval, 120000);
+    m_reconnectInterval = interval;
 
     if (!enable) {
         m_reconnectTimer->stop();
@@ -208,6 +208,14 @@ bool ModbusTCPClient::readRegisters(int startAddress, int count, quint8 function
                                                         count,
                                                         values.data(),
                                                         values.size());
+        if (readCount <= 0) {
+            // 部分从站无独立输入寄存器映射时，回退到保持寄存器
+            readCount = modbus_backend_read_holding_registers(m_backendHandle,
+                                                              startAddress,
+                                                              count,
+                                                              values.data(),
+                                                              values.size());
+        }
     } else {
         return false;
     }
@@ -216,11 +224,7 @@ bool ModbusTCPClient::readRegisters(int startAddress, int count, quint8 function
                                    .arg(startAddress)
                                    .arg(count);
         qWarning() << "[Modbus静态库读失败] 地址:" << startAddress << "数量:" << count;
-        if (!m_backendHandle || modbus_backend_is_connected(m_backendHandle) == 0) {
-            handleCommunicationFailure(reason);
-        } else {
-            emit errorOccurred(reason);
-        }
+        handleCommunicationFailure(reason);
         return false;
     }
 
@@ -246,11 +250,7 @@ bool ModbusTCPClient::writeSingleRegister(int address, quint16 value)
     if (!ok) {
         qWarning() << "[Modbus静态库写失败] 地址:" << address << "值:" << value;
         const QString reason = QStringLiteral("静态库写入失败 address=%1").arg(address);
-        if (!m_backendHandle || modbus_backend_is_connected(m_backendHandle) == 0) {
-            handleCommunicationFailure(reason);
-        } else {
-            emit errorOccurred(reason);
-        }
+        handleCommunicationFailure(reason);
     }
     return ok;
 }
@@ -261,25 +261,25 @@ bool ModbusTCPClient::writeMultipleRegisters(int startAddress, const QVector<qui
         return false;
     }
 
-    if (!m_backendHandle) {
-        qWarning() << "[Modbus静态库批量写失败] backend 未就绪";
-        return false;
-    }
-    const bool ok = modbus_backend_write_multiple_registers(m_backendHandle,
-                                                            startAddress,
-                                                            values.constData(),
-                                                            values.size()) != 0;
-    if (!ok) {
-        const QString reason = QStringLiteral("静态库批量写入失败 start=%1 count=%2")
-                                   .arg(startAddress)
-                                   .arg(values.size());
-        if (!m_backendHandle || modbus_backend_is_connected(m_backendHandle) == 0) {
+    if (m_backendHandle) {
+        const bool ok = modbus_backend_write_multiple_registers(m_backendHandle,
+                                                                startAddress,
+                                                                values.constData(),
+                                                                values.size()) != 0;
+        if (!ok) {
+            const QString reason = QStringLiteral("静态库批量写入失败 start=%1 count=%2")
+                                       .arg(startAddress)
+                                       .arg(values.size());
             handleCommunicationFailure(reason);
-        } else {
-            emit errorOccurred(reason);
+        }
+        return ok;
+    }
+    for (int i = 0; i < values.size(); ++i) {
+        if (!writeSingleRegister(startAddress + i, values.at(i))) {
+            return false;
         }
     }
-    return ok;
+    return true;
 }
 
 bool ModbusTCPClient::readHoldingRegisterSync(int address, quint16 &value)
@@ -315,11 +315,7 @@ bool ModbusTCPClient::readHoldingRegistersSync(int startAddress, int count, QVec
                                    .arg(startAddress)
                                    .arg(count);
         qWarning() << "[Modbus静态库读失败] 地址:" << startAddress << "数量:" << count;
-        if (!m_backendHandle || modbus_backend_is_connected(m_backendHandle) == 0) {
-            handleCommunicationFailure(reason);
-        } else {
-            emit errorOccurred(reason);
-        }
+        handleCommunicationFailure(reason);
         values.clear();
         return false;
     }
@@ -361,9 +357,9 @@ void ModbusTCPClient::clearPollList()
 
 void ModbusTCPClient::setPollInterval(int ms)
 {
-    m_pollInterval = qBound(50, ms, 60000);
+    m_pollInterval = ms;
     if (m_pollTimer->isActive()) {
-        m_pollTimer->setInterval(m_pollInterval);
+        m_pollTimer->setInterval(ms);
     }
 }
 
