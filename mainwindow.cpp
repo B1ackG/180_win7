@@ -2078,7 +2078,10 @@ bool passesHistoryBaseFilter(const OperationRecord &record)
     const QString op = record.operation.trimmed();
     if (op == QStringLiteral("listening")
         || op == QStringLiteral("client_connected")
-        || op == QStringLiteral("client_disconnected")) {
+        || op == QStringLiteral("client_disconnected")
+        || op == QStringLiteral("开启监听")
+        || op == QStringLiteral("客户端连接")
+        || op == QStringLiteral("客户端断开")) {
         return false;
     }
     if (op == QStringLiteral("IGNORE_LOG")) {

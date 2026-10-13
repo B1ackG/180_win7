@@ -34,14 +34,19 @@ QStringList parseCsvList(const QString &raw)
     return result;
 }
 
-bool isReceiverSessionMetaRecord(const OperationRecord &record)
+QString normalizedPeerAddress(const QHostAddress &address)
 {
-    if (record.controlName != QStringLiteral("TCP接收器")) {
-        return false;
+    bool ok = false;
+    const quint32 ipv4 = address.toIPv4Address(&ok);
+    if (ok) {
+        return QHostAddress(ipv4).toString();
     }
-    return record.operation == QStringLiteral("listening")
-        || record.operation == QStringLiteral("client_connected")
-        || record.operation == QStringLiteral("client_disconnected");
+    QString text = address.toString();
+    const QString prefix = QStringLiteral("::ffff:");
+    if (text.startsWith(prefix)) {
+        text.remove(0, prefix.size());
+    }
+    return text;
 }
 }
 
@@ -103,6 +108,13 @@ void OperationRecorder::loadSecuritySettings()
         m_signingKey = signKeyEnv;
     } else {
         m_signingKey = settings.value("signing_key", "").toByteArray();
+    }
+
+    const QByteArray peerEnv = qgetenv("AGV_LOG_ALLOWED_PEERS");
+    if (!peerEnv.isEmpty()) {
+        m_allowedPeerHosts = parseCsvList(QString::fromUtf8(peerEnv));
+    } else {
+        m_allowedPeerHosts = parseCsvList(settings.value("allowed_peer_hosts").toString());
     }
     settings.endGroup();
 }
@@ -184,13 +196,37 @@ OperationRecorder::~OperationRecorder()
 
 void OperationRecorder::initAutoSave()
 {
-    // 确保目录存在
     ensureAutoSaveDir();
 
-    // 尝试加载今日的记录文件
-    loadTodayFile();
+    const bool loaded = loadTodayFile();
     m_currentSaveDate = QDate::currentDate();
     m_autoSaveInitialized = true;
+    if (!loaded) {
+        QList<OperationRecord> existing;
+        {
+            QMutexLocker locker(&m_mutex);
+            existing = m_records;
+        }
+        for (const OperationRecord &record : existing) {
+            if (!appendDurableRecord(record)) {
+                QMutexLocker locker(&m_mutex);
+                m_unsavedDurable.append(record);
+            }
+        }
+        if (!existing.isEmpty()) {
+            scheduleAutoSave();
+        }
+    } else if (m_tcpReceiverServer && m_tcpReceiverServer->isListening()) {
+        OperationRecord rec;
+        rec.timestamp = QDateTime::currentDateTime();
+        rec.pageName = QStringLiteral("日志服务");
+        rec.controlName = QStringLiteral("日志接收");
+        rec.controlType = QStringLiteral("网络服务");
+        rec.operation = QStringLiteral("开启监听");
+        rec.oldValue = QString();
+        rec.newValue = QStringLiteral("日志服务已开始监听，端口%1").arg(m_tcpReceiverPort);
+        appendTcpRecord(rec);
+    }
     qDebug() << "按天自动保存系统初始化完成，目录:" << m_autoSaveDir
              << "当前文件:" << getTodayFileName();
 }
@@ -212,6 +248,106 @@ QString OperationRecorder::getTodayFileName() const
 QString OperationRecorder::dailyFileName(const QDate &date) const
 {
     return QStringLiteral("operation_history_%1.json").arg(date.toString(QStringLiteral("yyyyMMdd")));
+}
+
+QString OperationRecorder::durableLogFileName(const QDate &date) const
+{
+    return QStringLiteral("operation_history_%1.jsonl").arg(date.toString(QStringLiteral("yyyyMMdd")));
+}
+
+bool OperationRecorder::appendDurableRecord(const OperationRecord &record)
+{
+    const QDate date = record.timestamp.isValid() ? record.timestamp.date() : QDate::currentDate();
+    QDir().mkpath(m_autoSaveDir);
+    QFile file(m_autoSaveDir + durableLogFileName(date));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append)) {
+        qWarning() << "追加历史记录失败:" << file.fileName() << file.errorString();
+        return false;
+    }
+    const QByteArray line = QJsonDocument(record.toJson()).toJson(QJsonDocument::Compact) + '\n';
+    return file.write(line) == line.size() && file.flush();
+}
+
+QList<OperationRecord> OperationRecorder::readDurableRecords(const QDate &date) const
+{
+    QList<OperationRecord> records;
+    QFile file(m_autoSaveDir + durableLogFileName(date));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return records;
+    }
+    while (!file.atEnd()) {
+        const QByteArray line = file.readLine().trimmed();
+        if (line.isEmpty()) {
+            continue;
+        }
+        const QJsonDocument doc = QJsonDocument::fromJson(line);
+        if (!doc.isObject()) {
+            continue;
+        }
+        records.append(OperationRecord::fromJson(doc.object()));
+    }
+    return records;
+}
+
+bool OperationRecorder::rebuildDailyJson(const QDate &date)
+{
+    const QList<OperationRecord> records = readDurableRecords(date);
+    if (records.isEmpty()) {
+        return false;
+    }
+    return writeRecordsToFile(m_autoSaveDir + dailyFileName(date), records);
+}
+
+bool OperationRecorder::verifyIncomingEnvelope(const QJsonObject &envelope, QString *reason) const
+{
+    const bool keyReady = m_signingKey.size() >= 16;
+    if (!envelope.contains(QStringLiteral("payload"))) {
+        if (keyReady) {
+            if (reason) {
+                *reason = QStringLiteral("缺少签名封包");
+            }
+            return false;
+        }
+        return true;
+    }
+    if (!keyReady) {
+        return true;
+    }
+    if (!envelope.contains(QStringLiteral("sig"))
+        || !envelope.contains(QStringLiteral("ts"))
+        || !envelope.contains(QStringLiteral("nonce"))) {
+        if (reason) {
+            *reason = QStringLiteral("签名字段不完整");
+        }
+        return false;
+    }
+
+    const QByteArray payload = QByteArray::fromBase64(envelope.value(QStringLiteral("payload")).toString().toUtf8());
+    const QByteArray ts = envelope.value(QStringLiteral("ts")).toString().toUtf8();
+    const QByteArray nonce = envelope.value(QStringLiteral("nonce")).toString().toUtf8();
+    const QByteArray canonical = payload + '|' + ts + '|' + nonce;
+    const QByteArray expected = QMessageAuthenticationCode::hash(
+        canonical, m_signingKey, QCryptographicHash::Sha256).toHex();
+    const QByteArray actual = envelope.value(QStringLiteral("sig")).toString().toUtf8();
+    if (expected != actual) {
+        if (reason) {
+            *reason = QStringLiteral("签名校验失败");
+        }
+        return false;
+    }
+    return true;
+}
+
+bool OperationRecorder::isAllowedPeer(const QString &peer)
+{
+    if (m_allowedPeerHosts.isEmpty()) {
+        if (!m_loggedOpenPeerPolicy) {
+            m_loggedOpenPeerPolicy = true;
+            qWarning() << "未配置 allowed_peer_hosts，当前接受所有日志来源";
+        }
+        return true;
+    }
+    return m_allowedPeerHosts.contains(peer);
 }
 
 void OperationRecorder::updateCurrentDailyFile()
@@ -274,6 +410,7 @@ void OperationRecorder::clear()
     {
         QMutexLocker locker(&m_mutex);
         m_records.clear();
+        m_unsavedDurable.clear();
         m_firstRecordTime = QDateTime();
         m_lastRecordTime = QDateTime();
         m_autoSaveDirty = false;
@@ -283,9 +420,15 @@ void OperationRecorder::clear()
     // 如果存在当天自动保存文件，清除时同步删除并重新开始记录
     updateCurrentDailyFile();
     m_currentSaveDate = QDate::currentDate();
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("HHmmss"));
+    const QString archivedJson = getTodayFileName() + QStringLiteral(".cleared_") + stamp;
     QFile sessionFile(getTodayFileName());
     if (sessionFile.exists()) {
-        sessionFile.remove();
+        sessionFile.rename(archivedJson);
+    }
+    QFile durableFile(m_autoSaveDir + durableLogFileName(QDate::currentDate()));
+    if (durableFile.exists()) {
+        durableFile.rename(durableFile.fileName() + QStringLiteral(".cleared_") + stamp);
     }
 
     emit recordsCleared();
@@ -294,16 +437,15 @@ void OperationRecorder::clear()
 bool OperationRecorder::saveToFile(const QString &filename)
 {
     waitForBackgroundWrite();
+    const QList<OperationRecord> durable = readDurableRecords(QDate::currentDate());
+    if (!durable.isEmpty()) {
+        return saveToFileInternal(filename, durable);
+    }
 
     QList<OperationRecord> snapshot;
     {
         QMutexLocker locker(&m_mutex);
-        snapshot.reserve(m_records.size());
-        for (const auto &record : m_records) {
-            if (!isReceiverSessionMetaRecord(record)) {
-                snapshot.append(record);
-            }
-        }
+        snapshot = m_records;
     }
     return saveToFileInternal(filename, snapshot);
 }
@@ -369,12 +511,12 @@ void OperationRecorder::setupTcpReceiver()
 
     OperationRecord rec;
     rec.timestamp = QDateTime::currentDateTime();
-    rec.pageName = "系统";
-    rec.controlName = "TCP接收器";
-    rec.controlType = "Network";
-    rec.operation = "listening";
-    rec.oldValue = "";
-    rec.newValue = QString("0.0.0.0:%1").arg(m_tcpReceiverPort);
+    rec.pageName = QStringLiteral("日志服务");
+    rec.controlName = QStringLiteral("日志接收");
+    rec.controlType = QStringLiteral("网络服务");
+    rec.operation = QStringLiteral("开启监听");
+    rec.oldValue = QString();
+    rec.newValue = QStringLiteral("日志服务已开始监听，端口%1").arg(m_tcpReceiverPort);
     appendTcpRecord(rec);
 }
 
@@ -430,6 +572,15 @@ bool OperationRecorder::decodeRecordLine(const QByteArray &lineBytes, OperationR
     }
 
     QJsonObject recordObj = incomingDoc.object();
+    QString verifyReason;
+    if (!verifyIncomingEnvelope(recordObj, &verifyReason)) {
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        if (nowMs - m_lastDecodeWarnMs > 3000) {
+            m_lastDecodeWarnMs = nowMs;
+            qWarning() << "拒绝日志记录:" << verifyReason;
+        }
+        return false;
+    }
 
     // 兼容发送端签名封包：{"payload":"base64-json","ts":"...","nonce":"...","sig":"..."}
     if (recordObj.contains("payload")) {
@@ -482,6 +633,15 @@ void OperationRecorder::onReceiverNewConnection()
     m_tcpReceiverClient = m_tcpReceiverServer->nextPendingConnection();
     if (!m_tcpReceiverClient) return;
 
+    const QString peer = normalizedPeerAddress(m_tcpReceiverClient->peerAddress());
+    if (!isAllowedPeer(peer)) {
+        qWarning() << "拒绝未授权的日志来源:" << peer;
+        m_tcpReceiverClient->disconnectFromHost();
+        m_tcpReceiverClient->deleteLater();
+        m_tcpReceiverClient = nullptr;
+        return;
+    }
+
     connect(m_tcpReceiverClient, &QTcpSocket::readyRead, this, &OperationRecorder::onReceiverDataReady);
     connect(m_tcpReceiverClient, &QTcpSocket::disconnected, this, &OperationRecorder::onReceiverDisconnected);
     connect(m_tcpReceiverClient, QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::errorOccurred),
@@ -490,12 +650,12 @@ void OperationRecorder::onReceiverNewConnection()
 
     OperationRecord rec;
     rec.timestamp = QDateTime::currentDateTime();
-    rec.pageName = "系统";
-    rec.controlName = "TCP接收器";
-    rec.controlType = "Network";
-    rec.operation = "client_connected";
-    rec.oldValue = "";
-    rec.newValue = m_tcpReceiverClient->peerAddress().toString();
+    rec.pageName = QStringLiteral("日志服务");
+    rec.controlName = QStringLiteral("日志接收");
+    rec.controlType = QStringLiteral("网络服务");
+    rec.operation = QStringLiteral("客户端连接");
+    rec.oldValue = QString();
+    rec.newValue = QStringLiteral("示教器 %1 已连上日志服务").arg(peer);
     appendTcpRecord(rec);
     emit tcpConnectionStatusChanged(true);
 }
@@ -544,19 +704,33 @@ void OperationRecorder::appendTcpRecord(const OperationRecord &record)
         m_records.append(normalized);
     }
     emit recordAdded(normalized);
+    if (!m_autoSaveInitialized) {
+        return;
+    }
+    if (!appendDurableRecord(normalized)) {
+        QMutexLocker locker(&m_mutex);
+        m_unsavedDurable.append(normalized);
+    }
     scheduleAutoSave();
 }
 
 void OperationRecorder::onReceiverDisconnected()
 {
+    QString peer;
+    if (m_tcpReceiverClient) {
+        peer = normalizedPeerAddress(m_tcpReceiverClient->peerAddress());
+    }
+
     OperationRecord rec;
     rec.timestamp = QDateTime::currentDateTime();
-    rec.pageName = "系统";
-    rec.controlName = "TCP接收器";
-    rec.controlType = "Network";
-    rec.operation = "client_disconnected";
-    rec.oldValue = "";
-    rec.newValue = "";
+    rec.pageName = QStringLiteral("日志服务");
+    rec.controlName = QStringLiteral("日志接收");
+    rec.controlType = QStringLiteral("网络服务");
+    rec.operation = QStringLiteral("客户端断开");
+    rec.oldValue = QString();
+    rec.newValue = peer.isEmpty()
+        ? QStringLiteral("示教器连接已断开")
+        : QStringLiteral("示教器 %1 已断开日志服务").arg(peer);
     appendTcpRecord(rec);
 
     if (m_tcpReceiverClient) {
@@ -638,34 +812,56 @@ QList<OperationRecord> OperationRecorder::snapshotRecordsForDate(const QDate &da
 
 bool OperationRecorder::flushAutoSave(bool waitForCompletion, const QDate &dateOverride)
 {
-    QList<OperationRecord> snapshot;
-    QString filename;
     const QDate date = dateOverride.isValid() ? dateOverride : QDate::currentDate();
-
+    QString filename;
+    QList<OperationRecord> pending;
     {
         QMutexLocker locker(&m_mutex);
         filename = m_autoSaveDir + dailyFileName(date);
-        snapshot = snapshotRecordsForDate(date);
+        pending = m_unsavedDurable;
         if (!dateOverride.isValid()) {
             m_currentSessionFile = dailyFileName(date);
             m_currentSaveDate = date;
-            m_autoSaveDirty = false;
         }
-        if (snapshot.isEmpty()) {
-            return false;
+    }
+
+    QList<OperationRecord> stillPending;
+    for (const OperationRecord &record : pending) {
+        if (!appendDurableRecord(record)) {
+            stillPending.append(record);
         }
+    }
+    {
+        QMutexLocker locker(&m_mutex);
+        m_unsavedDurable = stillPending;
+        if (!dateOverride.isValid()) {
+            m_autoSaveDirty = !stillPending.isEmpty();
+        }
+    }
+    if (!stillPending.isEmpty()) {
+        return false;
+    }
+    if (!QFile::exists(m_autoSaveDir + durableLogFileName(date))) {
+        return false;
     }
 
     if (waitForCompletion) {
         waitForBackgroundWrite();
-        const bool ok = writeRecordsToFile(filename, snapshot);
-        if (ok && !m_shuttingDown.load()) {
+        const bool ok = rebuildDailyJson(date);
+        if (!ok && !dateOverride.isValid()) {
+            QMutexLocker locker(&m_mutex);
+            m_autoSaveDirty = true;
+        } else if (ok && !m_shuttingDown.load()) {
             emit fileSaved(filename);
         }
         return ok;
     }
 
-    startBackgroundWrite(filename, snapshot);
+    const QList<OperationRecord> records = readDurableRecords(date);
+    if (records.isEmpty()) {
+        return false;
+    }
+    startBackgroundWrite(filename, records);
     return true;
 }
 
@@ -707,14 +903,30 @@ void OperationRecorder::onBackgroundWriteFinished(const QString &filename, bool 
     if (m_shuttingDown.load()) {
         return;
     }
+    {
+        QMutexLocker locker(&m_mutex);
+        m_writeInProgress = false;
+    }
     if (ok) {
         emit fileSaved(filename);
+        if (m_autoSaveTimer) {
+            m_autoSaveTimer->setInterval(1000);
+        }
+    } else {
+        {
+            QMutexLocker locker(&m_mutex);
+            m_autoSaveDirty = true;
+        }
+        if (m_autoSaveTimer && !m_autoSaveTimer->isActive()) {
+            m_autoSaveTimer->setInterval(5000);
+            m_autoSaveTimer->start();
+        }
+        return;
     }
 
     bool needRewrite = false;
     {
         QMutexLocker locker(&m_mutex);
-        m_writeInProgress = false;
         needRewrite = m_pendingRewrite || m_autoSaveDirty;
         m_pendingRewrite = false;
     }
@@ -726,26 +938,56 @@ void OperationRecorder::onBackgroundWriteFinished(const QString &filename, bool 
 
 bool OperationRecorder::loadTodayFile()
 {
-    // 优先加载按天固定命名的历史文件；不存在时兼容旧的启动时间命名文件。
     updateCurrentDailyFile();
+    const QDate today = QDate::currentDate();
+    const QString jsonlPath = m_autoSaveDir + durableLogFileName(today);
     const QString todayFile = getTodayFileName();
-    if (QFile::exists(todayFile)) {
-        return loadFromFile(todayFile);
+    if (!QFile::exists(jsonlPath) && QFile::exists(todayFile)) {
+        QFile legacyFile(todayFile);
+        if (legacyFile.open(QIODevice::ReadOnly)) {
+            const QJsonDocument legacyDoc = QJsonDocument::fromJson(legacyFile.readAll());
+            legacyFile.close();
+            if (legacyDoc.isArray()) {
+                QSaveFile migrated(jsonlPath);
+                if (migrated.open(QIODevice::WriteOnly)) {
+                    for (const QJsonValue &value : legacyDoc.array()) {
+                        const QByteArray line = QJsonDocument(value.toObject()).toJson(QJsonDocument::Compact) + '\n';
+                        migrated.write(line);
+                    }
+                    migrated.commit();
+                }
+            }
+        }
     }
 
-    QString dateStr = QDate::currentDate().toString("yyyyMMdd");
-    QDir dir(m_autoSaveDir);
-    QStringList filters;
-    filters << dateStr + "_*.json";
-
-    QStringList files = dir.entryList(filters, QDir::Files, QDir::Time);
-
-    if (!files.isEmpty()) {
-        QString latestFile = m_autoSaveDir + files.first();
-        return loadFromFile(latestFile);
+    QList<OperationRecord> loadedRecords = readDurableRecords(today);
+    if (loadedRecords.isEmpty() && !QFile::exists(jsonlPath)) {
+        const QString dateStr = today.toString(QStringLiteral("yyyyMMdd"));
+        QDir dir(m_autoSaveDir);
+        const QStringList files = dir.entryList(QStringList() << (dateStr + QStringLiteral("_*.json")),
+                                                 QDir::Files, QDir::Time);
+        if (!files.isEmpty()) {
+            return loadFromFile(m_autoSaveDir + files.first());
+        }
+        return false;
     }
 
-    return false;
+    QDateTime firstTime;
+    QDateTime lastTime;
+    if (!loadedRecords.isEmpty()) {
+        firstTime = loadedRecords.first().timestamp;
+        lastTime = loadedRecords.last().timestamp;
+        if (loadedRecords.size() > m_maxRecords) {
+            loadedRecords = loadedRecords.mid(loadedRecords.size() - m_maxRecords);
+        }
+    }
+    {
+        QMutexLocker locker(&m_mutex);
+        m_records = loadedRecords;
+        m_firstRecordTime = firstTime;
+        m_lastRecordTime = lastTime;
+    }
+    return !loadedRecords.isEmpty();
 }
 
 bool OperationRecorder::writeRecordsToFile(const QString &filename, const QList<OperationRecord> &records)
@@ -795,15 +1037,10 @@ bool OperationRecorder::exportToText(const QString &filename)
         return false;
     }
 
-    QList<OperationRecord> snapshot;
-    {
+    QList<OperationRecord> snapshot = readDurableRecords(QDate::currentDate());
+    if (snapshot.isEmpty()) {
         QMutexLocker locker(&m_mutex);
-        snapshot.reserve(m_records.size());
-        for (const auto &record : m_records) {
-            if (!isReceiverSessionMetaRecord(record)) {
-                snapshot.append(record);
-            }
-        }
+        snapshot = m_records;
     }
 
     QTextStream stream(&file);

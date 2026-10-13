@@ -321,6 +321,8 @@ private:
     bool m_autoSaveDirty = false;
     bool m_writeInProgress = false;
     bool m_pendingRewrite = false;
+    bool m_loggedOpenPeerPolicy = false;
+    QList<OperationRecord> m_unsavedDurable;
     std::atomic<bool> m_shuttingDown {false};
 
     // 线程安全
@@ -328,7 +330,13 @@ private:
 
     bool ensureAutoSaveDir();
     QString dailyFileName(const QDate &date) const;
+    QString durableLogFileName(const QDate &date) const;
     void updateCurrentDailyFile();
+    bool appendDurableRecord(const OperationRecord &record);
+    QList<OperationRecord> readDurableRecords(const QDate &date) const;
+    bool rebuildDailyJson(const QDate &date);
+    bool verifyIncomingEnvelope(const QJsonObject &envelope, QString *reason) const;
+    bool isAllowedPeer(const QString &peer);
     void scheduleAutoSave();
     bool flushAutoSave(bool waitForCompletion, const QDate &dateOverride = QDate());
     void startBackgroundWrite(const QString &filename, const QList<OperationRecord> &records);
@@ -342,7 +350,9 @@ private:
     QString m_tcpServerIp;
     quint16 m_tcpServerPort;
     QStringList m_allowedHosts;
+    QStringList m_allowedPeerHosts;
     QByteArray m_signingKey;
+    mutable qint64 m_lastDecodeWarnMs = 0;
     QTimer *m_reconnectTimer;
     QList<OperationRecord> m_tcpSendQueue;  // 待发送的记录队列
     QString m_lastTcpError;
