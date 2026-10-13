@@ -120,6 +120,7 @@ void FeatureSwitchWidget::setupUI()
     sdesc["tcp.send_all"] = "TCP 全量发送";
     sdesc["tcp.local_simulator"] = "本机 TCP 模拟器 (127.0.0.1)";
     sdesc["tcp.remote_simulator"] = "远程 TCP 模拟器 (192.168.1.70)";
+    sdesc["tcp.local_operation_history"] = "本机历史记录传输 (127.0.0.1:12345)";
     sdesc["modbus_main.polling"] = "主控轮询";
     sdesc["modbus_main.float_reading"] = "浮点解析";
     sdesc["modbus_main.read_logs"] = "主设备 Modbus 读日志";
@@ -157,6 +158,9 @@ void FeatureSwitchWidget::setupUI()
         }
         QString label = sdesc.contains(key) ? QString("%1 [%2]").arg(sdesc.value(key)).arg(key) : key;
         QCheckBox *cb = new QCheckBox(label);
+        if (key == "tcp.local_operation_history") {
+            cb->setToolTip("只把历史记录链路切到 127.0.0.1:12345");
+        }
         smallLayout->addWidget(cb, smallIndex / 2, smallIndex % 2);
         ++smallIndex;
         m_smallCheckboxes[key] = cb;

@@ -247,6 +247,12 @@ public:
     void setRecordLocalOperations(bool enabled) { m_recordLocalOperations = enabled; }
 
     /**
+     * @brief 本机历史记录测试时只监听 127.0.0.1，否则监听所有网卡。
+     * 运行中切换会关闭当前监听并重新绑定。
+     */
+    void setLocalHistoryReceiver(bool enabled);
+
+    /**
      * 使用示例:
      * @code
      * recorder.setTcpServer("192.168.1.100", 12346);
@@ -383,6 +389,7 @@ private:
     QByteArray m_tcpReceiverBuffer;
     QTimer *m_listenRetryTimer = nullptr;
     quint16 m_tcpReceiverPort = WIN7_PORT;
+    bool m_listenLocalOnly = false;
 };
 
 #endif // OPERATIONRECORDER_H

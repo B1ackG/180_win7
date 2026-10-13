@@ -70,7 +70,11 @@ MainWindow::MainWindow(QWidget *parent)
     // 初始化操作记录器的自动保存
     if (m_recorder) {
         // 当前工程作为 TCP 接收端，不记录本地 UI 操作，只显示/保存远端推送历史。
+        // 先按开关决定监听地址，再启动 12345，避免启动瞬间绑定所有网卡。
         m_recorder->setRecordLocalOperations(false);
+        m_recorder->setLocalHistoryReceiver(
+            isFeatureEnabled(QStringLiteral("tcp_transmission"),
+                             QStringLiteral("tcp.local_operation_history")));
         m_recorder->initAutoSave();
     }
     initializeCoreSubsystems();

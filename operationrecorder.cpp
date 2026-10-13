@@ -87,8 +87,6 @@ OperationRecorder::OperationRecorder(QObject *parent)
     m_autoSaveTimer->setSingleShot(true);
     m_autoSaveTimer->setInterval(1000);
     connect(m_autoSaveTimer, &QTimer::timeout, this, &OperationRecorder::onAutoSaveTimeout);
-
-    setupTcpReceiver();
 }
 
 void OperationRecorder::loadSecuritySettings()
@@ -217,6 +215,9 @@ void OperationRecorder::initAutoSave()
             scheduleAutoSave();
         }
     } else if (m_tcpReceiverServer && m_tcpReceiverServer->isListening()) {
+        const QString bindText = m_listenLocalOnly
+            ? QStringLiteral("127.0.0.1:%1").arg(m_tcpReceiverPort)
+            : QStringLiteral("0.0.0.0:%1").arg(m_tcpReceiverPort);
         OperationRecord rec;
         rec.timestamp = QDateTime::currentDateTime();
         rec.pageName = QStringLiteral("日志服务");
@@ -224,7 +225,7 @@ void OperationRecorder::initAutoSave()
         rec.controlType = QStringLiteral("网络服务");
         rec.operation = QStringLiteral("开启监听");
         rec.oldValue = QString();
-        rec.newValue = QStringLiteral("日志服务已开始监听，端口%1").arg(m_tcpReceiverPort);
+        rec.newValue = QStringLiteral("日志服务已开始监听，%1").arg(bindText);
         appendTcpRecord(rec);
     }
     qDebug() << "按天自动保存系统初始化完成，目录:" << m_autoSaveDir
@@ -498,9 +499,14 @@ void OperationRecorder::setupTcpReceiver()
         return;
     }
 
-    if (!m_tcpReceiverServer->listen(QHostAddress::Any, m_tcpReceiverPort)) {
+    const QHostAddress bindAddress = m_listenLocalOnly ? QHostAddress::LocalHost : QHostAddress::Any;
+    const QString bindText = m_listenLocalOnly
+        ? QStringLiteral("127.0.0.1:%1").arg(m_tcpReceiverPort)
+        : QStringLiteral("0.0.0.0:%1").arg(m_tcpReceiverPort);
+
+    if (!m_tcpReceiverServer->listen(bindAddress, m_tcpReceiverPort)) {
         qWarning() << "TCP接收器监听失败:" << m_tcpReceiverServer->errorString()
-                   << "端口:" << m_tcpReceiverPort;
+                   << "地址:" << bindText;
         scheduleListenRetry();
         return;
     }
@@ -516,8 +522,33 @@ void OperationRecorder::setupTcpReceiver()
     rec.controlType = QStringLiteral("网络服务");
     rec.operation = QStringLiteral("开启监听");
     rec.oldValue = QString();
-    rec.newValue = QStringLiteral("日志服务已开始监听，端口%1").arg(m_tcpReceiverPort);
+    rec.newValue = QStringLiteral("日志服务已开始监听，%1").arg(bindText);
     appendTcpRecord(rec);
+}
+
+void OperationRecorder::setLocalHistoryReceiver(bool enabled)
+{
+    const bool changed = m_listenLocalOnly != enabled;
+    m_listenLocalOnly = enabled;
+    if (!m_tcpReceiverServer) {
+        return;
+    }
+    if (m_tcpReceiverServer->isListening() && !changed) {
+        return;
+    }
+
+    if (m_tcpReceiverClient) {
+        QTcpSocket *client = m_tcpReceiverClient;
+        m_tcpReceiverClient = nullptr;
+        client->disconnect(this);
+        client->abort();
+        client->deleteLater();
+    }
+    m_tcpReceiverBuffer.clear();
+    if (m_tcpReceiverServer->isListening()) {
+        m_tcpReceiverServer->close();
+    }
+    setupTcpReceiver();
 }
 
 void OperationRecorder::scheduleListenRetry()

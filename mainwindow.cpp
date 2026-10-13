@@ -2935,6 +2935,19 @@ void MainWindow::setupAdminPasswordPage()
                     applyPollingRuntimeSettings();
                     loadSliderLabelRuntimeSettings();
                     applySliderLabelRuntimeSettings();
+                    if (m_recorder) {
+                        const bool localHistory = isFeatureEnabled(
+                            QStringLiteral("tcp_transmission"),
+                            QStringLiteral("tcp.local_operation_history"));
+                        m_recorder->setLocalHistoryReceiver(localHistory);
+                        if (ui && ui->statusBar) {
+                            ui->statusBar->showMessage(
+                                localHistory
+                                    ? QStringLiteral("本机历史记录测试：127.0.0.1:12345")
+                                    : QStringLiteral("历史记录接收：0.0.0.0:%1").arg(WIN7_PORT),
+                                5000);
+                        }
+                    }
                 });
             }
             m_featureSwitchWidget->show();
@@ -7244,8 +7257,16 @@ void MainWindow::enableTcpTransmission(bool enabled)
         m_recorder->enableTcpTransmission(enabled);
 
         if (enabled) {
-            qCDebug(lcMainWindow) << "历史记录接收端口:" << WIN7_PORT;
-            ui->statusBar->showMessage(QString("历史记录接收已启用，端口 %1").arg(WIN7_PORT), 3000);
+            const bool localHistory = isFeatureEnabled(
+                QStringLiteral("tcp_transmission"),
+                QStringLiteral("tcp.local_operation_history"));
+            qCDebug(lcMainWindow) << "历史记录接收端口:" << WIN7_PORT
+                                  << (localHistory ? "127.0.0.1" : "0.0.0.0");
+            ui->statusBar->showMessage(
+                localHistory
+                    ? QStringLiteral("本机历史记录测试：127.0.0.1:12345")
+                    : QString("历史记录接收已启用，端口 %1").arg(WIN7_PORT),
+                3000);
         } else {
             qCDebug(lcMainWindow) << "禁用TCP传输";
             ui->statusBar->showMessage("TCP传输已禁用", 3000);
