@@ -32,6 +32,8 @@ SOURCES += \
     enablebuttonworker.cpp \
     featureswitchmanager.cpp \
     featureswitchwidget.cpp \
+    historyarchiveio.cpp \
+    historycalendarpanel.cpp \
     inclinometercard.cpp \
     metricvaluecard.cpp \
     main.cpp \
@@ -74,6 +76,8 @@ HEADERS += \
     enablebuttonworker.h \
     featureswitchmanager.h \
     featureswitchwidget.h \
+    historyarchiveio.h \
+    historycalendarpanel.h \
     inclinometercard.h \
     metricvaluecard.h \
     maindevicemodbusapi.h \

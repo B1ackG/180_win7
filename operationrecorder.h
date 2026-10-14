@@ -30,6 +30,7 @@
 #include <QDir>
 #include <QFuture>
 #include <QDate>
+#include <QSet>
 #include <atomic>
 
 #define WIN7_IP "192.168.1.70"
@@ -145,6 +146,12 @@ public:
     const QList<OperationRecord>& records() const { return m_records; }
 
     /**
+     * @brief 返回当前内存记录的线程安全拷贝。
+     * UI 读取实时记录时使用该拷贝，避免跨线程持有内部列表引用。
+     */
+    QList<OperationRecord> recordsSnapshot() const;
+
+    /**
      * @brief 清空所有记录
      */
     void clear();
@@ -215,6 +222,11 @@ public:
      * @brief 返回自动保存目录路径
      */
     QString getAutoSaveDir() const { return m_autoSaveDir; }
+
+    /**
+     * @brief 返回指定日期的权威 JSONL 存档路径。
+     */
+    QString durableFileForDate(const QDate &date) const;
 
     /**
      * @brief 初始化自动保存机制（创建目录、设置定时器等）。
@@ -329,6 +341,7 @@ private:
     bool m_pendingRewrite = false;
     bool m_loggedOpenPeerPolicy = false;
     QList<OperationRecord> m_unsavedDurable;
+    QSet<QDate> m_dirtyHistoryDates;
     std::atomic<bool> m_shuttingDown {false};
 
     // 线程安全
@@ -339,6 +352,9 @@ private:
     QString durableLogFileName(const QDate &date) const;
     void updateCurrentDailyFile();
     bool appendDurableRecord(const OperationRecord &record);
+    bool persistAcceptedRecord(const OperationRecord &record);
+    void noteDirtyHistoryDate(const QDate &date);
+    void rebuildDirtyHistoryDates(const QDate &primaryDate);
     QList<OperationRecord> readDurableRecords(const QDate &date) const;
     bool rebuildDailyJson(const QDate &date);
     bool verifyIncomingEnvelope(const QJsonObject &envelope, QString *reason) const;

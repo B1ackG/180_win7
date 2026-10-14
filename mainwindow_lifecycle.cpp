@@ -95,6 +95,18 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    ++m_historyLoadSerial;
+    if (m_historyScanWatcher) {
+        disconnect(m_historyScanWatcher, nullptr, this, nullptr);
+        m_historyScanWatcher->waitForFinished();
+        m_historyScanWatcher = nullptr;
+    }
+    if (m_historyLoadWatcher) {
+        disconnect(m_historyLoadWatcher, nullptr, this, nullptr);
+        m_historyLoadWatcher->waitForFinished();
+        m_historyLoadWatcher = nullptr;
+    }
+
     qDebug() << "正在清理资源...";
 
     if (m_keyManager) {
@@ -378,7 +390,7 @@ void MainWindow::connectConstructorSignals()
                 if (isHistoryPageVisible()) {
                     QTimer::singleShot(0, this, [this]() {
                         if (isHistoryPageVisible()) {
-                            updateRecordDisplay();
+                            showTodayHistory();
                         }
                     });
                 }

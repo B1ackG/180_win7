@@ -266,7 +266,67 @@ bool OperationRecorder::appendDurableRecord(const OperationRecord &record)
         return false;
     }
     const QByteArray line = QJsonDocument(record.toJson()).toJson(QJsonDocument::Compact) + '\n';
-    return file.write(line) == line.size() && file.flush();
+    const bool ok = file.write(line) == line.size() && file.flush();
+    if (ok) {
+        noteDirtyHistoryDate(date);
+    }
+    return ok;
+}
+
+QString OperationRecorder::durableFileForDate(const QDate &date) const
+{
+    return m_autoSaveDir + durableLogFileName(date);
+}
+
+void OperationRecorder::noteDirtyHistoryDate(const QDate &date)
+{
+    if (!date.isValid()) {
+        return;
+    }
+    QMutexLocker locker(&m_mutex);
+    m_dirtyHistoryDates.insert(date);
+}
+
+bool OperationRecorder::persistAcceptedRecord(const OperationRecord &record)
+{
+    if (!m_autoSaveInitialized) {
+        return false;
+    }
+    if (!appendDurableRecord(record)) {
+        const QDate date = record.timestamp.isValid() ? record.timestamp.date() : QDate::currentDate();
+        QMutexLocker locker(&m_mutex);
+        m_unsavedDurable.append(record);
+        m_dirtyHistoryDates.insert(date);
+        return false;
+    }
+    return true;
+}
+
+void OperationRecorder::rebuildDirtyHistoryDates(const QDate &primaryDate)
+{
+    QList<QDate> dirty;
+    {
+        QMutexLocker locker(&m_mutex);
+        dirty = m_dirtyHistoryDates.values();
+        m_dirtyHistoryDates.clear();
+    }
+
+    QSet<QDate> failed;
+    for (const QDate &date : dirty) {
+        if (!date.isValid() || date == primaryDate) {
+            continue;
+        }
+        if (!QFile::exists(m_autoSaveDir + durableLogFileName(date))) {
+            continue;
+        }
+        if (!rebuildDailyJson(date)) {
+            failed.insert(date);
+        }
+    }
+    if (!failed.isEmpty()) {
+        QMutexLocker locker(&m_mutex);
+        m_dirtyHistoryDates.unite(failed);
+    }
 }
 
 QList<OperationRecord> OperationRecorder::readDurableRecords(const QDate &date) const
@@ -364,6 +424,12 @@ qint64 OperationRecorder::getRuntimeDuration() const
     return m_firstRecordTime.msecsTo(end);
 }
 
+QList<OperationRecord> OperationRecorder::recordsSnapshot() const
+{
+    QMutexLocker locker(&m_mutex);
+    return m_records;
+}
+
 void OperationRecorder::addRecord(const OperationRecord &rec)
 {
     if (!m_recordLocalOperations) {
@@ -393,6 +459,7 @@ void OperationRecorder::addRecord(const OperationRecord &rec)
     
     emit recordAdded(record);
 
+    persistAcceptedRecord(record);
     scheduleAutoSave();
 
     // 如果TCP传输已启用，发送记录到服务器
@@ -735,13 +802,7 @@ void OperationRecorder::appendTcpRecord(const OperationRecord &record)
         m_records.append(normalized);
     }
     emit recordAdded(normalized);
-    if (!m_autoSaveInitialized) {
-        return;
-    }
-    if (!appendDurableRecord(normalized)) {
-        QMutexLocker locker(&m_mutex);
-        m_unsavedDurable.append(normalized);
-    }
+    persistAcceptedRecord(normalized);
     scheduleAutoSave();
 }
 
@@ -875,6 +936,8 @@ bool OperationRecorder::flushAutoSave(bool waitForCompletion, const QDate &dateO
     if (!QFile::exists(m_autoSaveDir + durableLogFileName(date))) {
         return false;
     }
+
+    rebuildDirtyHistoryDates(date);
 
     if (waitForCompletion) {
         waitForBackgroundWrite();

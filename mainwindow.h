@@ -21,6 +21,7 @@
 #include "techslideredit.h"
 #include "techvirtualkeyboard.h"
 #include "operationrecorder.h"
+#include "historyarchiveio.h"
 #include "mappingconfig.h"
 #include "matrixkeymonitor.h"
 #include "robottotalpowercard.h"
@@ -55,7 +56,9 @@
 #include <QLabel>
 #include <QStackedWidget>
 #include <QTableWidget>
+#include <QFutureWatcher>
 #include <QSocketNotifier>
+#include <QMap>
 #include <QSet>
 #include <QHash>
 #include "poseprovider.h"
@@ -331,6 +334,12 @@ public:
     void setupRecordUI();
     /** @brief 刷新历史记录显示 */
     void updateRecordDisplay();
+    /** @brief 按当前视图模式和页码重建历史表格 */
+    void refreshHistoryView();
+    /** @brief 收集当天实时记录，并按时间倒序排列 */
+    QList<OperationRecord> collectTodayHistoryRecords() const;
+    /** @brief 更新历史页来源、分页和按钮状态 */
+    void updateHistoryChrome(int visibleCount, int pageCount);
     /** @brief 仅在历史页可见时节流刷新记录表 */
     void scheduleHistoryDisplayRefresh();
     /** @brief 将暂存的新记录插入表顶，避免整表重建 */
@@ -439,6 +448,24 @@ private slots:
     void onOpenRecordsFolder();
     /** @brief 过滤记录 */
     void onFilterRecords();
+    /** @brief 打开触屏日历，选择已有历史记录的日期 */
+    void onOpenHistoryCalendar();
+    /** @brief 历史日期扫描完成 */
+    void onHistoryDateScanFinished();
+    /** @brief 加载所选日期的全部历史记录 */
+    void loadHistoryDate(const QDate &date);
+    /** @brief 异步加载某一天的权威存档 */
+    void startHistoryArchiveLoad(const QString &fileName, const QDate &date, bool todayRefresh);
+    /** @brief 用当天存档补齐内存中的当天记录 */
+    void applyTodayArchive(const HistoryLoadResult &result);
+    /** @brief 历史存档后台加载完成 */
+    void onHistoryArchiveLoadFinished();
+    /** @brief 返回当天记录视图 */
+    void showTodayHistory();
+    /** @brief 显示前一页记录 */
+    void showNewerHistoryPage();
+    /** @brief 显示后一页记录 */
+    void showOlderHistoryPage();
     /** @brief 发送所有记录（例如通过 TCP） */
     void onSendAllRecords();
     /** @brief TCP 连接状态变更回调 */
@@ -648,6 +675,33 @@ private:
     QTableWidget *m_historyTable = nullptr;
     QTimer *m_historyRefreshTimer = nullptr;
     QList<OperationRecord> m_pendingHistoryRows;
+    enum class HistoryViewMode {
+        Today,
+        Archive
+    };
+    HistoryViewMode m_historyViewMode = HistoryViewMode::Today;
+    QList<OperationRecord> m_archiveRecords;
+    QString m_archiveFilePath;
+    QString m_pendingArchiveFilePath;
+    int m_historyPage = 0;
+    int m_historyLoadSerial = 0;
+    int m_activeHistoryLoadToken = 0;
+    bool m_historyLoadInProgress = false;
+    QFutureWatcher<HistoryLoadResult> *m_historyLoadWatcher = nullptr;
+    QFutureWatcher<HistoryDateScanResult> *m_historyScanWatcher = nullptr;
+    QMap<QDate, HistoryDateEntry> m_historyDateEntries;
+    QDate m_archiveDate;
+    QDate m_pendingArchiveDate;
+    QList<OperationRecord> m_todayDisplayRecords;
+    bool m_todayDisplayReady = false;
+    bool m_todayRefreshInProgress = false;
+    bool m_reloadTodayWhenIdle = false;
+    QLabel *m_historySourceLabel = nullptr;
+    QPushButton *m_historySelectFileButton = nullptr;
+    QPushButton *m_historyBackToTodayButton = nullptr;
+    QPushButton *m_historyNewerPageButton = nullptr;
+    QPushButton *m_historyOlderPageButton = nullptr;
+    QLabel *m_historyPageLabel = nullptr;
     RobotTotalPowerCard *m_robotTotalPowerCard = nullptr;
     DeviceCoordPanel *m_deviceCoordPanel = nullptr;
     InclinometerCard *m_inclinometerXCard = nullptr;
