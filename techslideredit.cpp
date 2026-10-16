@@ -307,6 +307,13 @@ void TechSliderEdit::onLineEditEditingFinished()
     double newValue = text.toDouble(&ok);
 
     if (ok) {
+        const double lo = qMin(m_minimum, m_maximum);
+        const double hi = qMax(m_minimum, m_maximum);
+        if (newValue < lo || newValue > hi) {
+            emit rangeRejected(QStringLiteral("输入值超出可输入范围（%1 ~ %2）")
+                                   .arg(lo, 0, 'f', m_precision)
+                                   .arg(hi, 0, 'f', m_precision));
+        }
         // 限制在范围内
         if (newValue < m_minimum) newValue = m_minimum;
         if (newValue > m_maximum) newValue = m_maximum;

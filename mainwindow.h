@@ -215,14 +215,41 @@ public:
     void showAgvDriveFaultAlarm();
     /** @brief 隐藏驱动故障报警窗 */
     void hideAgvDriveFaultAlarm();
-    /** @brief 显示低电量提示窗（51.bit0=1） */
+    /** @brief 显示低电量提示窗（51.bit0=1），无按键，位清零后关闭 */
     void showAgvBatteryLowDialog();
     /** @brief 隐藏低电量提示窗 */
     void hideAgvBatteryLowDialog();
-    /** @brief 外部按键触发的首页操作提示窗 */
+    /** @brief 外部按键触发的首页操作提示（无按键 toast） */
     void showRobotOperationHintDialog(const QString &message);
     /** @brief 隐藏首页操作提示窗 */
     void hideRobotOperationHintDialog();
+    /** @brief 把当前可见的报警/提示窗口作为一组居中摆放 */
+    void repositionCenteredPopups();
+    /** @brief 急停时隐藏其他条件弹窗，toast 保留 */
+    void hideNonEmergencyPopups();
+    /** @brief 急停解除后按仍有效的条件恢复弹窗 */
+    void restoreConditionPopupsAfterEmergency();
+    void showRobotWeightOverloadDialog();
+    void hideRobotWeightOverloadDialog();
+    void showRobotWeightLockDialog();
+    void hideRobotWeightLockDialog();
+    void showInclinometerTiltRiskDialog();
+    void hideInclinometerTiltRiskDialog();
+    void refreshInclinometerTiltPresentation();
+    void showLegArmInterlockToast();
+    void hideLegArmInterlockToast();
+    void noteMainLinkDown();
+    void noteAgvLinkDown();
+    void clearMainLinkDownToast();
+    void clearAgvLinkDownToast();
+    void showWirelessModeWarningToast();
+    void requestSixAxisInitStatus();
+    void applySixAxisInitStatus(quint16 value);
+    void dismissSixAxisInitToast();
+    bool isRobotArmHomePage() const;
+    QString robotLimitToastMessage(bool positiveLimit) const;
+    void showRobotLimitReachedToast(bool positiveLimit);
+    void hideRobotLimitReachedToast();
 
     // 提示信息系统
     /** @brief 更新提示内容标签 */
@@ -588,12 +615,36 @@ private:
     bool m_agvDriveFault51Bit2Flag = false;
     bool m_agvBatteryLow51Bit0Flag = false;
     bool m_agvBatteryLowAcked = false;
+    bool m_emergencyPopupsSuppressed = false;
+    bool m_robotWeightOverload150Bit3Flag = false;
+    bool m_robotWeightLock150Bit7Flag = false;
+    bool m_robotPositiveLimit102Bit2Flag = false;
+    bool m_robotNegativeLimit102Bit3Flag = false;
+    enum class RobotLimitToastTrigger : quint8 { None, Positive, Negative };
+    RobotLimitToastTrigger m_robotLimitToastTrigger = RobotLimitToastTrigger::None;
+    QWidget *m_robotLimitToastWidget = nullptr;
+    bool m_cableRetracted151Bit0Flag = false;
+    bool m_cableExtended151Bit1Flag = false;
+    quint16 m_legArmInterlock151Bits = 0;
+    QString m_legArmInterlockShownMessage;
+    qreal m_inclinometerXDegree = 0.0;
+    qreal m_inclinometerYDegree = 0.0;
+    qreal m_inclinometerAlarmThresholdDeg = 0.8;
+    qreal m_inclinometerLockThresholdDeg = 1.0;
+    bool m_inclinometerTiltRiskInZone = false;
+    bool m_inclinometerTiltLockInZone = false;
+    bool m_mainLinkDownNoted = false;
+    bool m_agvLinkDownNoted = false;
+    bool m_sixAxisInitPromptArmed = false;
     QWidget *m_agvStationOfflineAlarmWidget = nullptr;
     QLabel *m_agvStationOfflineAlarmLabel = nullptr;
     QWidget *m_agvDriveFaultAlarmWidget = nullptr;
     QLabel *m_agvDriveFaultAlarmLabel = nullptr;
     QDialog *m_agvBatteryLowDialog = nullptr;
     QDialog *m_robotOperationHintDialog = nullptr;
+    QWidget *m_robotWeightOverloadWidget = nullptr;
+    QWidget *m_robotWeightLockWidget = nullptr;
+    QDialog *m_inclinometerTiltRiskDialog = nullptr;
 
     // ----- Modbus & 通信 (Main) -----
     ModbusThreadManager *m_modbusManager;
@@ -837,8 +888,40 @@ private:
     /** @brief 配置管理员密码页面 */
     void setupAdminPasswordPage();
 
+    enum class ToastKind : quint8 { Info, Success, Warning };
+    static constexpr int kToastWidth = 420;
+    static constexpr int kToastRightMargin = 32;
+    static constexpr int kToastBottomMargin = 32;
+    static constexpr int kToastSpacing = 10;
+    static constexpr int kToastMaxCount = 8;
+    static constexpr int kToastDuplicateWindowMs = 1200;
+    static constexpr int kToastDefaultDurationMs = 3000;
+    static constexpr int kToastWarningDurationMs = 5000;
+    static constexpr int kToastMinHeight = 72;
+    static constexpr int kToastMaxHeight = 132;
+
+    struct ToastEntry {
+        QWidget *widget = nullptr;
+        QTimer *timer = nullptr;
+        QString message;
+    };
+
+    QVector<ToastEntry> m_toasts;
+    QString m_lastToastMessage;
+    qint64 m_lastToastMs = 0;
+
     /** @brief 显示临时通知（气泡/提示条） */
     void showNotification(const QString &message);
+    /** @brief 右下角无按键 toast。durationMs < 0 用默认时长，0 为持续显示 */
+    void showToast(const QString &message,
+                   ToastKind kind = ToastKind::Info,
+                   int durationMs = -1);
+    /** @brief 条件仍成立时显示一条不自动关闭的警告 toast */
+    void showPersistentToast(const QString &message);
+    void dismissToast(QWidget *toast);
+    void dismissToastByMessage(const QString &message);
+    void repositionToasts();
+    QString toastStyleSheet(ToastKind kind) const;
     
     /** @brief 获取当前页面名称 */
     QString getCurrentPageName() const;

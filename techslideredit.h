@@ -302,6 +302,7 @@ signals:
     void valueChanged(double value);
     void valueChangedWithRecord(double oldValue, double newValue);  // 新增信号
     void editingFinished();
+    void rangeRejected(const QString &message);
     void modbusAddressChanged(int address);  // Modbus地址改变信号
 
 protected:

@@ -134,6 +134,64 @@ bool isBackgroundOnlyZonePanel(const TechZonePanel *panel)
     return panel && panel->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly).isEmpty();
 }
 
+const QString kWirelessModeWarningText =
+    QStringLiteral("遥控器控制互锁，请切换到当前示教器。");
+const QString kInclinometerTiltLockToastText =
+    QStringLiteral("高倾覆风险报警！！设备倾角过大！！");
+const QString kRobotWeightLockToastText =
+    QStringLiteral("当前为应急解锁，请控制六自由度平台 Z 轴下移解除报警");
+const QString kSixAxisInitToastText = QStringLiteral("六自由度需要初始化");
+const QString kInclinometerTiltRiskText = QStringLiteral("倾覆风险提示！设备倾角过大。");
+const QString kRobotWeightOverloadText = QStringLiteral("负载超限，注意倾覆风险！");
+constexpr quint16 kLegArmInterlock151Mask = 0x00F8;
+
+int highestLegArmInterlockBit(quint16 mask)
+{
+    static const int kOrder[] = {7, 4, 3, 5, 6};
+    for (int bit : kOrder) {
+        if ((mask >> bit) & 0x1) {
+            return bit;
+        }
+    }
+    return -1;
+}
+
+QString legArmInterlockMessage(int bit)
+{
+    QString head;
+    switch (bit) {
+    case 3:
+        head = QStringLiteral("支腿伸出量应设为\"支腿展出全开\"");
+        break;
+    case 4:
+        head = QStringLiteral("重载工况，伸缩臂伸出量禁止超过2000mm");
+        break;
+    case 5:
+        head = QStringLiteral("支腿伸出量应设为\"档位2\"");
+        break;
+    case 6:
+        head = QStringLiteral("支腿伸出量应设为\"档位1\"");
+        break;
+    case 7:
+        head = QStringLiteral("支腿伸出量错误，请立即收回伸缩臂");
+        break;
+    default:
+        return QString();
+    }
+    return head + QStringLiteral("，操作已中断，请修改后再进行操作");
+}
+
+bool isInclinometerTiltRiskWarningDegree(qreal degree, qreal alarmDeg, qreal lockDeg)
+{
+    const qreal absDeg = qAbs(degree);
+    return absDeg > alarmDeg && absDeg <= lockDeg;
+}
+
+bool isInclinometerTiltLockDegree(qreal degree, qreal lockDeg)
+{
+    return qAbs(degree) > lockDeg;
+}
+
 }
 
 bool MainWindow::isBigFeatureEnabled(const QString &key) const
@@ -413,6 +471,7 @@ void MainWindow::setupNavigationConnections()
         }
         ui->TBtn_HomePage->setChecked(true);
         updateNavButtonStyles(nullptr);
+        dismissSixAxisInitToast();
     });
 
     connect(ui->TBtn_SixAxies, &QPushButton::clicked, [this]() {
@@ -424,6 +483,7 @@ void MainWindow::setupNavigationConnections()
         }
         ui->TBtn_SixAxies->setChecked(true);
         updateNavButtonStyles(nullptr);
+        requestSixAxisInitStatus();
     });
 
     connect(ui->TBtn_ChassisControl, &QPushButton::clicked, [this]() {
@@ -435,6 +495,7 @@ void MainWindow::setupNavigationConnections()
         }
         ui->TBtn_ChassisControl->setChecked(true);
         updateNavButtonStyles(nullptr);
+        dismissSixAxisInitToast();
     });
 }
 
@@ -1248,6 +1309,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
     repositionCollapsibleControlPanels();
+    repositionToasts();
 }
 
 // 修改事件过滤器(虚拟键盘)
@@ -1655,6 +1717,12 @@ void MainWindow::updateInclinometerValue(bool isXAxis, quint16 rawValue)
     const qint16 signedRaw = static_cast<qint16>(rawValue);
     const qreal degree = static_cast<qreal>(signedRaw) / 100.0;
     card->setTiltValue(degree);
+    if (isXAxis) {
+        m_inclinometerXDegree = degree;
+    } else {
+        m_inclinometerYDegree = degree;
+    }
+    refreshInclinometerTiltPresentation();
 }
 
 //模拟速度
@@ -1695,6 +1763,9 @@ void MainWindow::initSliderEditUI()
     QList<TechSliderEdit*> nonAGVSliders;
 
     for (TechSliderEdit *slider : sliders) {
+        connect(slider, &TechSliderEdit::rangeRejected, this, [this](const QString &message) {
+            showToast(message, ToastKind::Warning);
+        });
         QString objName = slider->objectName();
 
         // 根据控件对象名设置特定的值范围
@@ -3421,6 +3492,198 @@ void MainWindow::showNotification(const QString &message)
     }
 }
 
+void MainWindow::showToast(const QString &message, ToastKind kind, int durationMs)
+{
+    const QString text = message.trimmed();
+    if (text.isEmpty()) {
+        return;
+    }
+
+    const bool persistent = (durationMs == 0);
+    const int toastDurationMs = persistent
+                                    ? 0
+                                    : (durationMs > 0
+                                           ? durationMs
+                                           : (kind == ToastKind::Warning
+                                                  ? kToastWarningDurationMs
+                                                  : kToastDefaultDurationMs));
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (text == m_lastToastMessage && (nowMs - m_lastToastMs) < kToastDuplicateWindowMs) {
+        return;
+    }
+    for (int i = 0; i < m_toasts.size(); ++i) {
+        if (m_toasts.at(i).message == text) {
+            return;
+        }
+    }
+    m_lastToastMessage = text;
+    m_lastToastMs = nowMs;
+
+    if (ui && ui->statusBar) {
+        if (toastDurationMs > 0) {
+            ui->statusBar->showMessage(text, toastDurationMs);
+        } else {
+            ui->statusBar->showMessage(text);
+        }
+    }
+
+    while (m_toasts.size() >= kToastMaxCount) {
+        dismissToast(m_toasts.first().widget);
+    }
+
+    auto *toast = new QWidget(this);
+    toast->setObjectName(QStringLiteral("toastWidget"));
+    toast->setAttribute(Qt::WA_StyledBackground);
+    toast->setFocusPolicy(Qt::NoFocus);
+    toast->setStyleSheet(toastStyleSheet(kind));
+
+    auto *layout = new QHBoxLayout(toast);
+    layout->setContentsMargins(14, 10, 12, 10);
+    layout->setSpacing(12);
+
+    auto *label = new QLabel(text, toast);
+    label->setObjectName(QStringLiteral("toastLabel"));
+    label->setFocusPolicy(Qt::NoFocus);
+    label->setWordWrap(true);
+    label->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+    label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    layout->addWidget(label, 1);
+
+    const int lineCount = qMax(1, text.count(QLatin1Char('\n')) + 1);
+    const int height = qBound(kToastMinHeight, 38 + lineCount * 24, kToastMaxHeight);
+    toast->setFixedSize(kToastWidth, height);
+
+    QTimer *timer = nullptr;
+    if (!persistent) {
+        timer = new QTimer(toast);
+        timer->setSingleShot(true);
+        timer->setInterval(toastDurationMs);
+        connect(timer, &QTimer::timeout, this, [this, toast]() {
+            dismissToast(toast);
+        });
+    }
+
+    m_toasts.append({toast, timer, text});
+    if (timer) {
+        timer->start();
+    }
+    repositionToasts();
+}
+
+void MainWindow::showPersistentToast(const QString &message)
+{
+    const QString text = message.trimmed();
+    if (text.isEmpty()) {
+        return;
+    }
+    for (int i = 0; i < m_toasts.size(); ++i) {
+        if (m_toasts.at(i).message == text) {
+            return;
+        }
+    }
+    if (m_lastToastMessage == text) {
+        m_lastToastMessage.clear();
+    }
+    showToast(text, ToastKind::Warning, 0);
+}
+
+void MainWindow::dismissToast(QWidget *toast)
+{
+    if (!toast) {
+        return;
+    }
+
+    for (int i = 0; i < m_toasts.size(); ++i) {
+        if (m_toasts.at(i).widget == toast) {
+            if (m_toasts.at(i).timer) {
+                m_toasts.at(i).timer->stop();
+            }
+            m_toasts.removeAt(i);
+            break;
+        }
+    }
+
+    if (m_robotLimitToastWidget == toast) {
+        m_robotLimitToastWidget = nullptr;
+    }
+    toast->deleteLater();
+    repositionToasts();
+}
+
+void MainWindow::dismissToastByMessage(const QString &message)
+{
+    const QString text = message.trimmed();
+    if (text.isEmpty()) {
+        return;
+    }
+    for (int i = m_toasts.size() - 1; i >= 0; --i) {
+        if (m_toasts.at(i).message == text) {
+            dismissToast(m_toasts.at(i).widget);
+        }
+    }
+}
+
+void MainWindow::repositionToasts()
+{
+    if (m_toasts.isEmpty()) {
+        return;
+    }
+
+    const QRect area = rect();
+    const int x = qMax(area.left(), area.right() - kToastWidth - kToastRightMargin + 1);
+    int bottom = area.bottom() - kToastBottomMargin + 1;
+
+    for (int i = m_toasts.size() - 1; i >= 0; --i) {
+        QWidget *toast = m_toasts.at(i).widget;
+        if (!toast) {
+            continue;
+        }
+        const int y = qMax(area.top(), bottom - toast->height());
+        toast->move(x, y);
+        toast->show();
+        toast->raise();
+        bottom = y - kToastSpacing;
+    }
+}
+
+QString MainWindow::toastStyleSheet(ToastKind kind) const
+{
+    QString borderColor = QStringLiteral("#4da3ff");
+    QString textColor = QStringLiteral("#e8f3ff");
+    QString backgroundColor = QStringLiteral("rgba(18, 28, 42, 218)");
+
+    switch (kind) {
+    case ToastKind::Success:
+        borderColor = QStringLiteral("#5ed98a");
+        textColor = QStringLiteral("#e9fff0");
+        backgroundColor = QStringLiteral("rgba(18, 52, 30, 218)");
+        break;
+    case ToastKind::Warning:
+        borderColor = QStringLiteral("#ffb84d");
+        textColor = QStringLiteral("#fff3d1");
+        backgroundColor = QStringLiteral("rgba(62, 42, 6, 222)");
+        break;
+    case ToastKind::Info:
+        break;
+    }
+
+    return QStringLiteral(
+               "#toastWidget {"
+               "  background-color: %1;"
+               "  border: 1px solid %2;"
+               "  border-radius: 9px;"
+               "}"
+               "#toastLabel {"
+               "  color: %3;"
+               "  font-size: 16px;"
+               "  font-weight: 600;"
+               "  background-color: transparent;"
+               "  padding-right: 4px;"
+               "}")
+        .arg(backgroundColor, borderColor, textColor);
+}
+
 // 辅助函数：根据记录类型获取颜色
 QString MainWindow::getRecordColor(const OperationRecord &record)
 {
@@ -3903,6 +4166,7 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
     if ((!m_stepModeEnabled && !isJointModeForExternal) && pressed && !isSixAxisSpecialKey) {
         qCDebug(lcMainWindow) << "外部按键忽略：当前未处于可执行模式，按键○" << keyNumber
                  << (pressed ? "按下" : "释放");
+        showToast(QStringLiteral("未选择关节运动"), ToastKind::Warning);
         return;
     }
 
@@ -3917,6 +4181,7 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
             if (m_stepModeUnknown) {
                 if (pressed) {
                     qCDebug(lcMainWindow) << "六自由度外部按键忽略：当前模式未确定，按键○" << keyNumber;
+                    showToast(QStringLiteral("未选择步进或者点动模式"), ToastKind::Warning);
                 }
                 return;
             }
@@ -4008,6 +4273,7 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
             double rawStepValue = sixStepValueEdit->text().toDouble(&ok);
             if (!ok) {
                 qCDebug(lcMainWindow) << "六轴步进外部按键忽略：步进值无效" << sixStepValueEdit->text();
+                showToast(QStringLiteral("当前未设置步进值"), ToastKind::Warning);
                 return;
             }
 
@@ -4065,6 +4331,7 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
         if (m_stepModeUnknown) {
             if (pressed) {
                 qCDebug(lcMainWindow) << "六自由度外部按键忽略：当前模式未确定，按键○" << keyNumber;
+                showToast(QStringLiteral("未选择步进或者点动模式"), ToastKind::Warning);
             }
             return;
         }
@@ -4197,6 +4464,7 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
                 if (selectedStepTargetRegister() != keyMappedTargetReg) {
                     qCDebug(lcMainWindow) << "步进外部按键忽略：按键○" << keyNumber
                                           << "与当前目标" << selectedStepTargetName() << "不匹配";
+                    showToast(QStringLiteral("外部按键与当前选中的步进目标不匹配"), ToastKind::Warning);
                     return;
                 }
 
@@ -4209,6 +4477,7 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
                 double stepValue = m_stepValueEdit->text().toDouble(&ok);
                 if (!ok) {
                     qCDebug(lcMainWindow) << "步进外部按键忽略：步进值无效" << m_stepValueEdit->text();
+                    showToast(QStringLiteral("当前未设置步进值"), ToastKind::Warning);
                     return;
                 }
 
@@ -4682,6 +4951,7 @@ void MainWindow::onModbusConnected()
     }
 
     MainModbusStatus::appendOperationRecord(m_recorder, MainModbusState::Connected);
+    clearMainLinkDownToast();
 }
 
 // Modbus断开连接槽函数
@@ -4690,6 +4960,7 @@ void MainWindow::onModbusDisconnected()
     qCDebug(lcMainWindow) << "Modbus设备断开连接";
     MainModbusStatus::applyUiState(ui ? ui->statusBar : nullptr, MainModbusState::Disconnected);
     MainModbusStatus::appendOperationRecord(m_recorder, MainModbusState::Disconnected);
+    noteMainLinkDown();
 }
 
 // Modbus错误槽函数
@@ -4698,6 +4969,7 @@ void MainWindow::onModbusError(const QString &error)
     qCDebug(lcMainWindow) << "Modbus错误:" << error;
     MainModbusStatus::applyUiState(ui ? ui->statusBar : nullptr, MainModbusState::Error, error);
     MainModbusStatus::appendOperationRecord(m_recorder, MainModbusState::Error, error);
+    noteMainLinkDown();
 }
 // 速度选择
 void MainWindow::initSpeedModeSelector()
@@ -5120,6 +5392,90 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
             }
             QTimer::singleShot(0, this, &MainWindow::checkAlarmConditions);
         }
+
+        const bool weightOverload = (((value >> 3) & 0x01) == 1);
+        if (weightOverload != m_robotWeightOverload150Bit3Flag) {
+            m_robotWeightOverload150Bit3Flag = weightOverload;
+            if (weightOverload) {
+                if (!m_robotWeightLock150Bit7Flag && !m_emergencyStopAlarm) {
+                    showRobotWeightOverloadDialog();
+                }
+            } else {
+                hideRobotWeightOverloadDialog();
+            }
+        }
+
+        const bool weightLock = (((value >> 7) & 0x01) == 1);
+        if (weightLock != m_robotWeightLock150Bit7Flag) {
+            m_robotWeightLock150Bit7Flag = weightLock;
+            if (weightLock) {
+                hideRobotWeightOverloadDialog();
+                if (!m_emergencyStopAlarm) {
+                    showRobotWeightLockDialog();
+                } else {
+                    showPersistentToast(kRobotWeightLockToastText);
+                }
+            } else {
+                hideRobotWeightLockDialog();
+                if (m_robotWeightOverload150Bit3Flag && !m_emergencyStopAlarm) {
+                    showRobotWeightOverloadDialog();
+                }
+            }
+        }
+    }
+
+    if (address == 102) {
+        const bool positiveLimitReached = (((value >> 2) & 0x01) == 1);
+        const bool negativeLimitReached = (((value >> 3) & 0x01) == 1);
+
+        if (positiveLimitReached != m_robotPositiveLimit102Bit2Flag) {
+            m_robotPositiveLimit102Bit2Flag = positiveLimitReached;
+            if (positiveLimitReached) {
+                showRobotLimitReachedToast(true);
+            } else if (m_robotLimitToastTrigger == RobotLimitToastTrigger::Positive) {
+                hideRobotLimitReachedToast();
+            }
+        }
+
+        if (negativeLimitReached != m_robotNegativeLimit102Bit3Flag) {
+            m_robotNegativeLimit102Bit3Flag = negativeLimitReached;
+            if (negativeLimitReached) {
+                showRobotLimitReachedToast(false);
+            } else if (m_robotLimitToastTrigger == RobotLimitToastTrigger::Negative) {
+                hideRobotLimitReachedToast();
+            }
+        }
+    }
+
+    if (address == 151) {
+        const bool cableRetracted = (((value >> 0) & 0x01) == 1);
+        const bool cableExtended = (((value >> 1) & 0x01) == 1);
+        if (cableRetracted != m_cableRetracted151Bit0Flag) {
+            m_cableRetracted151Bit0Flag = cableRetracted;
+            if (cableRetracted) {
+                showToast(QStringLiteral("卷样机钢缆已完全收回"), ToastKind::Warning);
+            }
+        }
+        if (cableExtended != m_cableExtended151Bit1Flag) {
+            m_cableExtended151Bit1Flag = cableExtended;
+            if (cableExtended) {
+                showToast(QStringLiteral("卷样机钢缆已完全放出"), ToastKind::Warning);
+            }
+        }
+
+        const quint16 newMask = static_cast<quint16>(value & kLegArmInterlock151Mask);
+        if (newMask != m_legArmInterlock151Bits) {
+            m_legArmInterlock151Bits = newMask;
+            if (newMask == 0) {
+                hideLegArmInterlockToast();
+            } else {
+                showLegArmInterlockToast();
+            }
+        }
+    }
+
+    if (address == 154 && m_sixAxisInitPromptArmed) {
+        applySixAxisInitStatus(value);
     }
 }
 //浮点数辅助函数
@@ -5864,6 +6220,7 @@ void MainWindow::onAGVModbusConnected()
     record.oldValue = "";
     record.newValue = "连接成功";
     m_recorder->addRecord(record);
+    clearAgvLinkDownToast();
 
     // 开机后短时重复读取关键寄存器，尽快回填模式按钮与驻车状态。
     for (int i = 0; i < 5; ++i) {
@@ -5911,6 +6268,7 @@ void MainWindow::onAGVModbusDisconnected()
     record.oldValue = "";
     record.newValue = "连接断开";
     m_recorder->addRecord(record);
+    noteAgvLinkDown();
 }
 
 /**
@@ -5941,6 +6299,7 @@ void MainWindow::onAGVModbusError(const QString &error)
     record.oldValue = "";
     record.newValue = error;
     m_recorder->addRecord(record);
+    noteAgvLinkDown();
 }
 
 void MainWindow::onAGVBitVariableChanged(int address, int bitPos, bool value)
@@ -6528,52 +6887,7 @@ void MainWindow::writeToAGVDevice(int address, int value, bool bypassWirelessWar
     m_agvDisconnectedWarnedAddresses.remove(address);
 
     if (!bypassWirelessWarning && m_controlMode == WIRELESS_MODE) {
-        QDialog warnDialog(this);
-        warnDialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-        warnDialog.setModal(true);
-
-        QVBoxLayout *layout = new QVBoxLayout(&warnDialog);
-        layout->setContentsMargins(20, 15, 20, 15);
-        layout->setSpacing(10);
-
-        QLabel *msgLabel = new QLabel("当前处于无线模式", &warnDialog);
-        msgLabel->setAlignment(Qt::AlignCenter);
-        msgLabel->setWordWrap(true);
-        layout->addWidget(msgLabel);
-
-        QPushButton *confirmBtn = new QPushButton("确认", &warnDialog);
-        layout->addWidget(confirmBtn);
-        connect(confirmBtn, &QPushButton::clicked, &warnDialog, &QDialog::accept);
-
-        warnDialog.setStyleSheet(
-            "QDialog {"
-            "  background-color: rgba(30, 0, 0, 230);"
-            "  border: 3px solid #FFFF00;"
-            "  border-radius: 10px;"
-            "}"
-            "QLabel {"
-            "  color: #FFFF00;"
-            "  font-size: 18px;"
-            "  font-weight: bold;"
-            "  background-color: transparent;"
-            "}"
-            "QPushButton {"
-            "  background-color: #FFFF00;"
-            "  color: #202020;"
-            "  border: 2px solid #FFD65A;"
-            "  border-radius: 6px;"
-            "  padding: 8px 16px;"
-            "  font-size: 14px;"
-            "  font-weight: bold;"
-            "  min-width: 100px;"
-            "}"
-            "QPushButton:hover {"
-            "  background-color: #FFD65A;"
-            "  border-color: #FFFF00;"
-            "}");
-
-        warnDialog.setFixedSize(350, 120);
-        warnDialog.exec();
+        showWirelessModeWarningToast();
         return;
     }
 
@@ -6617,52 +6931,7 @@ bool MainWindow::writeAGVRegisterBits(int address,
     }
 
     if (m_controlMode == WIRELESS_MODE) {
-        QDialog warnDialog(this);
-        warnDialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-        warnDialog.setModal(true);
-
-        QVBoxLayout *layout = new QVBoxLayout(&warnDialog);
-        layout->setContentsMargins(20, 15, 20, 15);
-        layout->setSpacing(10);
-
-        QLabel *msgLabel = new QLabel("当前处于无线模式", &warnDialog);
-        msgLabel->setAlignment(Qt::AlignCenter);
-        msgLabel->setWordWrap(true);
-        layout->addWidget(msgLabel);
-
-        QPushButton *confirmBtn = new QPushButton("确认", &warnDialog);
-        layout->addWidget(confirmBtn);
-        connect(confirmBtn, &QPushButton::clicked, &warnDialog, &QDialog::accept);
-
-        warnDialog.setStyleSheet(
-            "QDialog {"
-            "  background-color: rgba(30, 0, 0, 230);"
-            "  border: 3px solid #FFFF00;"
-            "  border-radius: 10px;"
-            "}"
-            "QLabel {"
-            "  color: #FFFF00;"
-            "  font-size: 18px;"
-            "  font-weight: bold;"
-            "  background-color: transparent;"
-            "}"
-            "QPushButton {"
-            "  background-color: #FFFF00;"
-            "  color: #202020;"
-            "  border: 2px solid #FFD65A;"
-            "  border-radius: 6px;"
-            "  padding: 8px 16px;"
-            "  font-size: 14px;"
-            "  font-weight: bold;"
-            "  min-width: 100px;"
-            "}"
-            "QPushButton:hover {"
-            "  background-color: #FFD65A;"
-            "  border-color: #FFFF00;"
-            "}");
-
-        warnDialog.setFixedSize(350, 120);
-        warnDialog.exec();
+        showWirelessModeWarningToast();
         return false;
     }
 
@@ -8677,10 +8946,13 @@ void MainWindow::checkAlarmConditions()
 
     const bool alarmStatusLogsEnabled = isFeatureEnabled("alarm_system", "alarm.status_logs");
 
-    // 确保主设备急停位(150)持续被读取，避免因轮询覆盖不全导致报警丢失。
-    if (isFeatureEnabled("alarm_system", "alarm.emergency_stop")
-        && MainDeviceModbusApi::isReady(m_modbusManager)) {
-        MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 150, 1);
+    // 确保主设备急停位(150)以及提示位 102/151 持续被读取。
+    if (MainDeviceModbusApi::isReady(m_modbusManager)) {
+        if (isFeatureEnabled("alarm_system", "alarm.emergency_stop")) {
+            MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 150, 1);
+        }
+        MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 102, 1);
+        MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 151, 1);
     }
 
     // 调试输出当前报警状态
@@ -8717,6 +8989,7 @@ void MainWindow::checkAlarmConditions()
 // 新增：显示报警
 void MainWindow::showAlarm(const QString &message, const QString &color, bool closable)
 {
+    Q_UNUSED(closable);
     if (!isFeatureEnabled("alarm_system", "alarm.popup")) {
         return;
     }
@@ -8755,25 +9028,11 @@ void MainWindow::showAlarm(const QString &message, const QString &color, bool cl
         m_alarmLabel->setWordWrap(true);
         layout->addWidget(m_alarmLabel);
 
-        // 创建清除报警按钮
-        QPushButton *clearBtn = new QPushButton("清除报警", m_alarmWidget);
-        clearBtn->setObjectName("clearAlarmBtn");
-        layout->addWidget(clearBtn);
-
-        connect(clearBtn, &QPushButton::clicked, this, &MainWindow::on_TBtn_RemoveWarning_clicked);
-
-        // 设置固定大小
-        m_alarmWidget->setFixedSize(350, 120);
+        m_alarmWidget->setFixedSize(380, 130);
 
         qCDebug(lcMainWindow) << "报警窗口创建完成";
     }
-    
-    // 控制清除按钮的显示/隐藏
-    QPushButton *clearBtn = m_alarmWidget->findChild<QPushButton*>("clearAlarmBtn");
-    if (clearBtn) {
-        clearBtn->setVisible(closable);
-    }
-    
+
     // 更新报警信息
     m_alarmLabel->setText(message);
 
@@ -8790,44 +9049,21 @@ void MainWindow::showAlarm(const QString &message, const QString &color, bool cl
                              "    font-weight: bold;"
                              "    background-color: transparent;"
                              "}"
-                             "#clearAlarmBtn {"
-                             "    background-color: %1;"
-                             "    color: #ffffff;"
-                             "    border: 2px solid %2;"
-                             "    border-radius: 6px;"
-                             "    padding: 8px 16px;"
-                             "    font-size: 14px;"
-                             "    font-weight: bold;"
-                             "    min-width: 100px;"
-                             "}"
-                             "#clearAlarmBtn:hover {"
-                             "    background-color: %2;"
-                             "    border-color: %1;"
-                             "}"
-                             ).arg(color)
-                             .arg(color == "#ff5555" ? "#ff8888" : "#ffaa55");
+                             ).arg(color);
 
     m_alarmWidget->setStyleSheet(styleSheet);
 
-    // 计算显示位置（屏幕右下角）
-    QScreen *screen = QGuiApplication::primaryScreen();
-    QRect screenGeometry = screen->geometry();
-    int x = screenGeometry.width() - m_alarmWidget->width() - 50;
-    int y = screenGeometry.height() - m_alarmWidget->height() - 50;
-
-    // 显示报警窗口
-    m_alarmWidget->move(x, y);
     m_alarmWidget->show();
     m_alarmWidget->raise();
     m_alarmWidget->activateWindow();
-
-    qCDebug(lcMainWindow) << "报警窗口显示在位置: (" << x << "," << y << ")";
+    repositionCenteredPopups();
 }
 // 新增：隐藏报警
 void MainWindow::hideAlarm()
 {
     if (m_alarmWidget && m_alarmWidget->isVisible()) {
         m_alarmWidget->hide();
+        repositionCenteredPopups();
     }
 }
 
@@ -8836,6 +9072,10 @@ void MainWindow::updateAlarmDisplay()
 {
     // 如果有任何报警处于激活状态，显示相应的报警
     if (m_emergencyStopAlarm) {
+        if (!m_emergencyPopupsSuppressed) {
+            hideNonEmergencyPopups();
+            m_emergencyPopupsSuppressed = true;
+        }
         const bool robotEmergency = m_robotArmEmergency150Flag;
         const bool chassisEmergency = m_agvChassisEmergency51Bit5Flag;
         QString alarmMessage;
@@ -8848,6 +9088,10 @@ void MainWindow::updateAlarmDisplay()
         }
         showAlarm(alarmMessage, "#ff5555", false);
     } else {
+        if (m_emergencyPopupsSuppressed) {
+            m_emergencyPopupsSuppressed = false;
+            restoreConditionPopupsAfterEmergency();
+        }
         // 没有报警时隐藏窗口
         // 只有在没有转向切换报警时才隐藏
         if (!m_isSteeringAlarmActive) {
@@ -8873,7 +9117,9 @@ void MainWindow::handleAGVRegister51Alerts(quint16 value)
             m_recorder->addRecord(record);
         }
         if (stationOffline) {
-            showAgvStationOfflineAlarm();
+            if (!m_emergencyStopAlarm) {
+                showAgvStationOfflineAlarm();
+            }
         } else {
             hideAgvStationOfflineAlarm();
         }
@@ -8894,7 +9140,9 @@ void MainWindow::handleAGVRegister51Alerts(quint16 value)
             m_recorder->addRecord(record);
         }
         if (driveFault) {
-            showAgvDriveFaultAlarm();
+            if (!m_emergencyStopAlarm) {
+                showAgvDriveFaultAlarm();
+            }
         } else {
             hideAgvDriveFaultAlarm();
         }
@@ -8915,7 +9163,7 @@ void MainWindow::handleAGVRegister51Alerts(quint16 value)
             m_recorder->addRecord(record);
         }
         if (batteryLow) {
-            if (!m_agvBatteryLowAcked) {
+            if (!m_emergencyStopAlarm) {
                 showAgvBatteryLowDialog();
             }
         } else {
@@ -8962,19 +9210,16 @@ void MainWindow::showAgvStationOfflineAlarm()
         m_agvStationOfflineAlarmLabel->setText("检测到有站掉线");
     }
 
-    QScreen *screen = QGuiApplication::primaryScreen();
-    const QRect screenGeometry = screen->availableGeometry();
-    const int x = screenGeometry.width() - m_agvStationOfflineAlarmWidget->width() - 40;
-    const int y = 60;
-    m_agvStationOfflineAlarmWidget->move(x, y);
     m_agvStationOfflineAlarmWidget->show();
     m_agvStationOfflineAlarmWidget->raise();
+    repositionCenteredPopups();
 }
 
 void MainWindow::hideAgvStationOfflineAlarm()
 {
     if (m_agvStationOfflineAlarmWidget && m_agvStationOfflineAlarmWidget->isVisible()) {
         m_agvStationOfflineAlarmWidget->hide();
+        repositionCenteredPopups();
     }
 }
 
@@ -9015,19 +9260,16 @@ void MainWindow::showAgvDriveFaultAlarm()
         m_agvDriveFaultAlarmLabel->setText("检测到驱动故障");
     }
 
-    QScreen *screen = QGuiApplication::primaryScreen();
-    const QRect screenGeometry = screen->availableGeometry();
-    const int x = screenGeometry.width() - m_agvDriveFaultAlarmWidget->width() - 40;
-    const int y = 200;
-    m_agvDriveFaultAlarmWidget->move(x, y);
     m_agvDriveFaultAlarmWidget->show();
     m_agvDriveFaultAlarmWidget->raise();
+    repositionCenteredPopups();
 }
 
 void MainWindow::hideAgvDriveFaultAlarm()
 {
     if (m_agvDriveFaultAlarmWidget && m_agvDriveFaultAlarmWidget->isVisible()) {
         m_agvDriveFaultAlarmWidget->hide();
+        repositionCenteredPopups();
     }
 }
 
@@ -9048,25 +9290,7 @@ void MainWindow::showAgvBatteryLowDialog()
         msgLabel->setWordWrap(true);
         layout->addWidget(msgLabel);
 
-        QPushButton *confirmBtn = new QPushButton("确认", m_agvBatteryLowDialog);
-        layout->addWidget(confirmBtn, 0, Qt::AlignCenter);
-        connect(confirmBtn, &QPushButton::clicked, this, [this]() {
-            if (m_recorder) {
-                OperationRecord record;
-                record.timestamp = QDateTime::currentDateTime();
-                record.pageName = "提示系统";
-                record.controlName = "低电量提示";
-                record.controlType = "提示窗口";
-                record.operation = "用户确认";
-                record.oldValue = "电池电量低，请充电";
-                record.newValue = "用户点击确认，窗口隐藏";
-                m_recorder->addRecord(record);
-            }
-            m_agvBatteryLowAcked = true;
-            hideAgvBatteryLowDialog();
-        });
-
-        m_agvBatteryLowDialog->setFixedSize(360, 150);
+        m_agvBatteryLowDialog->setFixedSize(360, 120);
         m_agvBatteryLowDialog->setStyleSheet(
             "#agvBatteryLowDialog {"
             "  background-color: rgba(50, 35, 0, 235);"
@@ -9078,31 +9302,20 @@ void MainWindow::showAgvBatteryLowDialog()
             "  font-size: 20px;"
             "  font-weight: bold;"
             "  background-color: transparent;"
-            "}"
-            "QPushButton {"
-            "  background-color: #ffb000;"
-            "  color: #1f1f1f;"
-            "  border: 2px solid #ffd166;"
-            "  border-radius: 6px;"
-            "  padding: 8px 16px;"
-            "  font-size: 14px;"
-            "  font-weight: bold;"
-            "  min-width: 90px;"
-            "}"
-            "QPushButton:hover {"
-            "  background-color: #ffd166;"
             "}");
     }
 
     m_agvBatteryLowDialog->show();
     m_agvBatteryLowDialog->raise();
     m_agvBatteryLowDialog->activateWindow();
+    repositionCenteredPopups();
 }
 
 void MainWindow::hideAgvBatteryLowDialog()
 {
     if (m_agvBatteryLowDialog && m_agvBatteryLowDialog->isVisible()) {
         m_agvBatteryLowDialog->hide();
+        repositionCenteredPopups();
     }
 }
 
@@ -9120,74 +9333,7 @@ void MainWindow::showRobotOperationHintDialog(const QString &message)
         m_recorder->addRecord(record);
     }
 
-    if (!m_robotOperationHintDialog) {
-        m_robotOperationHintDialog = new QDialog(this);
-        m_robotOperationHintDialog->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-        m_robotOperationHintDialog->setModal(false);
-        m_robotOperationHintDialog->setObjectName("robotOperationHintDialog");
-
-        QVBoxLayout *layout = new QVBoxLayout(m_robotOperationHintDialog);
-        layout->setContentsMargins(20, 15, 20, 15);
-        layout->setSpacing(10);
-
-        QLabel *msgLabel = new QLabel(m_robotOperationHintDialog);
-        msgLabel->setObjectName("robotOperationHintLabel");
-        msgLabel->setAlignment(Qt::AlignCenter);
-        msgLabel->setWordWrap(true);
-        layout->addWidget(msgLabel);
-
-        QPushButton *confirmBtn = new QPushButton("确定", m_robotOperationHintDialog);
-        layout->addWidget(confirmBtn, 0, Qt::AlignCenter);
-        connect(confirmBtn, &QPushButton::clicked, this, [this]() {
-            if (m_recorder) {
-                OperationRecord record;
-                record.timestamp = QDateTime::currentDateTime();
-                record.pageName = "提示系统";
-                record.controlName = "外部按键操作提示";
-                record.controlType = "提示窗口";
-                record.operation = "用户确认";
-                record.oldValue = "";
-                record.newValue = "用户点击确定，提示窗口隐藏";
-                m_recorder->addRecord(record);
-            }
-            hideRobotOperationHintDialog();
-        });
-
-        m_robotOperationHintDialog->setFixedSize(380, 150);
-        m_robotOperationHintDialog->setStyleSheet(
-            "#robotOperationHintDialog {"
-            "  background-color: rgba(20, 30, 50, 235);"
-            "  border: 3px solid #4da3ff;"
-            "  border-radius: 10px;"
-            "}"
-            "#robotOperationHintLabel {"
-            "  color: #8ec5ff;"
-            "  font-size: 20px;"
-            "  font-weight: bold;"
-            "  background-color: transparent;"
-            "}"
-            "QPushButton {"
-            "  background-color: #4da3ff;"
-            "  color: #102030;"
-            "  border: 2px solid #8ec5ff;"
-            "  border-radius: 6px;"
-            "  padding: 8px 16px;"
-            "  font-size: 14px;"
-            "  font-weight: bold;"
-            "  min-width: 90px;"
-            "}"
-            "QPushButton:hover {"
-            "  background-color: #8ec5ff;"
-            "}");
-    }
-
-    if (QLabel *msgLabel = m_robotOperationHintDialog->findChild<QLabel*>("robotOperationHintLabel")) {
-        msgLabel->setText(message);
-    }
-
-    m_robotOperationHintDialog->show();
-    m_robotOperationHintDialog->raise();
-    m_robotOperationHintDialog->activateWindow();
+    showToast(message, ToastKind::Warning, 5000);
 }
 
 void MainWindow::hideRobotOperationHintDialog()
@@ -9195,6 +9341,409 @@ void MainWindow::hideRobotOperationHintDialog()
     if (m_robotOperationHintDialog && m_robotOperationHintDialog->isVisible()) {
         m_robotOperationHintDialog->hide();
     }
+}
+
+void MainWindow::repositionCenteredPopups()
+{
+    QWidget *candidates[] = {
+        m_alarmWidget,
+        m_robotWeightLockWidget,
+        m_robotWeightOverloadWidget,
+        m_inclinometerTiltRiskDialog,
+        m_agvStationOfflineAlarmWidget,
+        m_agvDriveFaultAlarmWidget,
+        m_agvBatteryLowDialog
+    };
+
+    QList<QWidget*> popups;
+    for (QWidget *popup : candidates) {
+        if (popup && popup->isVisible()) {
+            popups.append(popup);
+        }
+    }
+    if (popups.isEmpty()) {
+        return;
+    }
+
+    QScreen *screen = QGuiApplication::primaryScreen();
+    if (!screen) {
+        return;
+    }
+    const QRect area = screen->availableGeometry();
+    const int spacing = 12;
+    int totalHeight = 0;
+    for (int i = 0; i < popups.size(); ++i) {
+        totalHeight += popups.at(i)->height();
+        if (i + 1 < popups.size()) {
+            totalHeight += spacing;
+        }
+    }
+
+    int y = area.top() + qMax(0, (area.height() - totalHeight) / 2);
+    for (QWidget *popup : popups) {
+        const int x = area.left() + qMax(0, (area.width() - popup->width()) / 2);
+        popup->move(x, y);
+        popup->raise();
+        y += popup->height() + spacing;
+    }
+}
+
+void MainWindow::hideNonEmergencyPopups()
+{
+    hideAgvStationOfflineAlarm();
+    hideAgvDriveFaultAlarm();
+    hideAgvBatteryLowDialog();
+    hideRobotWeightOverloadDialog();
+    if (m_robotWeightLockWidget && m_robotWeightLockWidget->isVisible()) {
+        m_robotWeightLockWidget->hide();
+    }
+    hideInclinometerTiltRiskDialog();
+}
+
+void MainWindow::restoreConditionPopupsAfterEmergency()
+{
+    if (m_agvStationOffline51Bit1Flag) {
+        showAgvStationOfflineAlarm();
+    }
+    if (m_agvDriveFault51Bit2Flag) {
+        showAgvDriveFaultAlarm();
+    }
+    if (m_agvBatteryLow51Bit0Flag) {
+        showAgvBatteryLowDialog();
+    }
+    if (m_robotWeightLock150Bit7Flag) {
+        showRobotWeightLockDialog();
+    } else if (m_robotWeightOverload150Bit3Flag) {
+        showRobotWeightOverloadDialog();
+    }
+    refreshInclinometerTiltPresentation();
+}
+
+void MainWindow::showRobotWeightOverloadDialog()
+{
+    if (m_emergencyStopAlarm || m_robotWeightLock150Bit7Flag) {
+        return;
+    }
+    if (!m_robotWeightOverloadWidget) {
+        m_robotWeightOverloadWidget = new QWidget(this);
+        m_robotWeightOverloadWidget->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint |
+                                                    Qt::WindowStaysOnTopHint);
+        m_robotWeightOverloadWidget->setObjectName(QStringLiteral("robotWeightOverloadWidget"));
+
+        auto *layout = new QVBoxLayout(m_robotWeightOverloadWidget);
+        layout->setContentsMargins(20, 15, 20, 15);
+        auto *label = new QLabel(kRobotWeightOverloadText, m_robotWeightOverloadWidget);
+        label->setAlignment(Qt::AlignCenter);
+        label->setWordWrap(true);
+        layout->addWidget(label);
+        m_robotWeightOverloadWidget->setFixedSize(360, 120);
+        m_robotWeightOverloadWidget->setStyleSheet(
+            "#robotWeightOverloadWidget {"
+            "  background-color: rgba(45, 0, 0, 232);"
+            "  border: 3px solid #ff5555;"
+            "  border-radius: 10px;"
+            "}"
+            "QLabel {"
+            "  color: #ffb3b3;"
+            "  font-size: 22px;"
+            "  font-weight: bold;"
+            "  background: transparent;"
+            "}");
+    }
+    m_robotWeightOverloadWidget->show();
+    m_robotWeightOverloadWidget->raise();
+    repositionCenteredPopups();
+}
+
+void MainWindow::hideRobotWeightOverloadDialog()
+{
+    if (m_robotWeightOverloadWidget && m_robotWeightOverloadWidget->isVisible()) {
+        m_robotWeightOverloadWidget->hide();
+        repositionCenteredPopups();
+    }
+}
+
+void MainWindow::showRobotWeightLockDialog()
+{
+    showPersistentToast(kRobotWeightLockToastText);
+    if (m_emergencyStopAlarm) {
+        return;
+    }
+    if (!m_robotWeightLockWidget) {
+        m_robotWeightLockWidget = new QWidget(this);
+        m_robotWeightLockWidget->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint |
+                                                Qt::WindowStaysOnTopHint);
+        m_robotWeightLockWidget->setObjectName(QStringLiteral("robotWeightLockWidget"));
+
+        auto *layout = new QVBoxLayout(m_robotWeightLockWidget);
+        layout->setContentsMargins(20, 15, 20, 15);
+        auto *label = new QLabel(kRobotWeightLockToastText, m_robotWeightLockWidget);
+        label->setAlignment(Qt::AlignCenter);
+        label->setWordWrap(true);
+        layout->addWidget(label);
+        m_robotWeightLockWidget->setFixedSize(420, 160);
+        m_robotWeightLockWidget->setStyleSheet(
+            "#robotWeightLockWidget {"
+            "  background-color: rgba(45, 0, 0, 232);"
+            "  border: 3px solid #ff5555;"
+            "  border-radius: 10px;"
+            "}"
+            "QLabel {"
+            "  color: #ffb3b3;"
+            "  font-size: 20px;"
+            "  font-weight: bold;"
+            "  background: transparent;"
+            "}");
+    }
+    m_robotWeightLockWidget->show();
+    m_robotWeightLockWidget->raise();
+    repositionCenteredPopups();
+}
+
+void MainWindow::hideRobotWeightLockDialog()
+{
+    if (m_robotWeightLockWidget && m_robotWeightLockWidget->isVisible()) {
+        m_robotWeightLockWidget->hide();
+        repositionCenteredPopups();
+    }
+    dismissToastByMessage(kRobotWeightLockToastText);
+}
+
+void MainWindow::showInclinometerTiltRiskDialog()
+{
+    if (m_emergencyStopAlarm || m_inclinometerTiltLockInZone) {
+        return;
+    }
+    if (!m_inclinometerTiltRiskDialog) {
+        m_inclinometerTiltRiskDialog = new QDialog(this);
+        m_inclinometerTiltRiskDialog->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint |
+                                                     Qt::WindowStaysOnTopHint);
+        m_inclinometerTiltRiskDialog->setModal(false);
+        m_inclinometerTiltRiskDialog->setObjectName(QStringLiteral("inclinometerTiltRiskDialog"));
+
+        auto *layout = new QVBoxLayout(m_inclinometerTiltRiskDialog);
+        layout->setContentsMargins(20, 15, 20, 15);
+        auto *label = new QLabel(kInclinometerTiltRiskText, m_inclinometerTiltRiskDialog);
+        label->setAlignment(Qt::AlignCenter);
+        label->setWordWrap(true);
+        layout->addWidget(label);
+        m_inclinometerTiltRiskDialog->setFixedSize(420, 130);
+        m_inclinometerTiltRiskDialog->setStyleSheet(
+            "#inclinometerTiltRiskDialog {"
+            "  background-color: rgba(50, 35, 0, 235);"
+            "  border: 3px solid #ffb000;"
+            "  border-radius: 10px;"
+            "}"
+            "QLabel {"
+            "  color: #ffcc33;"
+            "  font-size: 20px;"
+            "  font-weight: bold;"
+            "  background: transparent;"
+            "}");
+    }
+    m_inclinometerTiltRiskDialog->show();
+    m_inclinometerTiltRiskDialog->raise();
+    repositionCenteredPopups();
+}
+
+void MainWindow::hideInclinometerTiltRiskDialog()
+{
+    if (m_inclinometerTiltRiskDialog && m_inclinometerTiltRiskDialog->isVisible()) {
+        m_inclinometerTiltRiskDialog->hide();
+        repositionCenteredPopups();
+    }
+}
+
+void MainWindow::refreshInclinometerTiltPresentation()
+{
+    if (g_registerCache.contains(5027)) {
+        const qreal deg = static_cast<qreal>(g_registerCache.value(5027)) / 100.0;
+        if (deg > 0.0) {
+            m_inclinometerAlarmThresholdDeg = deg;
+        }
+    }
+    if (g_registerCache.contains(5028)) {
+        const qreal deg = static_cast<qreal>(g_registerCache.value(5028)) / 100.0;
+        if (deg > 0.0) {
+            m_inclinometerLockThresholdDeg = deg;
+        }
+    }
+
+    const qreal alarmDeg = m_inclinometerAlarmThresholdDeg;
+    const qreal lockDeg = m_inclinometerLockThresholdDeg;
+    const bool inLockZone = isInclinometerTiltLockDegree(m_inclinometerXDegree, lockDeg)
+                         || isInclinometerTiltLockDegree(m_inclinometerYDegree, lockDeg);
+    const bool inWarnZone = !inLockZone
+                         && (isInclinometerTiltRiskWarningDegree(m_inclinometerXDegree, alarmDeg, lockDeg)
+                             || isInclinometerTiltRiskWarningDegree(m_inclinometerYDegree, alarmDeg, lockDeg));
+
+    if (inLockZone != m_inclinometerTiltLockInZone) {
+        m_inclinometerTiltLockInZone = inLockZone;
+        if (inLockZone) {
+            m_inclinometerTiltRiskInZone = false;
+            hideInclinometerTiltRiskDialog();
+            showPersistentToast(kInclinometerTiltLockToastText);
+        } else {
+            dismissToastByMessage(kInclinometerTiltLockToastText);
+        }
+    } else if (inLockZone) {
+        showPersistentToast(kInclinometerTiltLockToastText);
+    }
+
+    if (inLockZone) {
+        return;
+    }
+
+    if (inWarnZone != m_inclinometerTiltRiskInZone) {
+        m_inclinometerTiltRiskInZone = inWarnZone;
+        if (inWarnZone) {
+            showInclinometerTiltRiskDialog();
+        } else {
+            hideInclinometerTiltRiskDialog();
+        }
+        return;
+    }
+
+    if (inWarnZone) {
+        showInclinometerTiltRiskDialog();
+    }
+}
+
+void MainWindow::showLegArmInterlockToast()
+{
+    const int bit = highestLegArmInterlockBit(m_legArmInterlock151Bits);
+    const QString message = legArmInterlockMessage(bit);
+    if (message.isEmpty()) {
+        hideLegArmInterlockToast();
+        return;
+    }
+    if (m_legArmInterlockShownMessage != message) {
+        hideLegArmInterlockToast();
+        m_legArmInterlockShownMessage = message;
+    }
+    showPersistentToast(message);
+}
+
+void MainWindow::hideLegArmInterlockToast()
+{
+    if (!m_legArmInterlockShownMessage.isEmpty()) {
+        dismissToastByMessage(m_legArmInterlockShownMessage);
+        m_legArmInterlockShownMessage.clear();
+    }
+}
+
+void MainWindow::noteMainLinkDown()
+{
+    m_mainLinkDownNoted = true;
+    showPersistentToast(QStringLiteral("主控制器未连接"));
+}
+
+void MainWindow::noteAgvLinkDown()
+{
+    m_agvLinkDownNoted = true;
+    showPersistentToast(QStringLiteral("AGV未连接"));
+}
+
+void MainWindow::clearMainLinkDownToast()
+{
+    m_mainLinkDownNoted = false;
+    if (m_lastToastMessage == QStringLiteral("主控制器未连接")) {
+        m_lastToastMessage.clear();
+    }
+    dismissToastByMessage(QStringLiteral("主控制器未连接"));
+}
+
+void MainWindow::clearAgvLinkDownToast()
+{
+    m_agvLinkDownNoted = false;
+    if (m_lastToastMessage == QStringLiteral("AGV未连接")) {
+        m_lastToastMessage.clear();
+    }
+    dismissToastByMessage(QStringLiteral("AGV未连接"));
+}
+
+void MainWindow::showWirelessModeWarningToast()
+{
+    showToast(kWirelessModeWarningText, ToastKind::Warning);
+}
+
+void MainWindow::requestSixAxisInitStatus()
+{
+    m_sixAxisInitPromptArmed = true;
+    if (MainDeviceModbusApi::isReady(m_modbusManager)) {
+        MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 154, 1);
+    }
+    if (g_registerCache.contains(154)) {
+        applySixAxisInitStatus(g_registerCache.value(154));
+    }
+}
+
+void MainWindow::applySixAxisInitStatus(quint16 value)
+{
+    const bool initialized = ((value & 0x01) == 1);
+    const bool onSixAxis = ui && ui->stackedWidget_RobotStatus && ui->page_sixaxies
+                           && ui->stackedWidget_RobotStatus->currentWidget() == ui->page_sixaxies;
+    if (initialized || !onSixAxis || !m_sixAxisInitPromptArmed) {
+        if (initialized || !onSixAxis) {
+            dismissToastByMessage(kSixAxisInitToastText);
+            if (initialized) {
+                m_sixAxisInitPromptArmed = false;
+            }
+        }
+        return;
+    }
+    showPersistentToast(kSixAxisInitToastText);
+}
+
+void MainWindow::dismissSixAxisInitToast()
+{
+    m_sixAxisInitPromptArmed = false;
+    if (m_lastToastMessage == kSixAxisInitToastText) {
+        m_lastToastMessage.clear();
+    }
+    dismissToastByMessage(kSixAxisInitToastText);
+}
+
+bool MainWindow::isRobotArmHomePage() const
+{
+    return ui && ui->stackedWidget_RobotStatus && ui->page_robot
+           && ui->stackedWidget_RobotStatus->currentWidget() == ui->page_robot;
+}
+
+QString MainWindow::robotLimitToastMessage(bool positiveLimit) const
+{
+    const QString limitDir = positiveLimit ? QStringLiteral("正") : QStringLiteral("负");
+    if (g_registerCache.contains(500)) {
+        const int axisCode = static_cast<int>(g_registerCache.value(500));
+        if (axisCode >= 1 && axisCode <= 4) {
+            return QStringLiteral("J%1轴到达%2限位").arg(axisCode).arg(limitDir);
+        }
+    }
+    return QStringLiteral("到达%1限位").arg(limitDir);
+}
+
+void MainWindow::showRobotLimitReachedToast(bool positiveLimit)
+{
+    if (!isRobotArmHomePage()) {
+        return;
+    }
+    const QString message = robotLimitToastMessage(positiveLimit);
+    m_robotLimitToastTrigger = positiveLimit ? RobotLimitToastTrigger::Positive
+                                             : RobotLimitToastTrigger::Negative;
+    const int toastCountBefore = m_toasts.size();
+    showToast(message, ToastKind::Warning, 5000);
+    if (m_toasts.size() > toastCountBefore) {
+        m_robotLimitToastWidget = m_toasts.last().widget;
+    }
+}
+
+void MainWindow::hideRobotLimitReachedToast()
+{
+    if (m_robotLimitToastWidget) {
+        dismissToast(m_robotLimitToastWidget);
+        m_robotLimitToastWidget = nullptr;
+    }
+    m_robotLimitToastTrigger = RobotLimitToastTrigger::None;
 }
 
 void MainWindow::onTestAlarmButtonClicked()
