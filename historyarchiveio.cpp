@@ -24,6 +24,10 @@ void fail(HistoryLoadResult *result, const QString &error)
 {
     result->records.clear();
     result->truncatedFieldCount = 0;
+    result->repairedLineCount = 0;
+    result->skippedLineCount = 0;
+    result->skippedLocations.clear();
+    result->warning.clear();
     result->error = error;
 }
 
@@ -196,6 +200,7 @@ bool HistoryArchiveIo::parseJsonLines(QIODevice *device,
                                     HistoryLoadResult *result)
 {
     int lineNumber = 0;
+    int nonEmptyCount = 0;
     while (!device->atEnd()) {
         QByteArray line = device->readLine();
         ++lineNumber;
@@ -208,9 +213,20 @@ bool HistoryArchiveIo::parseJsonLines(QIODevice *device,
         if (line.endsWith('\r')) {
             line.chop(1);
         }
+        const bool hadNull = line.contains('\0');
+        if (hadNull) {
+            line.replace('\0', "");
+        }
         if (line.trimmed().isEmpty()) {
+            if (hadNull) {
+                ++result->skippedLineCount;
+                if (result->skippedLocations.size() < 10) {
+                    result->skippedLocations.append(QString::number(lineNumber));
+                }
+            }
             continue;
         }
+        ++nonEmptyCount;
         if (result->records.size() >= kMaxRecords) {
             fail(result, QStringLiteral("历史记录条数过多，无法加载"));
             return false;
@@ -219,25 +235,58 @@ bool HistoryArchiveIo::parseJsonLines(QIODevice *device,
         const QString location = QStringLiteral("第 %1 行记录").arg(lineNumber);
         QJsonParseError parseError;
         const QJsonDocument document = QJsonDocument::fromJson(line, &parseError);
-        if (parseError.error != QJsonParseError::NoError || !document.isObject()
-            || isSignedEnvelope(document.object())) {
+        if (parseError.error == QJsonParseError::NoError && document.isObject()
+            && isSignedEnvelope(document.object())) {
             fail(result, QStringLiteral("%1格式不正确").arg(location));
             return false;
+        }
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            ++result->skippedLineCount;
+            if (result->skippedLocations.size() < 10) {
+                result->skippedLocations.append(QString::number(lineNumber));
+            }
+            continue;
+        }
+        if (hadNull) {
+            ++result->repairedLineCount;
         }
 
         OperationRecord record;
         QString error;
         if (!validateRecordObject(document.object(), boundaryDate, exactDate, location, &record,
                                   &result->truncatedFieldCount, &error)) {
-            fail(result, error);
-            return false;
+            if (error.contains(QStringLiteral("不属于"))) {
+                fail(result, error);
+                return false;
+            }
+            ++result->skippedLineCount;
+            if (result->skippedLocations.size() < 10) {
+                result->skippedLocations.append(QString::number(lineNumber));
+            }
+            continue;
         }
         result->records.append(record);
     }
 
+    if (result->skippedLineCount > 100
+        || (nonEmptyCount > 0 && result->skippedLineCount * 100 > nonEmptyCount)) {
+        fail(result, QStringLiteral("历史文件损坏内容过多，无法安全读取"));
+        return false;
+    }
     if (result->records.isEmpty()) {
         fail(result, QStringLiteral("历史记录文件中没有有效记录"));
         return false;
+    }
+    if (result->repairedLineCount > 0 || result->skippedLineCount > 0) {
+        QStringList parts;
+        if (result->repairedLineCount > 0) {
+            parts.append(QStringLiteral("已恢复%1行空字节损坏内容").arg(result->repairedLineCount));
+        }
+        if (result->skippedLineCount > 0) {
+            parts.append(QStringLiteral("已跳过%1行损坏内容").arg(result->skippedLineCount));
+        }
+        parts.append(QStringLiteral("其余%1条记录已读取").arg(result->records.size()));
+        result->warning = parts.join(QStringLiteral("，"));
     }
     return true;
 }
@@ -389,21 +438,50 @@ HistoryDateScanResult HistoryArchiveIo::scanAvailableDates(const QString &direct
     for (auto it = jsonFiles.cbegin(); it != jsonFiles.cend(); ++it) {
         dates.insert(it.key());
     }
+    QStringList unreadableDates;
     for (const QDate &date : dates) {
+        const bool hasJsonl = jsonlFiles.contains(date);
+        const bool hasJson = jsonFiles.contains(date);
+        const HistoryLoadResult jsonlResult = hasJsonl
+            ? loadDateFile(jsonlFiles.value(date).absoluteFilePath(), date)
+            : HistoryLoadResult();
+        const HistoryLoadResult jsonResult = hasJson
+            ? loadDateFile(jsonFiles.value(date).absoluteFilePath(), date)
+            : HistoryLoadResult();
+        if (hasJsonl) {
+            (void)fileContainsDate(jsonlFiles.value(date).absoluteFilePath(), date, true);
+        }
+
+        const bool jsonlClean = jsonlResult.ok()
+            && jsonlResult.skippedLineCount == 0
+            && jsonlResult.repairedLineCount == 0;
+        const bool jsonClean = jsonResult.ok() && jsonResult.skippedLineCount == 0;
         HistoryDateEntry entry;
         entry.date = date;
-        if (jsonlFiles.contains(date) && fileContainsDate(jsonlFiles.value(date).absoluteFilePath(), date, true)) {
+        if (jsonlClean) {
             entry.path = jsonlFiles.value(date).absoluteFilePath();
             entry.jsonLines = true;
             entry.size = jsonlFiles.value(date).size();
-        } else if (jsonFiles.contains(date) && fileContainsDate(jsonFiles.value(date).absoluteFilePath(), date, false)) {
+        } else if (jsonlResult.ok() && jsonClean) {
+            entry.path = jsonFiles.value(date).absoluteFilePath();
+            entry.jsonLines = false;
+            entry.size = jsonFiles.value(date).size();
+        } else if (!jsonResult.ok() && jsonlResult.ok()) {
+            entry.path = jsonlFiles.value(date).absoluteFilePath();
+            entry.jsonLines = true;
+            entry.size = jsonlFiles.value(date).size();
+        } else if (jsonResult.ok()) {
             entry.path = jsonFiles.value(date).absoluteFilePath();
             entry.jsonLines = false;
             entry.size = jsonFiles.value(date).size();
         } else {
+            unreadableDates.append(date.toString(QStringLiteral("yyyy-MM-dd")));
             continue;
         }
         result.entries.insert(date, entry);
+    }
+    if (!unreadableDates.isEmpty()) {
+        result.warning = QStringLiteral("以下日期的历史文件无法读取：%1").arg(unreadableDates.join(QStringLiteral("，")));
     }
     return result;
 }

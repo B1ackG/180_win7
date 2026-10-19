@@ -16,7 +16,11 @@ class QIODevice;
 struct HistoryLoadResult {
     QList<OperationRecord> records;
     QString error;
+    QString warning;
     int truncatedFieldCount = 0;
+    int repairedLineCount = 0;
+    int skippedLineCount = 0;
+    QStringList skippedLocations;
 
     bool ok() const { return error.isEmpty(); }
 };
@@ -31,6 +35,7 @@ struct HistoryDateEntry {
 struct HistoryDateScanResult {
     QMap<QDate, HistoryDateEntry> entries;
     QString error;
+    QString warning;
 
     bool ok() const { return error.isEmpty(); }
 };

@@ -477,6 +477,9 @@ private slots:
     void onFilterRecords();
     /** @brief 打开触屏日历，选择已有历史记录的日期 */
     void onOpenHistoryCalendar();
+    /** @brief 直接选择一个 JSON 或 JSONL 历史文件只读查看 */
+    void onOpenHistoryFile();
+    void startHistoryFileLoad(const QString &fileName);
     /** @brief 历史日期扫描完成 */
     void onHistoryDateScanFinished();
     /** @brief 加载所选日期的全部历史记录 */
@@ -749,6 +752,10 @@ private:
     bool m_reloadTodayWhenIdle = false;
     QLabel *m_historySourceLabel = nullptr;
     QPushButton *m_historySelectFileButton = nullptr;
+    QPushButton *m_historyOpenFileButton = nullptr;
+    QString m_historyLastOpenDir;
+    QString m_historyManualFileName;
+    QString m_queuedHistoryFile;
     QPushButton *m_historyBackToTodayButton = nullptr;
     QPushButton *m_historyNewerPageButton = nullptr;
     QPushButton *m_historyOlderPageButton = nullptr;

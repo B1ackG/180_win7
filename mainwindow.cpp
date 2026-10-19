@@ -2304,6 +2304,8 @@ void MainWindow::setupRecordUI()
 
     m_historySelectFileButton = new QPushButton(QStringLiteral("查看历史记录"), m_historyListHost);
     m_historySelectFileButton->setMinimumHeight(56);
+    m_historyOpenFileButton = new QPushButton(QStringLiteral("打开历史文件"), m_historyListHost);
+    m_historyOpenFileButton->setMinimumHeight(56);
     m_historyBackToTodayButton = new QPushButton(QStringLiteral("返回当天记录"), m_historyListHost);
     m_historyBackToTodayButton->setEnabled(false);
     m_historyNewerPageButton = new QPushButton(QStringLiteral("前一页"), m_historyListHost);
@@ -2315,6 +2317,7 @@ void MainWindow::setupRecordUI()
     m_historyPageLabel->setStyleSheet(QStringLiteral("color: #eaf9ff; font-size: 14px;"));
 
     connect(m_historySelectFileButton, &QPushButton::clicked, this, &MainWindow::onOpenHistoryCalendar);
+    connect(m_historyOpenFileButton, &QPushButton::clicked, this, &MainWindow::onOpenHistoryFile);
     connect(m_historyBackToTodayButton, &QPushButton::clicked, this, &MainWindow::showTodayHistory);
     connect(m_historyNewerPageButton, &QPushButton::clicked, this, &MainWindow::showNewerHistoryPage);
     connect(m_historyOlderPageButton, &QPushButton::clicked, this, &MainWindow::showOlderHistoryPage);
@@ -2326,6 +2329,7 @@ void MainWindow::setupRecordUI()
     toolbarLayout->addWidget(m_historyPageLabel, 0, Qt::AlignRight);
     toolbarLayout->addWidget(m_historyOlderPageButton, 0, Qt::AlignRight);
     toolbarLayout->addWidget(m_historySelectFileButton, 0, Qt::AlignRight);
+    toolbarLayout->addWidget(m_historyOpenFileButton, 0, Qt::AlignRight);
     toolbarLayout->addWidget(m_historyBackToTodayButton, 0, Qt::AlignRight);
     toolbarLayout->addWidget(m_historyOpenFolderButton, 0, Qt::AlignRight);
 
@@ -2539,6 +2543,9 @@ void MainWindow::updateHistoryChrome(int visibleCount, int pageCount)
         if (loading) {
             m_historySourceLabel->setText(QStringLiteral("正在读取…"));
             m_historySourceLabel->setToolTip(m_pendingArchiveFilePath);
+        } else if (m_historyViewMode == HistoryViewMode::Archive && !m_historyManualFileName.isEmpty()) {
+            m_historySourceLabel->setText(m_historyManualFileName);
+            m_historySourceLabel->setToolTip(m_archiveFilePath);
         } else if (m_historyViewMode == HistoryViewMode::Archive && m_archiveDate.isValid()) {
             m_historySourceLabel->setText(QStringLiteral("历史记录：%1")
                                               .arg(m_archiveDate.toString(QStringLiteral("yyyy-MM-dd"))));
@@ -2568,6 +2575,9 @@ void MainWindow::updateHistoryChrome(int visibleCount, int pageCount)
     const bool scanRunning = m_historyScanWatcher && m_historyScanWatcher->isRunning();
     if (m_historySelectFileButton) {
         m_historySelectFileButton->setEnabled(!loading && !loadRunning && !scanRunning);
+    }
+    if (m_historyOpenFileButton) {
+        m_historyOpenFileButton->setEnabled(!loading && !loadRunning && !scanRunning);
     }
     if (m_historyBackToTodayButton) {
         m_historyBackToTodayButton->setEnabled(!loading
@@ -2730,6 +2740,9 @@ void MainWindow::onHistoryDateScanFinished()
         return;
     }
     m_historyDateEntries = result.entries;
+    if (!result.warning.isEmpty()) {
+        showNotification(result.warning);
+    }
     if (m_historyDateEntries.isEmpty()) {
         showTouchHistoryMessage(this, QMessageBox::Information, QStringLiteral("查看历史记录"),
                                 QStringLiteral("暂无历史记录文件"));
@@ -2755,6 +2768,7 @@ void MainWindow::loadHistoryDate(const QDate &date)
         showNotification(QStringLiteral("该日期没有保存历史记录"));
         return;
     }
+    m_historyManualFileName.clear();
     startHistoryArchiveLoad(it->path, date, false);
 }
 
@@ -2864,17 +2878,122 @@ void MainWindow::onHistoryArchiveLoadFinished()
     if (result.truncatedFieldCount > 0) {
         showNotification(QStringLiteral("历史记录已加载，过长内容已截断"));
     }
+    if (!result.warning.isEmpty()) {
+        showNotification(result.warning);
+    }
+}
+
+void MainWindow::onOpenHistoryFile()
+{
+    if (!m_recorder) {
+        return;
+    }
+    const QString startDir = m_historyLastOpenDir.isEmpty()
+        ? m_recorder->getAutoSaveDir()
+        : m_historyLastOpenDir;
+    const QString fileName = QFileDialog::getOpenFileName(
+        this,
+        QStringLiteral("打开历史文件"),
+        startDir,
+        QStringLiteral("历史记录文件 (*.json *.jsonl)"));
+    if (fileName.isEmpty()) {
+        return;
+    }
+    const QString suffix = QFileInfo(fileName).suffix();
+    if (suffix.compare(QStringLiteral("json"), Qt::CaseInsensitive) != 0
+        && suffix.compare(QStringLiteral("jsonl"), Qt::CaseInsensitive) != 0) {
+        showTouchHistoryMessage(this, QMessageBox::Warning, QStringLiteral("读取失败"),
+                                QStringLiteral("请选择 JSON 或 JSONL 历史记录文件"));
+        return;
+    }
+    m_historyLastOpenDir = QFileInfo(fileName).absolutePath();
+    startHistoryFileLoad(fileName);
+}
+
+void MainWindow::startHistoryFileLoad(const QString &fileName)
+{
+    if (!m_recorder || fileName.isEmpty()) {
+        return;
+    }
+    if (m_historyLoadWatcher && m_historyLoadWatcher->isRunning()) {
+        m_queuedHistoryFile = fileName;
+        m_activeHistoryLoadToken = ++m_historyLoadSerial;
+        return;
+    }
+    if (!m_historyLoadWatcher) {
+        m_historyLoadWatcher = new QFutureWatcher<HistoryLoadResult>(this);
+    }
+    disconnect(m_historyLoadWatcher, &QFutureWatcher<HistoryLoadResult>::finished, this, nullptr);
+
+    m_pendingArchiveFilePath = fileName;
+    m_pendingArchiveDate = QDate();
+    m_todayRefreshInProgress = false;
+    m_historyLoadInProgress = true;
+    m_reloadTodayWhenIdle = false;
+    const int token = ++m_historyLoadSerial;
+    m_activeHistoryLoadToken = token;
+    updateHistoryChrome(0, 0);
+
+    connect(m_historyLoadWatcher, &QFutureWatcher<HistoryLoadResult>::finished, this, [this, token, fileName]() {
+        if (token != m_activeHistoryLoadToken) {
+            m_historyLoadInProgress = false;
+            const QString nextFile = m_queuedHistoryFile;
+            m_queuedHistoryFile.clear();
+            if (!nextFile.isEmpty()) {
+                startHistoryFileLoad(nextFile);
+                return;
+            }
+            if (m_reloadTodayWhenIdle && m_historyViewMode == HistoryViewMode::Today) {
+                const QString path = m_recorder ? m_recorder->durableFileForDate(QDate::currentDate()) : QString();
+                if (QFile::exists(path)) {
+                    startHistoryArchiveLoad(path, QDate::currentDate(), true);
+                    return;
+                }
+            }
+            refreshHistoryView();
+            return;
+        }
+        m_historyLoadInProgress = false;
+        if (!m_historyLoadWatcher) {
+            return;
+        }
+        const HistoryLoadResult result = m_historyLoadWatcher->result();
+        if (!result.ok()) {
+            refreshHistoryView();
+            showTouchHistoryMessage(this, QMessageBox::Warning, QStringLiteral("读取失败"), result.error);
+            return;
+        }
+        m_archiveRecords = result.records;
+        m_archiveFilePath = fileName;
+        m_archiveDate = QDate();
+        m_historyManualFileName = QFileInfo(fileName).fileName();
+        m_historyViewMode = HistoryViewMode::Archive;
+        m_historyPage = 0;
+        refreshHistoryView();
+        if (result.truncatedFieldCount > 0) {
+            showNotification(QStringLiteral("历史记录已加载，过长内容已截断"));
+        }
+        if (!result.warning.isEmpty()) {
+            showNotification(result.warning);
+        }
+    });
+
+    m_historyLoadWatcher->setFuture(QtConcurrent::run([fileName]() {
+        return HistoryArchiveIo::loadFile(fileName);
+    }));
 }
 
 void MainWindow::showTodayHistory()
 {
-    ++m_historyLoadSerial;
+    m_activeHistoryLoadToken = ++m_historyLoadSerial;
+    m_queuedHistoryFile.clear();
     m_historyLoadInProgress = false;
     m_todayRefreshInProgress = false;
     m_todayDisplayReady = false;
     m_todayDisplayRecords.clear();
     m_historyViewMode = HistoryViewMode::Today;
     m_historyPage = 0;
+    m_historyManualFileName.clear();
     m_archiveRecords.clear();
     m_archiveFilePath.clear();
     m_archiveDate = QDate();

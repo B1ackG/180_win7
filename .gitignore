@@ -72,3 +72,8 @@ system_check.log
 # Added by Assistant staging review
 *.debug
 *.release
+
+# Added by Assistant staging review
+*.moc
+tests/tst_historyarchiveio
+tst_historyarchiveio

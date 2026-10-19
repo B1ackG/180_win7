@@ -216,8 +216,8 @@ void OperationRecorder::initAutoSave()
         }
     } else if (m_tcpReceiverServer && m_tcpReceiverServer->isListening()) {
         const QString bindText = m_listenLocalOnly
-            ? QStringLiteral("127.0.0.1:%1").arg(m_tcpReceiverPort)
-            : QStringLiteral("0.0.0.0:%1").arg(m_tcpReceiverPort);
+            ? QStringLiteral("仅监听本机，端口一二三四五")
+            : QStringLiteral("监听全部网络，端口一二三四五");
         OperationRecord rec;
         rec.timestamp = QDateTime::currentDateTime();
         rec.pageName = QStringLiteral("日志服务");
@@ -266,11 +266,14 @@ bool OperationRecorder::appendDurableRecord(const OperationRecord &record)
         return false;
     }
     const QByteArray line = QJsonDocument(record.toJson()).toJson(QJsonDocument::Compact) + '\n';
-    const bool ok = file.write(line) == line.size() && file.flush();
-    if (ok) {
-        noteDirtyHistoryDate(date);
+    const qint64 written = file.write(line);
+    if (written != line.size() || !file.flush()) {
+        qWarning() << "追加历史记录未完整写入:" << file.fileName()
+                   << "期望" << line.size() << "实际" << written << file.errorString();
+        return false;
     }
-    return ok;
+    noteDirtyHistoryDate(date);
+    return true;
 }
 
 QString OperationRecorder::durableFileForDate(const QDate &date) const
@@ -568,8 +571,8 @@ void OperationRecorder::setupTcpReceiver()
 
     const QHostAddress bindAddress = m_listenLocalOnly ? QHostAddress::LocalHost : QHostAddress::Any;
     const QString bindText = m_listenLocalOnly
-        ? QStringLiteral("127.0.0.1:%1").arg(m_tcpReceiverPort)
-        : QStringLiteral("0.0.0.0:%1").arg(m_tcpReceiverPort);
+        ? QStringLiteral("仅监听本机，端口一二三四五")
+        : QStringLiteral("监听全部网络，端口一二三四五");
 
     if (!m_tcpReceiverServer->listen(bindAddress, m_tcpReceiverPort)) {
         qWarning() << "TCP接收器监听失败:" << m_tcpReceiverServer->errorString()
@@ -753,7 +756,9 @@ void OperationRecorder::onReceiverNewConnection()
     rec.controlType = QStringLiteral("网络服务");
     rec.operation = QStringLiteral("客户端连接");
     rec.oldValue = QString();
-    rec.newValue = QStringLiteral("示教器 %1 已连上日志服务").arg(peer);
+    rec.newValue = (peer == QLatin1String("127.0.0.1") || peer == QLatin1String("::1"))
+        ? QStringLiteral("一台本机示教器已连接")
+        : QStringLiteral("一台远程示教器已连接");
     appendTcpRecord(rec);
     emit tcpConnectionStatusChanged(true);
 }
@@ -820,9 +825,9 @@ void OperationRecorder::onReceiverDisconnected()
     rec.controlType = QStringLiteral("网络服务");
     rec.operation = QStringLiteral("客户端断开");
     rec.oldValue = QString();
-    rec.newValue = peer.isEmpty()
-        ? QStringLiteral("示教器连接已断开")
-        : QStringLiteral("示教器 %1 已断开日志服务").arg(peer);
+    rec.newValue = (peer == QLatin1String("127.0.0.1") || peer == QLatin1String("::1"))
+        ? QStringLiteral("一台本机示教器已断开")
+        : QStringLiteral("一台远程示教器已断开");
     appendTcpRecord(rec);
 
     if (m_tcpReceiverClient) {
