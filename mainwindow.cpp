@@ -3181,7 +3181,7 @@ void MainWindow::setupAdminPasswordPage()
     passwordEdit->setAlignment(Qt::AlignCenter);
 
     // 密码提示
-    QLabel *hintLabel = new QLabel("工程师: 456 | 管理员: 123 | 厂家: 8888", container);
+    QLabel *hintLabel = new QLabel("工程师: 456 | 管理员: 123", container);
     hintLabel->setObjectName("passwordHint");
     hintLabel->setAlignment(Qt::AlignCenter);
 
