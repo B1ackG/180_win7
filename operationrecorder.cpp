@@ -748,18 +748,6 @@ void OperationRecorder::onReceiverNewConnection()
     connect(m_tcpReceiverClient, QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::errorOccurred),
             this, &OperationRecorder::onReceiverError);
     m_tcpReceiverBuffer.clear();
-
-    OperationRecord rec;
-    rec.timestamp = QDateTime::currentDateTime();
-    rec.pageName = QStringLiteral("日志服务");
-    rec.controlName = QStringLiteral("日志接收");
-    rec.controlType = QStringLiteral("网络服务");
-    rec.operation = QStringLiteral("客户端连接");
-    rec.oldValue = QString();
-    rec.newValue = (peer == QLatin1String("127.0.0.1") || peer == QLatin1String("::1"))
-        ? QStringLiteral("一台本机示教器已连接")
-        : QStringLiteral("一台远程示教器已连接");
-    appendTcpRecord(rec);
     emit tcpConnectionStatusChanged(true);
 }
 
@@ -813,23 +801,6 @@ void OperationRecorder::appendTcpRecord(const OperationRecord &record)
 
 void OperationRecorder::onReceiverDisconnected()
 {
-    QString peer;
-    if (m_tcpReceiverClient) {
-        peer = normalizedPeerAddress(m_tcpReceiverClient->peerAddress());
-    }
-
-    OperationRecord rec;
-    rec.timestamp = QDateTime::currentDateTime();
-    rec.pageName = QStringLiteral("日志服务");
-    rec.controlName = QStringLiteral("日志接收");
-    rec.controlType = QStringLiteral("网络服务");
-    rec.operation = QStringLiteral("客户端断开");
-    rec.oldValue = QString();
-    rec.newValue = (peer == QLatin1String("127.0.0.1") || peer == QLatin1String("::1"))
-        ? QStringLiteral("一台本机示教器已断开")
-        : QStringLiteral("一台远程示教器已断开");
-    appendTcpRecord(rec);
-
     if (m_tcpReceiverClient) {
         m_tcpReceiverClient->deleteLater();
         m_tcpReceiverClient = nullptr;

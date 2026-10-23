@@ -638,6 +638,8 @@ private:
     bool m_inclinometerTiltLockInZone = false;
     bool m_mainLinkDownNoted = false;
     bool m_agvLinkDownNoted = false;
+    bool m_mainLinkUpHistoryRecorded = false;
+    bool m_agvLinkUpHistoryRecorded = false;
     bool m_sixAxisInitPromptArmed = false;
     QWidget *m_agvStationOfflineAlarmWidget = nullptr;
     QLabel *m_agvStationOfflineAlarmLabel = nullptr;

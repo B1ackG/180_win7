@@ -5069,7 +5069,10 @@ void MainWindow::onModbusConnected()
         enableTcpTransmission(true);
     }
 
-    MainModbusStatus::appendOperationRecord(m_recorder, MainModbusState::Connected);
+    if (m_mainLinkDownNoted || !m_mainLinkUpHistoryRecorded) {
+        m_mainLinkUpHistoryRecorded = true;
+        MainModbusStatus::appendOperationRecord(m_recorder, MainModbusState::Connected);
+    }
     clearMainLinkDownToast();
 }
 
@@ -5078,7 +5081,9 @@ void MainWindow::onModbusDisconnected()
 {
     qCDebug(lcMainWindow) << "Modbus设备断开连接";
     MainModbusStatus::applyUiState(ui ? ui->statusBar : nullptr, MainModbusState::Disconnected);
-    MainModbusStatus::appendOperationRecord(m_recorder, MainModbusState::Disconnected);
+    if (!m_mainLinkDownNoted) {
+        MainModbusStatus::appendOperationRecord(m_recorder, MainModbusState::Disconnected);
+    }
     noteMainLinkDown();
 }
 
@@ -5087,7 +5092,9 @@ void MainWindow::onModbusError(const QString &error)
 {
     qCDebug(lcMainWindow) << "Modbus错误:" << error;
     MainModbusStatus::applyUiState(ui ? ui->statusBar : nullptr, MainModbusState::Error, error);
-    MainModbusStatus::appendOperationRecord(m_recorder, MainModbusState::Error, error);
+    if (!m_mainLinkDownNoted) {
+        MainModbusStatus::appendOperationRecord(m_recorder, MainModbusState::Error, error);
+    }
     noteMainLinkDown();
 }
 // 速度选择
@@ -6319,6 +6326,7 @@ void MainWindow::setupAGVUI()
 void MainWindow::onAGVModbusConnected()
 {
     qCDebug(lcMainWindow) << "AGV Modbus连接成功";
+    const bool firstOrRecovered = m_agvLinkDownNoted || !m_agvLinkUpHistoryRecorded;
     m_agvDisconnectedWarnedAddresses.clear();
     ui->statusBar->showMessage("AGV Modbus已连接", 3000);
 
@@ -6329,16 +6337,18 @@ void MainWindow::onAGVModbusConnected()
         agvIndicator->setToolTip("AGV Modbus连接正常");
     }
 
-    // 记录连接事件
-    OperationRecord record;
-    record.timestamp = QDateTime::currentDateTime();
-    record.pageName = "AGV控制";
-    record.controlName = "AGV Modbus连接";
-    record.controlType = "ModbusTCP";
-    record.operation = "connected";
-    record.oldValue = "";
-    record.newValue = "连接成功";
-    m_recorder->addRecord(record);
+    if (firstOrRecovered) {
+        m_agvLinkUpHistoryRecorded = true;
+        OperationRecord record;
+        record.timestamp = QDateTime::currentDateTime();
+        record.pageName = "AGV控制";
+        record.controlName = "AGV Modbus连接";
+        record.controlType = "ModbusTCP";
+        record.operation = "connected";
+        record.oldValue = "";
+        record.newValue = "连接成功";
+        m_recorder->addRecord(record);
+    }
     clearAgvLinkDownToast();
 
     // 开机后短时重复读取关键寄存器，尽快回填模式按钮与驻车状态。
@@ -6377,16 +6387,17 @@ void MainWindow::onAGVModbusDisconnected()
         m_agvFaultsLabel->setText("连接断开");
     }
 
-    // 记录断开事件
-    OperationRecord record;
-    record.timestamp = QDateTime::currentDateTime();
-    record.pageName = "AGV控制";
-    record.controlName = "AGV Modbus连接";
-    record.controlType = "ModbusTCP";
-    record.operation = "disconnected";
-    record.oldValue = "";
-    record.newValue = "连接断开";
-    m_recorder->addRecord(record);
+    if (!m_agvLinkDownNoted) {
+        OperationRecord record;
+        record.timestamp = QDateTime::currentDateTime();
+        record.pageName = "AGV控制";
+        record.controlName = "AGV Modbus连接";
+        record.controlType = "ModbusTCP";
+        record.operation = "disconnected";
+        record.oldValue = "";
+        record.newValue = "连接断开";
+        m_recorder->addRecord(record);
+    }
     noteAgvLinkDown();
 }
 
@@ -6408,16 +6419,17 @@ void MainWindow::onAGVModbusError(const QString &error)
         agvIndicator->setToolTip(QString("AGV Modbus错误: %1").arg(error));
     }
 
-    // 记录错误事件
-    OperationRecord record;
-    record.timestamp = QDateTime::currentDateTime();
-    record.pageName = "AGV控制";
-    record.controlName = "AGV Modbus连接";
-    record.controlType = "ModbusTCP";
-    record.operation = "error";
-    record.oldValue = "";
-    record.newValue = error;
-    m_recorder->addRecord(record);
+    if (!m_agvLinkDownNoted) {
+        OperationRecord record;
+        record.timestamp = QDateTime::currentDateTime();
+        record.pageName = "AGV控制";
+        record.controlName = "AGV Modbus连接";
+        record.controlType = "ModbusTCP";
+        record.operation = "error";
+        record.oldValue = "";
+        record.newValue = error;
+        m_recorder->addRecord(record);
+    }
     noteAgvLinkDown();
 }
 
