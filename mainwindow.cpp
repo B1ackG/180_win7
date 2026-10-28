@@ -143,11 +143,42 @@ const QString kRobotWeightLockToastText =
 const QString kSixAxisInitToastText = QStringLiteral("六自由度需要初始化");
 const QString kInclinometerTiltRiskText = QStringLiteral("倾覆风险提示！设备倾角过大。");
 const QString kRobotWeightOverloadText = QStringLiteral("负载超限，注意倾覆风险！");
-constexpr quint16 kLegArmInterlock151Mask = 0x00F8;
+constexpr quint16 kLegArmInterlock151Mask = 0x01F8;
+constexpr int kMainHeightLockChassisLimitReg = 5006;
+constexpr int kMainLengthLockChassisLimitReg = 5007;
+constexpr int kHeightLengthLockDefaultMm = 1000;
+constexpr int kRobotSoftLimitDetailReg = 152;
+constexpr int kRobotAxisLimitSlotCount = 10;
+constexpr int kFixtureLimitSlotBegin = 8;
+
+struct RobotAxisLimitDef {
+    int axisIndex;
+    bool positive;
+    int bit;
+};
+
+/** 主控 152：J1/J2 bit0~3，J3 bit10/11，工装 bit12/13，J4 bit14/15。 */
+constexpr RobotAxisLimitDef kRobotAxisLimits[kRobotAxisLimitSlotCount] = {
+    {1, true,  0},
+    {1, false, 1},
+    {2, true,  2},
+    {2, false, 3},
+    {3, true,  10},
+    {3, false, 11},
+    {4, true,  14},
+    {4, false, 15},
+    {6, true,  12},
+    {6, false, 13},
+};
+
+bool isFixtureLimitSlot(int slot)
+{
+    return slot >= kFixtureLimitSlotBegin && slot < kRobotAxisLimitSlotCount;
+}
 
 int highestLegArmInterlockBit(quint16 mask)
 {
-    static const int kOrder[] = {7, 4, 3, 5, 6};
+    static const int kOrder[] = {7, 8, 4, 3, 5, 6};
     for (int bit : kOrder) {
         if ((mask >> bit) & 0x1) {
             return bit;
@@ -174,6 +205,9 @@ QString legArmInterlockMessage(int bit)
         break;
     case 7:
         head = QStringLiteral("支腿伸出量错误，请立即收回伸缩臂");
+        break;
+    case 8:
+        head = QStringLiteral("支腿伸出量错误，请立即降低升降轴");
         break;
     default:
         return QString();
@@ -242,7 +276,9 @@ void MainWindow::loadPollingRuntimeSettings()
     QSettings settings("config.ini", QSettings::IniFormat);
     settings.beginGroup("Polling");
 
-    m_uiStateSyncEnabled = settings.value("ui_state_sync_enabled", true).toBool();
+    const bool legacyUiStateSync = settings.value("ui_state_sync_enabled", true).toBool();
+    m_mainUiStateSyncEnabled = settings.value("main_ui_state_sync_enabled", legacyUiStateSync).toBool();
+    m_agvUiStateSyncEnabled = settings.value("agv_ui_state_sync_enabled", legacyUiStateSync).toBool();
     m_mainModbusPollIntervalMs = settings.value("main_modbus_poll_ms", 500).toInt();
     m_mainUiPollIntervalMs = settings.value("main_ui_poll_ms", 200).toInt();
     m_mainDeviceStatusPollIntervalMs = settings.value("main_device_status_poll_ms", 2000).toInt();
@@ -278,7 +314,9 @@ void MainWindow::savePollingRuntimeSettings() const
 {
     QSettings settings("config.ini", QSettings::IniFormat);
     settings.beginGroup("Polling");
-    settings.setValue("ui_state_sync_enabled", m_uiStateSyncEnabled);
+    settings.setValue("main_ui_state_sync_enabled", m_mainUiStateSyncEnabled);
+    settings.setValue("agv_ui_state_sync_enabled", m_agvUiStateSyncEnabled);
+    settings.setValue("ui_state_sync_enabled", m_mainUiStateSyncEnabled && m_agvUiStateSyncEnabled);
     settings.setValue("main_modbus_poll_ms", m_mainModbusPollIntervalMs);
     settings.setValue("main_ui_poll_ms", m_mainUiPollIntervalMs);
     settings.setValue("main_device_status_poll_ms", m_mainDeviceStatusPollIntervalMs);
@@ -393,6 +431,162 @@ void MainWindow::applySliderLabelRuntimeSettings()
     }
 }
 
+void MainWindow::applyFeatureConsoleRuntimeSettings()
+{
+    loadPollingRuntimeSettings();
+    applyPollingRuntimeSettings();
+    loadSliderLabelRuntimeSettings();
+    applySliderLabelRuntimeSettings();
+    loadSliderEditRuntimeSettings();
+    applySliderEditRuntimeSettings();
+    loadPlaneHeightOffsetRuntimeSettings();
+    applyPlaneHeightOffsetRuntimeSettings();
+    applyButtonVisibilityRuntimeSettings();
+    applyPasswordHintRuntimeSettings();
+
+    if (m_recorder) {
+        const bool localHistory = isFeatureEnabled(
+            QStringLiteral("tcp_transmission"),
+            QStringLiteral("tcp.local_operation_history"));
+        m_recorder->setLocalHistoryReceiver(localHistory);
+        if (m_featureSwitchWidget && ui && ui->statusBar) {
+            ui->statusBar->showMessage(
+                localHistory
+                    ? QStringLiteral("本机历史记录测试：127.0.0.1:12345")
+                    : QStringLiteral("历史记录接收：0.0.0.0:%1").arg(WIN7_PORT),
+                5000);
+        }
+    }
+}
+
+void MainWindow::loadSliderEditRuntimeSettings()
+{
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("TechSliderEditLimits"));
+    const QList<TechSliderEdit*> sliders = findChildren<TechSliderEdit*>();
+    for (TechSliderEdit *slider : sliders) {
+        if (!slider || slider->objectName().isEmpty()) {
+            continue;
+        }
+        const QString name = slider->objectName();
+        const QString minKey = name + QStringLiteral("_display_min");
+        const QString maxKey = name + QStringLiteral("_display_max");
+        const QString legacyMinKey = name + QStringLiteral("_value_min");
+        const QString legacyMaxKey = name + QStringLiteral("_value_max");
+        if (!settings.contains(minKey) && !settings.contains(legacyMinKey)
+            && !settings.contains(maxKey) && !settings.contains(legacyMaxKey)) {
+            continue;
+        }
+        const double minVal = settings.contains(minKey)
+                                  ? settings.value(minKey).toDouble()
+                                  : settings.value(legacyMinKey, slider->minimum()).toDouble();
+        const double maxVal = settings.contains(maxKey)
+                                  ? settings.value(maxKey).toDouble()
+                                  : settings.value(legacyMaxKey, slider->maximum()).toDouble();
+        if (minVal < maxVal) {
+            slider->setRange(minVal, maxVal);
+        }
+    }
+    settings.endGroup();
+}
+
+void MainWindow::applySliderEditRuntimeSettings()
+{
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("ButtonVisibility"));
+    const QList<TechSliderEdit*> sliders = findChildren<TechSliderEdit*>();
+    for (TechSliderEdit *slider : sliders) {
+        if (!slider || slider->objectName().isEmpty()) {
+            continue;
+        }
+        slider->setVisible(settings.value(slider->objectName(), true).toBool());
+    }
+    settings.endGroup();
+}
+
+void MainWindow::loadPlaneHeightOffsetRuntimeSettings()
+{
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("PlaneHeight"));
+    m_planeHeightOffsetMm = qBound(
+        -100000.0,
+        settings.value(QStringLiteral("offset_mm"), 1900.0).toDouble(),
+        100000.0);
+    settings.endGroup();
+}
+
+void MainWindow::applyPlaneHeightOffsetRuntimeSettings()
+{
+    refreshPlaneHeightCard();
+}
+
+void MainWindow::applyButtonVisibilityRuntimeSettings()
+{
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("ButtonVisibility"));
+
+    static const QString kArcGaugeNames[] = {
+        QStringLiteral("robot_ArcGauge_J1Angle"),
+        QStringLiteral("robot_ArcGauge_J2Height"),
+        QStringLiteral("robot_ArcGauge_J3Length"),
+        QStringLiteral("robot_ArcGauge_J4Angle"),
+        QStringLiteral("robot_ArcGauge_SixAxis1"),
+        QStringLiteral("robot_ArcGauge_SixAxis2"),
+        QStringLiteral("robot_ArcGauge_SixAxis3"),
+        QStringLiteral("robot_ArcGauge_SixAxis4"),
+        QStringLiteral("robot_ArcGauge_SixAxis5"),
+        QStringLiteral("robot_ArcGauge_SixAxis6"),
+    };
+    for (const QString &name : kArcGaugeNames) {
+        const bool visible = settings.value(name, true).toBool();
+        if (m_arcGauges.contains(name) && m_arcGauges.value(name)) {
+            m_arcGauges.value(name)->setVisible(visible);
+        } else {
+            qCDebug(lcMainWindow) << "环形仪表不存在，跳过可见性:" << name;
+        }
+    }
+
+    auto resolveDeviceButton = [this](const QString &objectName) -> QWidget* {
+        if (QWidget *widget = findChild<QWidget*>(objectName)) {
+            return widget;
+        }
+        if (objectName == QStringLiteral("TBtn_RobotControl") && ui && ui->TBtn_HomePage) {
+            return ui->TBtn_HomePage;
+        }
+        qCDebug(lcMainWindow) << "设备入口不存在，跳过可见性:" << objectName;
+        return nullptr;
+    };
+
+    const bool robotVisible = settings.value(QStringLiteral("TBtn_RobotControl"), true).toBool();
+    const bool chassisVisible = settings.value(QStringLiteral("TBtn_ChassisControl"), true).toBool();
+    const bool sixVisible = settings.value(QStringLiteral("TBtn_SixAxies"), true).toBool();
+    if (QWidget *robotBtn = resolveDeviceButton(QStringLiteral("TBtn_RobotControl"))) {
+        robotBtn->setVisible(robotVisible);
+    }
+    if (QWidget *chassisBtn = resolveDeviceButton(QStringLiteral("TBtn_ChassisControl"))) {
+        chassisBtn->setVisible(chassisVisible);
+    }
+    if (QWidget *sixBtn = resolveDeviceButton(QStringLiteral("TBtn_SixAxies"))) {
+        sixBtn->setVisible(sixVisible);
+    }
+    if (m_deviceControlMenuButton) {
+        m_deviceControlMenuButton->setVisible(robotVisible || chassisVisible || sixVisible);
+    }
+    settings.endGroup();
+}
+
+void MainWindow::applyPasswordHintRuntimeSettings()
+{
+    QLabel *hintLabel = findChild<QLabel*>(QStringLiteral("passwordHint"));
+    if (!hintLabel) {
+        return;
+    }
+    const bool loggedIn = m_currentUserRole != UserRole::Operator;
+    hintLabel->setVisible(
+        !loggedIn && isFeatureEnabled(QStringLiteral("permission_system"),
+                                      QStringLiteral("permission.password_hint")));
+}
+
 // 1. 生命周期与核心初始化 (Life Cycle)
 // ==========================================
 
@@ -472,6 +666,8 @@ void MainWindow::setupNavigationConnections()
         ui->TBtn_HomePage->setChecked(true);
         updateNavButtonStyles(nullptr);
         dismissSixAxisInitToast();
+        suppressOffPageRobotLimitToasts();
+        syncRobotSoftLimitToasts();
     });
 
     connect(ui->TBtn_SixAxies, &QPushButton::clicked, [this]() {
@@ -484,6 +680,8 @@ void MainWindow::setupNavigationConnections()
         ui->TBtn_SixAxies->setChecked(true);
         updateNavButtonStyles(nullptr);
         requestSixAxisInitStatus();
+        suppressOffPageRobotLimitToasts();
+        syncRobotSoftLimitToasts();
     });
 
     connect(ui->TBtn_ChassisControl, &QPushButton::clicked, [this]() {
@@ -496,6 +694,8 @@ void MainWindow::setupNavigationConnections()
         ui->TBtn_ChassisControl->setChecked(true);
         updateNavButtonStyles(nullptr);
         dismissSixAxisInitToast();
+        suppressOffPageRobotLimitToasts();
+        syncRobotSoftLimitToasts();
     });
 }
 
@@ -1608,11 +1808,17 @@ void MainWindow::initInclinometerCards()
     };
 
     initOne(findChild<QWidget*>(QStringLiteral("quickWidget_Inclinometer_X")),
-            QStringLiteral("X轴倾角"),
+            QStringLiteral("底盘X轴倾角"),
             m_inclinometerXCard);
     initOne(findChild<QWidget*>(QStringLiteral("quickWidget_Inclinometer_Y")),
-            QStringLiteral("Y轴倾角"),
+            QStringLiteral("底盘Y轴倾角"),
             m_inclinometerYCard);
+    initOne(findChild<QWidget*>(QStringLiteral("quickWidget_robotInclinometer_X")),
+            QStringLiteral("悬臂X轴倾角"),
+            m_robotInclinometerXCard);
+    initOne(findChild<QWidget*>(QStringLiteral("quickWidget_robotInclinometer_Y")),
+            QStringLiteral("悬臂Y轴倾角"),
+            m_robotInclinometerYCard);
 }
 
 namespace {
@@ -3184,6 +3390,8 @@ void MainWindow::setupAdminPasswordPage()
     QLabel *hintLabel = new QLabel("工程师: 456 | 管理员: 123", container);
     hintLabel->setObjectName("passwordHint");
     hintLabel->setAlignment(Qt::AlignCenter);
+    hintLabel->setVisible(isFeatureEnabled(QStringLiteral("permission_system"),
+                                           QStringLiteral("permission.password_hint")));
 
     // 登录按钮
     QPushButton *loginButton = new QPushButton("登录", container);
@@ -3535,7 +3743,8 @@ void MainWindow::setupAdminPasswordPage()
         titleLabel->setText("权限验证");
         roleComboBox->setVisible(true);
         passwordEdit->setVisible(true);
-        hintLabel->setVisible(true);
+        hintLabel->setVisible(isFeatureEnabled(QStringLiteral("permission_system"),
+                                               QStringLiteral("permission.password_hint")));
         loginButton->setVisible(true);
         logoutButton->setVisible(false);
         exitAppButton->setVisible(false);
@@ -3564,24 +3773,23 @@ void MainWindow::setupAdminPasswordPage()
             if (!m_featureSwitchWidget) {
                 m_featureSwitchWidget = new FeatureSwitchWidget(this);
                 connect(m_featureSwitchWidget, &FeatureSwitchWidget::runtimeSettingsChanged,
-                        this, [this]() {
-                    loadPollingRuntimeSettings();
-                    applyPollingRuntimeSettings();
-                    loadSliderLabelRuntimeSettings();
-                    applySliderLabelRuntimeSettings();
-                    if (m_recorder) {
-                        const bool localHistory = isFeatureEnabled(
-                            QStringLiteral("tcp_transmission"),
-                            QStringLiteral("tcp.local_operation_history"));
-                        m_recorder->setLocalHistoryReceiver(localHistory);
-                        if (ui && ui->statusBar) {
-                            ui->statusBar->showMessage(
-                                localHistory
-                                    ? QStringLiteral("本机历史记录测试：127.0.0.1:12345")
-                                    : QStringLiteral("历史记录接收：0.0.0.0:%1").arg(WIN7_PORT),
-                                5000);
-                        }
+                        this, &MainWindow::applyFeatureConsoleRuntimeSettings);
+                connect(m_featureSwitchWidget, &FeatureSwitchWidget::operationHistoryEntry,
+                        this, [this](const QString &controlName,
+                                     const QString &oldValue,
+                                     const QString &newValue) {
+                    if (!m_recorder) {
+                        return;
                     }
+                    OperationRecord record;
+                    record.timestamp = QDateTime::currentDateTime();
+                    record.pageName = QStringLiteral("厂家配置");
+                    record.controlName = controlName;
+                    record.controlType = QStringLiteral("FeatureConsole");
+                    record.operation = QStringLiteral("config_changed");
+                    record.oldValue = oldValue;
+                    record.newValue = newValue;
+                    m_recorder->addRecord(record);
                 });
             }
             m_featureSwitchWidget->show();
@@ -3669,7 +3877,10 @@ void MainWindow::showToast(const QString &message, ToastKind kind, int durationM
     label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     layout->addWidget(label, 1);
 
-    const int lineCount = qMax(1, text.count(QLatin1Char('\n')) + 1);
+    const int explicitLines = qMax(1, text.count(QLatin1Char('\n')) + 1);
+    constexpr int kApproxCharsPerLine = 22;
+    const int wrappedLines = qMax(1, (text.size() + kApproxCharsPerLine - 1) / kApproxCharsPerLine);
+    const int lineCount = qMax(explicitLines, wrappedLines);
     const int height = qBound(kToastMinHeight, 38 + lineCount * 24, kToastMaxHeight);
     toast->setFixedSize(kToastWidth, height);
 
@@ -3723,9 +3934,6 @@ void MainWindow::dismissToast(QWidget *toast)
         }
     }
 
-    if (m_robotLimitToastWidget == toast) {
-        m_robotLimitToastWidget = nullptr;
-    }
     toast->deleteLater();
     repositionToasts();
 }
@@ -4269,11 +4477,11 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
 
         const quint16 status150 = m_mainRegister150Shadow;
         if ((keyNumber == 1 || keyNumber == 2) && (((status150 >> 1) & 0x01) == 1)) {
-            showRobotOperationHintDialog("请降低高度后操作");
+            showRobotOperationHintDialog(heightLengthInterlockHint(true));
             return;
         }
         if (keyNumber == 4 && (((status150 >> 2) & 0x01) == 1)) {
-            showRobotOperationHintDialog("请缩小长度后操作");
+            showRobotOperationHintDialog(heightLengthInterlockHint(false));
             return;
         }
     }
@@ -5231,7 +5439,21 @@ void MainWindow::pollModbusVariables()
     return;
 }
 
-static QMap<int, quint16> g_registerCache; 
+static QMap<int, quint16> g_registerCache;
+
+void MainWindow::updateRobotInclinometerFromCache()
+{
+    auto applyPair = [this](int addrA, int addrB, InclinometerCard *card) {
+        if (!card || !g_registerCache.contains(addrA) || !g_registerCache.contains(addrB)) {
+            return;
+        }
+        const float degree = registersToFloatCDAB(g_registerCache[addrA], g_registerCache[addrB]);
+        card->setTiltValue(static_cast<qreal>(degree));
+    };
+
+    applyPair(135, 136, m_robotInclinometerXCard);
+    applyPair(137, 138, m_robotInclinometerYCard);
+}
 
 void MainWindow::updateDeviceCoordPanelFromCache()
 {
@@ -5338,7 +5560,7 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
     // 更新寄存器缓存
     g_registerCache[address] = value;
 
-    const bool allowUiStateSync = m_uiStateSyncEnabled;
+    const bool allowUiStateSync = m_mainUiStateSyncEnabled;
 
     if (allowUiStateSync && address == 125 && ui) {
         if (value == 2) {
@@ -5383,6 +5605,10 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
 
     if (address == 123) {
         updateCurrentLoadWeight(value);
+    }
+
+    if (address >= 135 && address <= 138) {
+        updateRobotInclinometerFromCache();
     }
 
     if (address >= 103 && address <= 118) {
@@ -5502,7 +5728,7 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
     if (address == 150) {
         m_mainRegister150Shadow = value;
         m_mainRegister150Valid = true;
-        const bool emergencyStop = (value == 1);
+        const bool emergencyStop = (value == 1) || (((value >> 4) & 0x03) != 0);
         if (emergencyStop != m_robotArmEmergency150Flag) {
             m_robotArmEmergency150Flag = emergencyStop;
             if (emergencyStop && m_recorder) {
@@ -5517,6 +5743,8 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
                 m_recorder->addRecord(record);
             }
             QTimer::singleShot(0, this, &MainWindow::checkAlarmConditions);
+        } else if (emergencyStop) {
+            QTimer::singleShot(0, this, &MainWindow::updateAlarmDisplay);
         }
 
         const bool weightOverload = (((value >> 3) & 0x01) == 1);
@@ -5556,21 +5784,24 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
 
         if (positiveLimitReached != m_robotPositiveLimit102Bit2Flag) {
             m_robotPositiveLimit102Bit2Flag = positiveLimitReached;
-            if (positiveLimitReached) {
-                showRobotLimitReachedToast(true);
-            } else if (m_robotLimitToastTrigger == RobotLimitToastTrigger::Positive) {
-                hideRobotLimitReachedToast();
-            }
         }
-
         if (negativeLimitReached != m_robotNegativeLimit102Bit3Flag) {
             m_robotNegativeLimit102Bit3Flag = negativeLimitReached;
-            if (negativeLimitReached) {
-                showRobotLimitReachedToast(false);
-            } else if (m_robotLimitToastTrigger == RobotLimitToastTrigger::Negative) {
-                hideRobotLimitReachedToast();
+        }
+        if (!positiveLimitReached && !negativeLimitReached) {
+            clearRobotAxisLimitToasts();
+        } else {
+            if (MainDeviceModbusApi::isReady(m_modbusManager)) {
+                MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, kRobotSoftLimitDetailReg, 1);
+            }
+            if (g_registerCache.contains(kRobotSoftLimitDetailReg)) {
+                applyRobotSoftLimitRegister(g_registerCache.value(kRobotSoftLimitDetailReg));
             }
         }
+    }
+
+    if (address == kRobotSoftLimitDetailReg) {
+        applyRobotSoftLimitRegister(value);
     }
 
     if (address == 151) {
@@ -5579,13 +5810,13 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
         if (cableRetracted != m_cableRetracted151Bit0Flag) {
             m_cableRetracted151Bit0Flag = cableRetracted;
             if (cableRetracted) {
-                showToast(QStringLiteral("卷样机钢缆已完全收回"), ToastKind::Warning);
+                showToast(QStringLiteral("卷扬机已完全收回"), ToastKind::Warning);
             }
         }
         if (cableExtended != m_cableExtended151Bit1Flag) {
             m_cableExtended151Bit1Flag = cableExtended;
             if (cableExtended) {
-                showToast(QStringLiteral("卷样机钢缆已完全放出"), ToastKind::Warning);
+                showToast(QStringLiteral("卷扬机已完全放出"), ToastKind::Warning);
             }
         }
 
@@ -5813,6 +6044,9 @@ void MainWindow::readMainControlSyncRegisters()
 
     // 机器人总功率：192.168.1.13 的 134 寄存器
     MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 134, 1);
+
+    // 悬臂倾角：192.168.1.13 的 135/137 REAL（各占 2 个寄存器，CDAB）
+    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 135, 4);
 
     // 当前负载重量：192.168.1.13 的 123 寄存器
     MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 123, 1);
@@ -6115,7 +6349,7 @@ void MainWindow::setupAGVModbus()
                     }
                 }
 
-                if (m_uiStateSyncEnabled && address == 153 && m_editAGV_MoveSpeed) {
+                if (m_agvUiStateSyncEnabled && address == 153 && m_editAGV_MoveSpeed) {
                     const QSignalBlocker blocker(m_editAGV_MoveSpeed);
                     const double clamped = qBound(m_editAGV_MoveSpeed->minimum(), static_cast<double>(value), m_editAGV_MoveSpeed->maximum());
                     m_editAGV_MoveSpeed->setValue(clamped);
@@ -6129,7 +6363,7 @@ void MainWindow::setupAGVModbus()
                     updateInclinometerValue(false, value);
                 }
 
-                if (m_uiStateSyncEnabled && address == 154 && m_editAGV_Angle) {
+                if (m_agvUiStateSyncEnabled && address == 154 && m_editAGV_Angle) {
                     const QSignalBlocker blocker(m_editAGV_Angle);
                     const double clamped = qBound(m_editAGV_Angle->minimum(), static_cast<double>(value), m_editAGV_Angle->maximum());
                     m_editAGV_Angle->setValue(clamped);
@@ -6157,6 +6391,10 @@ void MainWindow::setupAGVModbus()
                     handleAGVRegister51Alerts(value);
 
                     syncAGVParkingStateFromRegister51(value);
+                }
+
+                if (address == 150 && m_emergencyStopAlarm) {
+                    QTimer::singleShot(0, this, &MainWindow::updateAlarmDisplay);
                 }
 
                 if (address == 155) {
@@ -6508,13 +6746,13 @@ void MainWindow::onAGVWordVariableChanged(int address, quint16 value)
         onAGVUpdateStatusLabel("label_speed", QString("%1 mm/s").arg(value));
     }
 
-    if (m_uiStateSyncEnabled && address == 153 && m_editAGV_MoveSpeed) {
+    if (m_agvUiStateSyncEnabled && address == 153 && m_editAGV_MoveSpeed) {
         const QSignalBlocker blocker(m_editAGV_MoveSpeed);
         const double clamped = qBound(m_editAGV_MoveSpeed->minimum(), static_cast<double>(value), m_editAGV_MoveSpeed->maximum());
         m_editAGV_MoveSpeed->setValue(clamped);
     }
 
-    if (m_uiStateSyncEnabled && address == 154 && m_editAGV_Angle) {
+    if (m_agvUiStateSyncEnabled && address == 154 && m_editAGV_Angle) {
         const QSignalBlocker blocker(m_editAGV_Angle);
         const double clamped = qBound(m_editAGV_Angle->minimum(), static_cast<double>(value), m_editAGV_Angle->maximum());
         m_editAGV_Angle->setValue(clamped);
@@ -9084,6 +9322,20 @@ void MainWindow::checkAlarmConditions()
         }
         MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 102, 1);
         MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 151, 1);
+        if (m_robotPositiveLimit102Bit2Flag || m_robotNegativeLimit102Bit3Flag) {
+            MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, kRobotSoftLimitDetailReg, 1);
+        }
+        if (m_mainRegister150Valid) {
+            const bool heightLock = (((m_mainRegister150Shadow >> 1) & 0x01) == 1);
+            const bool lengthLock = (((m_mainRegister150Shadow >> 2) & 0x01) == 1);
+            if (heightLock || lengthLock) {
+                MainDeviceModbusApi::readHoldingRegisters(
+                    m_modbusManager, kMainHeightLockChassisLimitReg, 2);
+            }
+        }
+    }
+    if (m_agvChassisEmergency51Bit5Flag && m_agvModbusManager && m_agvModbusManager->isConnected()) {
+        m_agvModbusManager->readMultipleRegisters(150, 1);
     }
 
     // 调试输出当前报警状态
@@ -9159,13 +9411,13 @@ void MainWindow::showAlarm(const QString &message, const QString &color, bool cl
         m_alarmLabel->setWordWrap(true);
         layout->addWidget(m_alarmLabel);
 
-        m_alarmWidget->setFixedSize(380, 130);
-
         qCDebug(lcMainWindow) << "报警窗口创建完成";
     }
 
     // 更新报警信息
     m_alarmLabel->setText(message);
+    const int lineCount = qMax(1, message.count(QLatin1Char('\n')) + 1);
+    m_alarmWidget->setFixedSize(460, qBound(130, 28 + lineCount * 30, 480));
 
     // 设置样式
     QString styleSheet = QString(
@@ -9216,6 +9468,22 @@ void MainWindow::updateAlarmDisplay()
             alarmMessage = "机械臂触发急停，请解除急停。";
         } else {
             alarmMessage = "底盘触发急停，请解除急停。";
+        }
+        if (robotEmergency && m_mainRegister150Valid) {
+            const QStringList teachLines = robotArmTeachPendantEstopFromRegister150(
+                m_mainRegister150Shadow);
+            if (!teachLines.isEmpty()) {
+                alarmMessage += QLatin1Char('\n');
+                alarmMessage += teachLines.join(QLatin1Char('\n'));
+            }
+        }
+        if (chassisEmergency && m_agvRegisterShadow.contains(150)) {
+            const QStringList sources = agvChassisEstopSourcesFromRegister150(
+                m_agvRegisterShadow.value(150));
+            if (!sources.isEmpty()) {
+                alarmMessage += QLatin1Char('\n');
+                alarmMessage += sources.join(QLatin1Char('\n'));
+            }
         }
         showAlarm(alarmMessage, "#ff5555", false);
     } else {
@@ -9841,40 +10109,190 @@ bool MainWindow::isRobotArmHomePage() const
            && ui->stackedWidget_RobotStatus->currentWidget() == ui->page_robot;
 }
 
-QString MainWindow::robotLimitToastMessage(bool positiveLimit) const
+bool MainWindow::isSixAxisViewActive() const
 {
-    const QString limitDir = positiveLimit ? QStringLiteral("正") : QStringLiteral("负");
-    if (g_registerCache.contains(500)) {
-        const int axisCode = static_cast<int>(g_registerCache.value(500));
-        if (axisCode >= 1 && axisCode <= 4) {
-            return QStringLiteral("J%1轴到达%2限位").arg(axisCode).arg(limitDir);
+    return ui && ui->stackedWidget_RobotStatus && ui->page_sixaxies
+           && ui->stackedWidget_RobotStatus->currentWidget() == ui->page_sixaxies;
+}
+
+QString MainWindow::heightLengthInterlockHint(bool heightLimit) const
+{
+    const int reg = heightLimit ? kMainHeightLockChassisLimitReg
+                                : kMainLengthLockChassisLimitReg;
+    const int threshold = g_registerCache.contains(reg)
+                              ? static_cast<int>(g_registerCache.value(reg))
+                              : kHeightLengthLockDefaultMm;
+    if (heightLimit) {
+        return QStringLiteral("重心偏高安全风险警告！！！请将立柱高度调整至%1mm以内。")
+            .arg(threshold);
+    }
+    return QStringLiteral("高倾覆风险报警！！！请将伸缩臂长度调整至%1mm以内。")
+        .arg(threshold);
+}
+
+QStringList MainWindow::robotArmTeachPendantEstopFromRegister150(quint16 reg150) const
+{
+    QStringList out;
+    if (((reg150 >> 4) & 0x01) != 0) {
+        out << QStringLiteral("下方示教器触发急停");
+    }
+    if (((reg150 >> 5) & 0x01) != 0) {
+        out << QStringLiteral("上方示教器触发急停");
+    }
+    return out;
+}
+
+QStringList MainWindow::agvChassisEstopSourcesFromRegister150(quint16 reg150) const
+{
+    static const QString kNames[7] = {
+        QStringLiteral("左前急停"),
+        QStringLiteral("右前急停"),
+        QStringLiteral("左后急停"),
+        QStringLiteral("右后急停"),
+        QStringLiteral("左后工控屏急停"),
+        QStringLiteral("右后工控屏急停"),
+        QStringLiteral("遥控急停"),
+    };
+    QStringList out;
+    for (int bit = 0; bit <= 6; ++bit) {
+        if (((reg150 >> bit) & 0x01) != 0) {
+            out << kNames[bit];
         }
     }
-    return QStringLiteral("到达%1限位").arg(limitDir);
+    return out;
 }
 
-void MainWindow::showRobotLimitReachedToast(bool positiveLimit)
+void MainWindow::applyRobotSoftLimitRegister(quint16 value)
 {
-    if (!isRobotArmHomePage()) {
+    if (!m_robotPositiveLimit102Bit2Flag && !m_robotNegativeLimit102Bit3Flag) {
         return;
     }
-    const QString message = robotLimitToastMessage(positiveLimit);
-    m_robotLimitToastTrigger = positiveLimit ? RobotLimitToastTrigger::Positive
-                                             : RobotLimitToastTrigger::Negative;
-    const int toastCountBefore = m_toasts.size();
-    showToast(message, ToastKind::Warning, 5000);
-    if (m_toasts.size() > toastCountBefore) {
-        m_robotLimitToastWidget = m_toasts.last().widget;
+
+    for (int slot = 0; slot < kRobotAxisLimitSlotCount; ++slot) {
+        const RobotAxisLimitDef &def = kRobotAxisLimits[slot];
+        const bool reached = (((value >> def.bit) & 0x01) == 1);
+        if (reached == m_robotAxisLimitActive[slot]) {
+            continue;
+        }
+        m_robotAxisLimitActive[slot] = reached;
+        if (reached) {
+            showRobotAxisLimitToast(slot);
+        } else {
+            hideRobotAxisLimitToast(slot);
+        }
     }
 }
 
-void MainWindow::hideRobotLimitReachedToast()
+QString MainWindow::robotAxisLimitToastMessage(int axisIndex, bool positiveLimit) const
 {
-    if (m_robotLimitToastWidget) {
-        dismissToast(m_robotLimitToastWidget);
-        m_robotLimitToastWidget = nullptr;
+    const QString limitDir = positiveLimit ? QStringLiteral("正") : QStringLiteral("负");
+    if (axisIndex == 6) {
+        return QStringLiteral("工装到达%1限位").arg(limitDir);
     }
-    m_robotLimitToastTrigger = RobotLimitToastTrigger::None;
+    if (axisIndex < 1 || axisIndex > 4) {
+        return {};
+    }
+    return QStringLiteral("J%1轴到达%2限位").arg(axisIndex).arg(limitDir);
+}
+
+void MainWindow::showRobotAxisLimitToast(int slot)
+{
+    if (slot < 0 || slot >= kRobotAxisLimitSlotCount) {
+        return;
+    }
+    if (!m_robotAxisLimitActive[slot] || m_robotAxisLimitShown[slot] || m_robotAxisLimitToast[slot]) {
+        return;
+    }
+    if (isFixtureLimitSlot(slot)) {
+        if (!isSixAxisViewActive()) {
+            return;
+        }
+    } else if (!isRobotArmHomePage()) {
+        return;
+    }
+
+    const RobotAxisLimitDef &def = kRobotAxisLimits[slot];
+    const QString message = robotAxisLimitToastMessage(def.axisIndex, def.positive);
+    if (message.isEmpty()) {
+        return;
+    }
+
+    const int toastCountBefore = m_toasts.size();
+    showToast(message, ToastKind::Warning, 5000);
+    if (m_toasts.size() <= toastCountBefore) {
+        return;
+    }
+
+    QWidget *toast = m_toasts.last().widget;
+    m_robotAxisLimitToast[slot] = toast;
+    m_robotAxisLimitShown[slot] = true;
+    connect(toast, &QObject::destroyed, this, [this, slot]() {
+        if (slot >= 0 && slot < kRobotAxisLimitSlotCount) {
+            m_robotAxisLimitToast[slot] = nullptr;
+        }
+    });
+
+    if (m_recorder) {
+        OperationRecord record;
+        record.timestamp = QDateTime::currentDateTime();
+        record.pageName = "提示系统";
+        record.controlName = "主控限位提示";
+        record.controlType = "提示窗口";
+        record.operation = "提示触发";
+        record.oldValue = "";
+        record.newValue = message;
+        m_recorder->addRecord(record);
+    }
+}
+
+void MainWindow::hideRobotAxisLimitToast(int slot)
+{
+    if (slot < 0 || slot >= kRobotAxisLimitSlotCount) {
+        return;
+    }
+    if (QWidget *toast = m_robotAxisLimitToast[slot]) {
+        m_robotAxisLimitToast[slot] = nullptr;
+        dismissToast(toast);
+    }
+    m_robotAxisLimitShown[slot] = false;
+}
+
+void MainWindow::clearRobotAxisLimitToasts()
+{
+    for (int slot = 0; slot < kRobotAxisLimitSlotCount; ++slot) {
+        m_robotAxisLimitActive[slot] = false;
+        hideRobotAxisLimitToast(slot);
+    }
+}
+
+void MainWindow::syncRobotSoftLimitToasts()
+{
+    if (!m_robotPositiveLimit102Bit2Flag && !m_robotNegativeLimit102Bit3Flag) {
+        return;
+    }
+    for (int slot = 0; slot < kRobotAxisLimitSlotCount; ++slot) {
+        if (m_robotAxisLimitActive[slot] && !m_robotAxisLimitShown[slot]) {
+            showRobotAxisLimitToast(slot);
+        }
+    }
+}
+
+void MainWindow::suppressOffPageRobotLimitToasts()
+{
+    const bool robotPage = isRobotArmHomePage();
+    const bool sixPage = isSixAxisViewActive();
+    for (int slot = 0; slot < kRobotAxisLimitSlotCount; ++slot) {
+        QWidget *toast = m_robotAxisLimitToast[slot];
+        if (!toast) {
+            continue;
+        }
+        const bool keep = isFixtureLimitSlot(slot) ? sixPage : robotPage;
+        if (keep) {
+            continue;
+        }
+        m_robotAxisLimitToast[slot] = nullptr;
+        dismissToast(toast);
+    }
 }
 
 void MainWindow::onTestAlarmButtonClicked()

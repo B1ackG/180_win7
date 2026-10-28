@@ -294,6 +294,7 @@ void MainWindow::initializeCorePagesAndUi()
 
     initUI();
     setupSliderLabelCopies();
+    applyFeatureConsoleRuntimeSettings();
 }
 
 void MainWindow::initializeCoreSubsystems()

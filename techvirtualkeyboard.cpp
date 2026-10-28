@@ -460,6 +460,15 @@ void TechVirtualKeyboard::onButtonClicked()
     applyButtonPressEffect(button);
 }
 
+void TechVirtualKeyboard::commitPendingInput()
+{
+    if (!isVisible() || !m_targetLineEdit || !m_isEditing) {
+        hide();
+        return;
+    }
+    onEnterClicked();
+}
+
 void TechVirtualKeyboard::onEnterClicked()
 {
     // 确认输入，将内容传递给目标LineEdit

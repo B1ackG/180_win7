@@ -81,6 +81,9 @@ public:
      */
     void setInitialText(const QString &text);
 
+    /** 把尚未确认的虚拟键盘输入写回当前 LineEdit，供控制台立即生效前调用。 */
+    void commitPendingInput();
+
     /**
      * @brief 设置目标控件并显示键盘
      *

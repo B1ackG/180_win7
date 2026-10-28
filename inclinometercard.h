@@ -37,7 +37,7 @@ private:
     void syncAccentFromLabel();
 
     qreal m_tiltValue = 0.0;
-    QString m_axisLabel = QStringLiteral("X轴倾角");
+    QString m_axisLabel = QStringLiteral("底盘X轴倾角");
     QColor m_accentColor = QColor(QStringLiteral("#5CE1FF"));
 };
 

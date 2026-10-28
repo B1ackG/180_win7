@@ -247,9 +247,17 @@ public:
     void applySixAxisInitStatus(quint16 value);
     void dismissSixAxisInitToast();
     bool isRobotArmHomePage() const;
-    QString robotLimitToastMessage(bool positiveLimit) const;
-    void showRobotLimitReachedToast(bool positiveLimit);
-    void hideRobotLimitReachedToast();
+    bool isSixAxisViewActive() const;
+    QString heightLengthInterlockHint(bool heightLimit) const;
+    QStringList robotArmTeachPendantEstopFromRegister150(quint16 reg150) const;
+    QStringList agvChassisEstopSourcesFromRegister150(quint16 reg150) const;
+    void applyRobotSoftLimitRegister(quint16 value);
+    QString robotAxisLimitToastMessage(int axisIndex, bool positiveLimit) const;
+    void showRobotAxisLimitToast(int slot);
+    void hideRobotAxisLimitToast(int slot);
+    void clearRobotAxisLimitToasts();
+    void syncRobotSoftLimitToasts();
+    void suppressOffPageRobotLimitToasts();
 
     // 提示信息系统
     /** @brief 更新提示内容标签 */
@@ -390,7 +398,7 @@ public:
     void initSpeedGaugeUI();
     /** @brief 初始化机器人总功率卡片（纯 QWidget） */
     void initRobotTotalPowerCard();
-    /** @brief 初始化 X/Y 倾角卡片（纯 QWidget，样式对标 InclinometerCard.qml） */
+    /** @brief 初始化底盘 X/Y 与悬臂 X/Y 倾角卡片（纯 QWidget，样式对标 InclinometerCard.qml） */
     void initInclinometerCards();
     /** @brief 初始化当前负载卡片（寄存器 123） */
     void initWeightCard();
@@ -416,6 +424,8 @@ public:
     void updateCurrentLoadWeight(quint16 rawValue);
     /** @brief 更新倾角显示（AGV 151/152，寄存器值÷100） */
     void updateInclinometerValue(bool isXAxis, quint16 rawValue);
+    /** @brief 从寄存器缓存刷新悬臂倾角（主控 135/137，REAL / CDAB） */
+    void updateRobotInclinometerFromCache();
     /** @brief 从寄存器缓存刷新位姿面板 */
     void updateDeviceCoordPanelFromCache();
     /** @brief 初始化滑块编辑 UI */
@@ -623,9 +633,10 @@ private:
     bool m_robotWeightLock150Bit7Flag = false;
     bool m_robotPositiveLimit102Bit2Flag = false;
     bool m_robotNegativeLimit102Bit3Flag = false;
-    enum class RobotLimitToastTrigger : quint8 { None, Positive, Negative };
-    RobotLimitToastTrigger m_robotLimitToastTrigger = RobotLimitToastTrigger::None;
-    QWidget *m_robotLimitToastWidget = nullptr;
+    static constexpr int kRobotAxisLimitSlotCount = 10;
+    bool m_robotAxisLimitActive[kRobotAxisLimitSlotCount] = {};
+    bool m_robotAxisLimitShown[kRobotAxisLimitSlotCount] = {};
+    QWidget *m_robotAxisLimitToast[kRobotAxisLimitSlotCount] = {};
     bool m_cableRetracted151Bit0Flag = false;
     bool m_cableExtended151Bit1Flag = false;
     quint16 m_legArmInterlock151Bits = 0;
@@ -709,7 +720,8 @@ private:
     int m_mainDeviceStatusCount = 85;
     int m_mainControlSyncStart = 125;
     int m_mainControlSyncCount = 6;
-    bool m_uiStateSyncEnabled = true;
+    bool m_mainUiStateSyncEnabled = true;
+    bool m_agvUiStateSyncEnabled = true;
     int m_mainReconnectIntervalMs = 5000;
     int m_agvPollIntervalMs = 200;
     int m_agvReconnectIntervalMs = 5000;
@@ -766,6 +778,8 @@ private:
     DeviceCoordPanel *m_deviceCoordPanel = nullptr;
     InclinometerCard *m_inclinometerXCard = nullptr;
     InclinometerCard *m_inclinometerYCard = nullptr;
+    InclinometerCard *m_robotInclinometerXCard = nullptr;
+    InclinometerCard *m_robotInclinometerYCard = nullptr;
     MetricValueCard *m_weightCard = nullptr;
     MetricValueCard *m_planeHeightCard = nullptr;
     double m_planeHeightOffsetMm = 1900.0;
@@ -870,6 +884,15 @@ public:
     /** @brief 应用 SliderLabel 的自定义配置到所有实例 */
     void applySliderLabelRuntimeSettings();
 
+    /** @brief 统一应用功能控制台写入的运行时配置 */
+    void applyFeatureConsoleRuntimeSettings();
+    void loadSliderEditRuntimeSettings();
+    void applySliderEditRuntimeSettings();
+    void loadPlaneHeightOffsetRuntimeSettings();
+    void applyPlaneHeightOffsetRuntimeSettings();
+    void applyButtonVisibilityRuntimeSettings();
+    void applyPasswordHintRuntimeSettings();
+
 private:
     /** @brief 连接导航与页面切换相关信号 */
     void setupNavigationConnections();
@@ -907,7 +930,7 @@ private:
     static constexpr int kToastDefaultDurationMs = 3000;
     static constexpr int kToastWarningDurationMs = 5000;
     static constexpr int kToastMinHeight = 72;
-    static constexpr int kToastMaxHeight = 132;
+    static constexpr int kToastMaxHeight = 180;
 
     struct ToastEntry {
         QWidget *widget = nullptr;
