@@ -801,6 +801,8 @@ private:
     QVector<TechSliderLabel*> m_sliderLabels;
     QMap<QString, TechSliderLabel*> m_sliderLabelInstances;
     QMap<QString, TechArcGauge*> m_arcGauges;
+    QSet<QString> m_pendingJointGaugeUpdates;
+    bool m_jointGaugeFlushScheduled = false;
     QMap<QString, QVector<TechSliderLabel*>> m_pageSliders;
     QButtonGroup *m_stepTargetGroup = nullptr;
     QButtonGroup *m_sixAxisStepTargetGroup = nullptr;
@@ -1053,6 +1055,12 @@ private:
 
     /** @brief 更新指定滑块标签的数值显示 */
     void updateSliderLabelValue(const QString& labelName, float value);
+
+    /** @brief 从 g_registerCache 解析 J1~J4 并刷新对应仪表（求和轴等齐 8 个字再算） */
+    void refreshJointGaugeFromCache(const QString &labelName);
+
+    /** @brief 同一包寄存器回包后，合并刷新待更新的 J1~J4 仪表 */
+    void flushPendingJointGaugeUpdates();
     
     /** @brief 处理 AGV 按键动作 */
     void handleAGVKeyAction(int keyNumber, bool pressed);

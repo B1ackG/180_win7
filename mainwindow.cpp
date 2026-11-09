@@ -5500,6 +5500,61 @@ void MainWindow::updateDeviceCoordPanelFromCache()
     m_deviceCoordPanel->setCoordinates(cx, cy, cz, car);
 }
 
+void MainWindow::refreshJointGaugeFromCache(const QString &labelName)
+{
+    if (!m_sliderLabelConfigs.contains(labelName)) {
+        return;
+    }
+
+    const SliderLabelConfig &config = m_sliderLabelConfigs[labelName];
+    const int primaryRegs[] = {
+        config.modbusAddress1,
+        config.modbusAddress2,
+        config.modbusAddress3,
+        config.modbusAddress4
+    };
+    for (int reg : primaryRegs) {
+        if (!g_registerCache.contains(reg)) {
+            return;
+        }
+    }
+
+    double value64 = registersToDoubleDCBAFEHG(
+        g_registerCache[config.modbusAddress1],
+        g_registerCache[config.modbusAddress2],
+        g_registerCache[config.modbusAddress3],
+        g_registerCache[config.modbusAddress4]);
+
+    if (config.isSumMode) {
+        bool sumReady = true;
+        for (int i = 0; i < 4; ++i) {
+            if (!g_registerCache.contains(config.sumAddress[i])) {
+                sumReady = false;
+                break;
+            }
+        }
+        if (sumReady) {
+            value64 += registersToDoubleDCBAFEHG(
+                g_registerCache[config.sumAddress[0]],
+                g_registerCache[config.sumAddress[1]],
+                g_registerCache[config.sumAddress[2]],
+                g_registerCache[config.sumAddress[3]]);
+        }
+    }
+
+    updateSliderLabelValue(labelName, static_cast<float>(value64));
+}
+
+void MainWindow::flushPendingJointGaugeUpdates()
+{
+    const QSet<QString> pending = m_pendingJointGaugeUpdates;
+    m_pendingJointGaugeUpdates.clear();
+    m_jointGaugeFlushScheduled = false;
+    for (const QString &labelName : pending) {
+        refreshJointGaugeFromCache(labelName);
+    }
+}
+
 void MainWindow::updateSliderLabelValue(const QString& labelName, float value)
 {
     // 根据首页控件名，更新所有相关页面的对应控件
@@ -5639,70 +5694,34 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
     };
 
     // J1~J4 数值显示应始终跟随主寄存器数据，不受“控件状态同步”开关影响。
+    // 求和轴（J3）的第二段 16~19 也必须触发刷新；同一包回包先写完 cache 再解析，避免逐字撕 double。
     for (const QString &labelName : targetLabels) {
         if (!m_sliderLabelConfigs.contains(labelName)) {
             continue;
         }
 
         const SliderLabelConfig &config = m_sliderLabelConfigs[labelName];
-        const QVector<int> regs = {
-            config.modbusAddress1,
-            config.modbusAddress2,
-            config.modbusAddress3,
-            config.modbusAddress4
-        };
-
-        if (!regs.contains(address)) {
-            continue;
-        }
-
-        bool ready = true;
-        for (int reg : regs) {
-            if (!g_registerCache.contains(reg)) {
-                ready = false;
-                break;
-            }
-        }
-
-        if (!ready) {
-            continue;
-        }
-
-        const quint16 reg1 = g_registerCache[config.modbusAddress1];
-        const quint16 reg2 = g_registerCache[config.modbusAddress2];
-        const quint16 reg3 = g_registerCache[config.modbusAddress3];
-        const quint16 reg4 = g_registerCache[config.modbusAddress4];
-        double value64 = registersToDoubleDCBAFEHG(reg1, reg2, reg3, reg4);
-
-        // 如果开启了求和模式 (用于 J3Length = 12-15 + 16-19)
-        if (config.isSumMode) {
-            bool sumReady = true;
+        bool usesAddress = (address == config.modbusAddress1
+                            || address == config.modbusAddress2
+                            || address == config.modbusAddress3
+                            || address == config.modbusAddress4);
+        if (!usesAddress && config.isSumMode) {
             for (int i = 0; i < 4; ++i) {
-                if (!g_registerCache.contains(config.sumAddress[i])) {
-                    sumReady = false;
+                if (config.sumAddress[i] == address) {
+                    usesAddress = true;
                     break;
                 }
             }
-
-            if (sumReady) {
-                const double sumPart = registersToDoubleDCBAFEHG(
-                    g_registerCache[config.sumAddress[0]],
-                    g_registerCache[config.sumAddress[1]],
-                    g_registerCache[config.sumAddress[2]],
-                    g_registerCache[config.sumAddress[3]]
-                );
-                value64 += sumPart;
-            }
+        }
+        if (!usesAddress) {
+            continue;
         }
 
-        static QMap<QString, int> debugCounter;
-        if (debugCounter[labelName]++ % 8 == 0) {
-            // qWarning() << "[四控件读数]" << labelName
-            //          << (config.isSumMode ? " (求和模式)" : "")
-            //          << "解析值:" << value64;
+        m_pendingJointGaugeUpdates.insert(labelName);
+        if (!m_jointGaugeFlushScheduled) {
+            m_jointGaugeFlushScheduled = true;
+            QTimer::singleShot(0, this, &MainWindow::flushPendingJointGaugeUpdates);
         }
-
-        updateSliderLabelValue(labelName, static_cast<float>(value64));
     }
 
     // SixAxies：192.168.1.13 的 73~84，两个寄存器一组，按 CDAB 转 float。
