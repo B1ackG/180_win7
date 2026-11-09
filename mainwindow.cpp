@@ -3325,6 +3325,29 @@ QString MainWindow::getControlPageName(QWidget *widget)
 
     return "未知页面";
 }
+QString MainWindow::rolePassword(UserRole role)
+{
+    auto loadConfigured = [](const QString &key, const QString &fallback) {
+        QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+        settings.beginGroup(QStringLiteral("Permission"));
+        const QString value = settings.value(key, fallback).toString().trimmed();
+        settings.endGroup();
+        return value.isEmpty() ? fallback : value;
+    };
+
+    switch (role) {
+    case UserRole::Engineer:
+        return loadConfigured(QStringLiteral("engineer_password"), QStringLiteral("456"));
+    case UserRole::Admin:
+        return loadConfigured(QStringLiteral("admin_password"), QStringLiteral("123"));
+    case UserRole::Manufacturer:
+        return QStringLiteral("8888");
+    case UserRole::Operator:
+        return QString();
+    }
+    return QString();
+}
+
 /***************************************管理员界面**********************************/
 void MainWindow::setupAdminPasswordPage()
 {
@@ -3645,7 +3668,7 @@ void MainWindow::setupAdminPasswordPage()
 
     // 连接登录按钮
     connect(loginButton, &QPushButton::clicked, this, [this, roleComboBox, passwordEdit, errorLabel, titleLabel, loginButton, logoutButton, exitAppButton, hintLabel, featureButton, netConfigSection, ipHostEdit, simHostEdit]() {
-        QString password = passwordEdit->text();
+        QString password = passwordEdit->text().trimmed();
         UserRole selectedRole = static_cast<UserRole>(roleComboBox->currentData().toInt());
         QString roleName = roleComboBox->currentText();
 
@@ -3660,13 +3683,9 @@ void MainWindow::setupAdminPasswordPage()
         record.newValue = QString("尝试登录 %1: %2").arg(roleName).arg(password.isEmpty() ? "(空)" : "******");
         m_recorder->addRecord(record);
 
-        // 验证明文口令
+        // 验证明文口令：厂家固定；工程师/管理员读功能控制台配置
         bool loginSuccess = false;
-        if (selectedRole == UserRole::Admin && password == "123") {
-            loginSuccess = true;
-        } else if (selectedRole == UserRole::Engineer && password == "456") {
-            loginSuccess = true;
-        } else if (selectedRole == UserRole::Manufacturer && password == "8888") {
+        if (password == rolePassword(selectedRole)) {
             loginSuccess = true;
         }
 

@@ -125,6 +125,9 @@ public:
     enum class UserRole { Operator = 0, Engineer = 1, Admin = 2, Manufacturer = 3 };
     enum ControlMode { WIRED_MODE = 128, WIRELESS_MODE = 0 };
 
+    /** @brief 角色口令：厂家固定，工程师/管理员读 config.ini [Permission] */
+    static QString rolePassword(UserRole role);
+
     // ==========================================
     // 1. 生命周期与核心初始化 (Life Cycle & Core)
     // ==========================================

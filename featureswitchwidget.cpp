@@ -118,6 +118,8 @@ QString configFieldLabel(const QString &group, const QString &key)
         {QStringLiteral("Polling/agv_poll_ms"), QStringLiteral("底盘轮询间隔")},
         {QStringLiteral("Polling/agv_reconnect_ms"), QStringLiteral("底盘重连间隔")},
         {QStringLiteral("PlaneHeight/offset_mm"), QStringLiteral("平面高度偏移")},
+        {QStringLiteral("Permission/engineer_password"), QStringLiteral("工程师密码")},
+        {QStringLiteral("Permission/admin_password"), QStringLiteral("管理员密码")},
         {QStringLiteral("ButtonVisibility/TBtn_RobotControl"), QStringLiteral("机械臂控制入口")},
         {QStringLiteral("ButtonVisibility/TBtn_ChassisControl"), QStringLiteral("底盘控制入口")},
         {QStringLiteral("ButtonVisibility/TBtn_SixAxies"), QStringLiteral("六自由度入口")},
@@ -416,6 +418,7 @@ void FeatureSwitchWidget::setupUI()
         smallOuter->addWidget(section);
     }
     baseLayout->addWidget(smallGroup);
+    setupPermissionPasswordUI(baseLayout);
 
     QGroupBox *logGroup = new QGroupBox(QStringLiteral("日志与调试开关"));
     auto *logOuter = new QVBoxLayout(logGroup);
@@ -505,6 +508,7 @@ void FeatureSwitchWidget::loadCurrentState()
     loadSliderLimitState();
     loadTechSliderEditState();
     loadPlaneHeightOffsetState();
+    loadPermissionPasswordState();
     loadButtonVisibilityState();
 }
 
@@ -773,6 +777,46 @@ void FeatureSwitchWidget::refreshTechSliderEditList()
     }
 }
 
+void FeatureSwitchWidget::setupPermissionPasswordUI(QVBoxLayout *scrollLayout)
+{
+    auto *group = new QGroupBox(QStringLiteral("权限密码"));
+    auto *layout = new QVBoxLayout(group);
+    layout->addWidget(makeHintLabel(
+        QStringLiteral("厂家密码固定，不可在此修改。工程师与管理员密码保存后立即用于权限页登录。"),
+        group));
+
+    auto addRow = [this, layout](const QString &desc, QLineEdit *&edit) {
+        auto *row = new QHBoxLayout();
+        auto *label = new QLabel(desc);
+        label->setMinimumWidth(110);
+        edit = new QLineEdit();
+        edit->setEchoMode(QLineEdit::Password);
+        edit->setFixedWidth(180);
+        edit->setMaxLength(32);
+        edit->setAlignment(Qt::AlignCenter);
+        edit->installEventFilter(this);
+        row->addWidget(label);
+        row->addWidget(edit);
+        row->addStretch();
+        layout->addLayout(row);
+    };
+
+    addRow(QStringLiteral("工程师密码"), m_editEngineerPassword);
+    addRow(QStringLiteral("管理员密码"), m_editAdminPassword);
+
+    auto *mfgRow = new QHBoxLayout();
+    auto *mfgLabel = new QLabel(QStringLiteral("厂家密码"));
+    mfgLabel->setMinimumWidth(110);
+    auto *mfgHint = new QLabel(QStringLiteral("固定，不可更改"));
+    mfgHint->setObjectName(QStringLiteral("consoleHint"));
+    mfgRow->addWidget(mfgLabel);
+    mfgRow->addWidget(mfgHint);
+    mfgRow->addStretch();
+    layout->addLayout(mfgRow);
+
+    scrollLayout->addWidget(group);
+}
+
 void FeatureSwitchWidget::setupPlaneHeightOffsetUI(QVBoxLayout *scrollLayout)
 {
     auto *planeGroup = new QGroupBox(QStringLiteral("平面高度偏移"));
@@ -1033,6 +1077,33 @@ bool FeatureSwitchWidget::savePlaneHeightOffsetState(QString *error)
     return settingsWriteOk(settings, QStringLiteral("config.ini"), error);
 }
 
+bool FeatureSwitchWidget::loadPermissionPasswordState()
+{
+    if (m_editEngineerPassword) {
+        m_editEngineerPassword->setText(MainWindow::rolePassword(MainWindow::UserRole::Engineer));
+    }
+    if (m_editAdminPassword) {
+        m_editAdminPassword->setText(MainWindow::rolePassword(MainWindow::UserRole::Admin));
+    }
+    return true;
+}
+
+bool FeatureSwitchWidget::savePermissionPasswordState(QString *error)
+{
+    const QString engineer = m_editEngineerPassword
+                                 ? m_editEngineerPassword->text().trimmed()
+                                 : QString();
+    const QString admin = m_editAdminPassword
+                              ? m_editAdminPassword->text().trimmed()
+                              : QString();
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("Permission"));
+    settings.setValue(QStringLiteral("engineer_password"), engineer);
+    settings.setValue(QStringLiteral("admin_password"), admin);
+    settings.endGroup();
+    return settingsWriteOk(settings, QStringLiteral("config.ini"), error);
+}
+
 bool FeatureSwitchWidget::loadButtonVisibilityState()
 {
     QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
@@ -1171,6 +1242,33 @@ bool FeatureSwitchWidget::validateAllInputs(QString *error)
         return false;
     }
 
+    const auto checkPassword = [&](QLineEdit *edit, const QString &field) -> bool {
+        if (!edit) {
+            if (error) {
+                *error = QStringLiteral("%1 输入框未初始化").arg(field);
+            }
+            return false;
+        }
+        const QString text = edit->text().trimmed();
+        if (text.isEmpty()) {
+            if (error) {
+                *error = QStringLiteral("%1 不能为空").arg(field);
+            }
+            return false;
+        }
+        if (text.size() > 32) {
+            if (error) {
+                *error = QStringLiteral("%1 最长 32 个字符").arg(field);
+            }
+            return false;
+        }
+        return true;
+    };
+    if (!checkPassword(m_editEngineerPassword, QStringLiteral("工程师密码"))
+        || !checkPassword(m_editAdminPassword, QStringLiteral("管理员密码"))) {
+        return false;
+    }
+
     const auto defaultRanges = builtinArcGaugeRanges();
     for (auto it = m_arcGaugeEdits.begin(); it != m_arcGaugeEdits.end(); ++it) {
         const auto range = defaultRanges.value(it.key(), qMakePair(0.0, 100.0));
@@ -1283,9 +1381,15 @@ void FeatureSwitchWidget::recordIniChanges(const QString &fileName, const QStrin
         keys.insert(key);
     }
     for (const QString &key : keys) {
+        const QString rawOld = before.value(key);
+        const QString rawNew = settings.value(key).toString();
+        if (rawOld == rawNew) {
+            continue;
+        }
+        const bool secret = key.contains(QLatin1String("password"));
         emitHistoryIfChanged(configFieldLabel(group, key),
-                             displayConfigValue(before.value(key)),
-                             displayConfigValue(settings.value(key).toString()));
+                             secret ? QStringLiteral("******") : displayConfigValue(rawOld),
+                             secret ? QStringLiteral("已更改") : displayConfigValue(rawNew));
     }
     settings.endGroup();
 }
@@ -1318,11 +1422,13 @@ bool FeatureSwitchWidget::onApply()
     const QMap<QString, QString> techSliderBefore = snapshotIniGroup(ini, QStringLiteral("TechSliderEditLimits"));
     const QMap<QString, QString> planeBefore = snapshotIniGroup(ini, QStringLiteral("PlaneHeight"));
     const QMap<QString, QString> buttonBefore = snapshotIniGroup(ini, QStringLiteral("ButtonVisibility"));
+    const QMap<QString, QString> permissionBefore = snapshotIniGroup(ini, QStringLiteral("Permission"));
 
     if (!savePollingState(&error)
         || !saveSliderLimitState(&error)
         || !saveTechSliderEditState(&error)
         || !savePlaneHeightOffsetState(&error)
+        || !savePermissionPasswordState(&error)
         || !saveButtonVisibilityState(&error)) {
         showConsoleError(error.isEmpty() ? QStringLiteral("无法写入 config.ini") : error);
         return false;
@@ -1351,6 +1457,7 @@ bool FeatureSwitchWidget::onApply()
     recordIniChanges(ini, QStringLiteral("TechSliderEditLimits"), techSliderBefore);
     recordIniChanges(ini, QStringLiteral("PlaneHeight"), planeBefore);
     recordIniChanges(ini, QStringLiteral("ButtonVisibility"), buttonBefore);
+    recordIniChanges(ini, QStringLiteral("Permission"), permissionBefore);
 
     emit runtimeSettingsChanged();
     hide();

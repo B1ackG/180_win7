@@ -60,6 +60,7 @@ private:
     void setupTechSliderEditUI(QVBoxLayout *scrollLayout);
     void refreshTechSliderEditList();
     void setupPlaneHeightOffsetUI(QVBoxLayout *scrollLayout);
+    void setupPermissionPasswordUI(QVBoxLayout *scrollLayout);
     void setupDeviceControlChildVisibilityUI(QVBoxLayout *scrollLayout);
 
     bool loadPollingState();
@@ -70,6 +71,8 @@ private:
     bool saveTechSliderEditState(QString *error);
     bool loadPlaneHeightOffsetState();
     bool savePlaneHeightOffsetState(QString *error);
+    bool loadPermissionPasswordState();
+    bool savePermissionPasswordState(QString *error);
     bool loadButtonVisibilityState();
     bool saveButtonVisibilityState(QString *error);
 
@@ -113,6 +116,8 @@ private:
     QMap<QString, SliderEditEdits> m_sliderEditEdits;
     QMap<QString, QCheckBox*> m_deviceControlChildCheckboxes;
     QLineEdit *m_editPlaneHeightOffset = nullptr;
+    QLineEdit *m_editEngineerPassword = nullptr;
+    QLineEdit *m_editAdminPassword = nullptr;
     QWidget *m_sliderEditListHost = nullptr;
     QVBoxLayout *m_sliderEditListLayout = nullptr;
 
