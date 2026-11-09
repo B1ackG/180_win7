@@ -127,6 +127,8 @@ public:
 
     /** @brief 角色口令：厂家固定，工程师/管理员读 config.ini [Permission] */
     static QString rolePassword(UserRole role);
+    /** @brief 权限页密码提示文案（工程师/管理员当前口令） */
+    static QString rolePasswordHintText();
 
     // ==========================================
     // 1. 生命周期与核心初始化 (Life Cycle & Core)

@@ -581,6 +581,7 @@ void MainWindow::applyPasswordHintRuntimeSettings()
     if (!hintLabel) {
         return;
     }
+    hintLabel->setText(rolePasswordHintText());
     const bool loggedIn = m_currentUserRole != UserRole::Operator;
     hintLabel->setVisible(
         !loggedIn && isFeatureEnabled(QStringLiteral("permission_system"),
@@ -3348,6 +3349,12 @@ QString MainWindow::rolePassword(UserRole role)
     return QString();
 }
 
+QString MainWindow::rolePasswordHintText()
+{
+    return QStringLiteral("工程师: %1 | 管理员: %2")
+        .arg(rolePassword(UserRole::Engineer), rolePassword(UserRole::Admin));
+}
+
 /***************************************管理员界面**********************************/
 void MainWindow::setupAdminPasswordPage()
 {
@@ -3410,7 +3417,7 @@ void MainWindow::setupAdminPasswordPage()
     passwordEdit->setAlignment(Qt::AlignCenter);
 
     // 密码提示
-    QLabel *hintLabel = new QLabel("工程师: 456 | 管理员: 123", container);
+    QLabel *hintLabel = new QLabel(rolePasswordHintText(), container);
     hintLabel->setObjectName("passwordHint");
     hintLabel->setAlignment(Qt::AlignCenter);
     hintLabel->setVisible(isFeatureEnabled(QStringLiteral("permission_system"),
@@ -3762,8 +3769,7 @@ void MainWindow::setupAdminPasswordPage()
         titleLabel->setText("权限验证");
         roleComboBox->setVisible(true);
         passwordEdit->setVisible(true);
-        hintLabel->setVisible(isFeatureEnabled(QStringLiteral("permission_system"),
-                                               QStringLiteral("permission.password_hint")));
+        applyPasswordHintRuntimeSettings();
         loginButton->setVisible(true);
         logoutButton->setVisible(false);
         exitAppButton->setVisible(false);
