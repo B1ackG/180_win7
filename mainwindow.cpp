@@ -9,6 +9,8 @@
 #include "mainmodbuspoller.h"
 #include "mainmodbusstatus.h"
 #include "navigationicon.h"
+#include "timeseriesdialog.h"
+#include "timeseriesmanager.h"
 #include "techchamfertoolbutton.h"
 #include "techzonepanel.h"
 #include <QFrame>
@@ -48,6 +50,7 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <QtMath>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <array>
 #include <fcntl.h>
 #include <unistd.h>
@@ -820,6 +823,12 @@ void MainWindow::setupNavigationConnections()
         suppressOffPageRobotLimitToasts();
         syncRobotSoftLimitToasts();
     });
+
+    if (ui->TBtn_DataCurve) {
+        ui->TBtn_DataCurve->setCheckable(false);
+        connect(ui->TBtn_DataCurve, &QToolButton::clicked,
+                this, &MainWindow::showTimeSeriesDialog);
+    }
 }
 
 void MainWindow::setupNavigationMenuIcons()
@@ -840,6 +849,7 @@ void MainWindow::setupNavigationMenuIcons()
     setIcon(ui->TBtn_PageNavMenu, NavIconKind::SystemMenu, 24);
     setIcon(ui->TBtn_PermissionPage, NavIconKind::Permission, 22);
     setIcon(ui->TBtn_HistoryRecord, NavIconKind::History, 22);
+    setIcon(ui->TBtn_DataCurve, NavIconKind::Trend, 22);
 
     setIcon(ui->TBtn_DeviceControlMenu, NavIconKind::DeviceMenu, 24);
     setIcon(ui->TBtn_HomePage, NavIconKind::Home, 22);
@@ -926,7 +936,7 @@ void MainWindow::setupCollapsibleControlPanels()
     m_pageNavigationPopup = makePopup(QStringLiteral("pageNavigationPopup"));
     moveButtonsToPopup(hiddenLayout,
                        m_pageNavigationPopup,
-                       {ui->TBtn_PermissionPage, ui->TBtn_HistoryRecord});
+                       {ui->TBtn_PermissionPage, ui->TBtn_HistoryRecord, ui->TBtn_DataCurve});
 
     m_pageNavigationMenuButton = ui->TBtn_PageNavMenu;
     initMenuButton(m_pageNavigationMenuButton, QStringLiteral("系统管理"));
@@ -968,6 +978,7 @@ void MainWindow::setupCollapsibleControlPanels()
     const QList<QToolButton*> closeAfterNavClick = {
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord,
+        ui->TBtn_DataCurve,
         ui->TBtn_HomePage,
         ui->TBtn_SixAxies,
         ui->TBtn_ChassisControl,
@@ -1400,7 +1411,8 @@ void MainWindow::updateNavigationButtonVisuals()
         ui->TBtn_ChassisControl,
         ui->TBtn_SafetyMonitor,
         ui->TBtn_PermissionPage,
-        ui->TBtn_HistoryRecord
+        ui->TBtn_HistoryRecord,
+        ui->TBtn_DataCurve
     };
     for (TechChamferToolButton *btn : navButtons) {
         if (!btn) {
@@ -1476,6 +1488,7 @@ void MainWindow::applyToolButtonStyles(const QList<QToolButton*> &buttons)
                 name == "TBtn_ChassisControl" || name == "TBtn_SafetyMonitor" ||
                 name == "TBtn_PermissionPage" ||
                 name == "TBtn_HistoryRecord" ||
+                name == "TBtn_DataCurve" ||
                 name == "TBtn_PageNavMenu" || name == "TBtn_DeviceControlMenu" ||
                 name == "TBtn_ControlModeMenu" || name == "TBtn_ControlMode" ||
                 name.startsWith("btnStepTargetAxis") ||
@@ -1905,7 +1918,9 @@ void MainWindow::updateRobotTotalPower(quint16 powerValue)
     if (!m_robotTotalPowerCard) {
         return;
     }
-    m_robotTotalPowerCard->setCurrentPower(static_cast<double>(powerValue));
+    const double watts = static_cast<double>(powerValue);
+    m_robotTotalPowerCard->setCurrentPower(watts);
+    recordTimeSeriesValue(TimeSeriesChannel::TotalPowerW, watts);
 }
 
 void MainWindow::initRobotTotalTorqueCard()
@@ -2078,6 +2093,11 @@ void MainWindow::refreshPlaneHeightCard()
         ? (m_lastJ2HeightMm - m_planeHeightOffsetMm)
         : 0.0;
     m_planeHeightCard->setValue(planeHeight, m_hasLastJ2Height);
+    if (m_hasLastJ2Height) {
+        recordTimeSeriesValue(TimeSeriesChannel::PlaneHeightMm, planeHeight);
+    } else if (m_timeSeriesManager) {
+        m_timeSeriesManager->invalidateChannel(TimeSeriesChannel::PlaneHeightMm);
+    }
 }
 
 void MainWindow::updateCurrentLoadWeight(quint16 rawValue)
@@ -2085,7 +2105,9 @@ void MainWindow::updateCurrentLoadWeight(quint16 rawValue)
     if (!m_weightCard) {
         return;
     }
-    m_weightCard->setValue(static_cast<double>(rawValue), true);
+    const double kg = static_cast<double>(rawValue);
+    m_weightCard->setValue(kg, true);
+    recordTimeSeriesValue(TimeSeriesChannel::LoadKg, kg);
 }
 
 void MainWindow::initDeviceCoordPanel()
@@ -2110,10 +2132,86 @@ void MainWindow::updateInclinometerValue(bool isXAxis, quint16 rawValue)
     card->setTiltValue(degree);
     if (isXAxis) {
         m_inclinometerXDegree = degree;
+        recordTimeSeriesValue(TimeSeriesChannel::ChassisTiltXDeg, static_cast<double>(degree));
     } else {
         m_inclinometerYDegree = degree;
+        recordTimeSeriesValue(TimeSeriesChannel::ChassisTiltYDeg, static_cast<double>(degree));
     }
     refreshInclinometerTiltPresentation();
+}
+
+void MainWindow::initializeTimeSeries()
+{
+    if (m_timeSeriesManager) {
+        return;
+    }
+
+    m_timeSeriesManager = new TimeSeriesManager(this);
+    connect(m_timeSeriesManager, &TimeSeriesManager::recordingError,
+            this, [this](const QString &message) {
+                if (!message.isEmpty()) {
+                    showNotification(message);
+                }
+            });
+    connect(m_timeSeriesManager, &TimeSeriesManager::recordingStateChanged,
+            this, [this](bool recording, const QString &message) {
+                if (!message.isEmpty()) {
+                    showNotification(message);
+                } else if (recording) {
+                    showNotification(QStringLiteral("时序数据记录已启动"));
+                }
+            });
+
+    QString error;
+    if (!m_timeSeriesManager->initialize(TimeSeriesConfig::fromIni(), &error) && !error.isEmpty()) {
+        showNotification(error);
+    }
+}
+
+void MainWindow::shutdownTimeSeries()
+{
+    if (m_timeSeriesDialog) {
+        m_timeSeriesDialog->hide();
+    }
+    if (m_timeSeriesManager) {
+        m_timeSeriesManager->stopAndFlush();
+    }
+}
+
+void MainWindow::showTimeSeriesDialog()
+{
+    if (m_currentUserRole < UserRole::Admin) {
+        if (ui->TBtn_HomePage) {
+            ui->TBtn_HomePage->setChecked(true);
+        }
+        const QString tip = QStringLiteral("权限不足：查看数据曲线需要管理员权限");
+        showNotification(tip);
+        updateStatusTip(tip);
+        return;
+    }
+
+    QString directory = TimeSeriesConfig::defaultDirectory();
+    if (m_timeSeriesManager) {
+        directory = m_timeSeriesManager->databaseDirectory();
+    } else {
+        directory = TimeSeriesConfig::fromIni().databaseDirectory;
+    }
+
+    if (!m_timeSeriesDialog) {
+        m_timeSeriesDialog = new TimeSeriesDialog(directory, this);
+        m_timeSeriesDialog->setModal(false);
+    }
+    m_timeSeriesDialog->reloadAvailableDates();
+    m_timeSeriesDialog->show();
+    m_timeSeriesDialog->raise();
+    m_timeSeriesDialog->activateWindow();
+}
+
+void MainWindow::recordTimeSeriesValue(TimeSeriesChannel channel, double value)
+{
+    if (m_timeSeriesManager) {
+        m_timeSeriesManager->updateValue(channel, value);
+    }
 }
 
 //模拟速度
@@ -5505,6 +5603,9 @@ void MainWindow::onModbusDisconnected()
         MainModbusStatus::appendOperationRecord(m_recorder, MainModbusState::Disconnected);
     }
     noteMainLinkDown();
+    if (m_timeSeriesManager) {
+        m_timeSeriesManager->invalidateSource(TimeSeriesSource::Main);
+    }
 }
 
 // Modbus错误槽函数
@@ -5655,16 +5756,21 @@ static QMap<int, quint16> g_registerCache;
 
 void MainWindow::updateRobotInclinometerFromCache()
 {
-    auto applyPair = [this](int addrA, int addrB, InclinometerCard *card) {
+    auto applyPair = [this](int addrA, int addrB, InclinometerCard *card, TimeSeriesChannel channel) {
         if (!card || !g_registerCache.contains(addrA) || !g_registerCache.contains(addrB)) {
             return;
         }
         const float degree = registersToFloatCDAB(g_registerCache[addrA], g_registerCache[addrB]);
+        if (!std::isfinite(degree)) {
+            recordTimeSeriesValue(channel, std::numeric_limits<double>::quiet_NaN());
+            return;
+        }
         card->setTiltValue(static_cast<qreal>(degree));
+        recordTimeSeriesValue(channel, static_cast<double>(degree));
     };
 
-    applyPair(135, 136, m_robotInclinometerXCard);
-    applyPair(137, 138, m_robotInclinometerYCard);
+    applyPair(135, 136, m_robotInclinometerXCard, TimeSeriesChannel::ArmTiltXDeg);
+    applyPair(137, 138, m_robotInclinometerYCard, TimeSeriesChannel::ArmTiltYDeg);
 }
 
 void MainWindow::updateDeviceCoordPanelFromCache()
@@ -5711,9 +5817,17 @@ void MainWindow::updateRobotTorqueFromCache()
             g_registerCache[startAddr + 3]);
         if (!std::isfinite(value)) {
             card->setValue(0.0, false);
+            recordTimeSeriesValue(startAddr == 276
+                ? TimeSeriesChannel::ColumnTorquePercent
+                : TimeSeriesChannel::CounterweightTorquePercent,
+                std::numeric_limits<double>::quiet_NaN());
             return;
         }
         card->setValue(value, true);
+        recordTimeSeriesValue(startAddr == 276
+            ? TimeSeriesChannel::ColumnTorquePercent
+            : TimeSeriesChannel::CounterweightTorquePercent,
+            value);
     };
 
     applyLreal(276, m_robotTotalTorqueCard);
@@ -5745,8 +5859,9 @@ void MainWindow::refreshJointGaugeFromCache(const QString &labelName)
         g_registerCache[config.modbusAddress3],
         g_registerCache[config.modbusAddress4]);
 
+    bool sumReady = true;
     if (config.isSumMode) {
-        bool sumReady = true;
+        sumReady = true;
         for (int i = 0; i < 4; ++i) {
             if (!g_registerCache.contains(config.sumAddress[i])) {
                 sumReady = false;
@@ -5763,6 +5878,24 @@ void MainWindow::refreshJointGaugeFromCache(const QString &labelName)
     }
 
     updateSliderLabelValue(labelName, static_cast<float>(value64));
+
+    if (!config.isSumMode || sumReady) {
+        TimeSeriesChannel channel;
+        if (labelName == QStringLiteral("robot_ArcGauge_J1Angle")) {
+            channel = TimeSeriesChannel::J1AngleDeg;
+        } else if (labelName == QStringLiteral("robot_ArcGauge_J2Height")) {
+            channel = TimeSeriesChannel::J2HeightMm;
+        } else if (labelName == QStringLiteral("robot_ArcGauge_J3Length")) {
+            channel = TimeSeriesChannel::J3TotalLengthMm;
+        } else if (labelName == QStringLiteral("robot_ArcGauge_J4Angle")) {
+            channel = TimeSeriesChannel::J4AngleDeg;
+        } else if (labelName == QStringLiteral("robot_ArcGauge_CounterweightHeight")) {
+            channel = TimeSeriesChannel::CounterweightHeightMm;
+        } else {
+            return;
+        }
+        recordTimeSeriesValue(channel, value64);
+    }
 }
 
 void MainWindow::flushPendingJointGaugeUpdates()
@@ -6898,6 +7031,9 @@ void MainWindow::onAGVModbusDisconnected()
 {
     qCDebug(lcMainWindow) << "AGV Modbus连接断开";
     ui->statusBar->showMessage("AGV Modbus连接断开", 3000);
+    if (m_timeSeriesManager) {
+        m_timeSeriesManager->invalidateSource(TimeSeriesSource::Agv);
+    }
 
     // 更新状态栏指示器
     QLabel *agvIndicator = ui->statusBar->findChild<QLabel*>("agvModbusStatusIndicator");

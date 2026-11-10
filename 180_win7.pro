@@ -1,4 +1,4 @@
-QT       += core gui widgets network quickwidgets concurrent
+QT       += core gui widgets network quickwidgets concurrent sql
 
 CONFIG   += c++17
 TEMPLATE = app
@@ -66,7 +66,13 @@ SOURCES += \
     techslideredit.cpp \
     techsliderlabel.cpp \
     techspeedgauge.cpp \
-    techvirtualkeyboard.cpp
+    techvirtualkeyboard.cpp \
+    timeseriestypes.cpp \
+    timeseriesmanager.cpp \
+    timeserieswriter.cpp \
+    timeseriesqueryservice.cpp \
+    timeserieschartwidget.cpp \
+    timeseriesdialog.cpp
 
 HEADERS += \
     agvmodbusmanager.h \
@@ -110,7 +116,13 @@ HEADERS += \
     techsliderlabel.h \
     techspeeddialsimple.h \
     techspeedgauge.h \
-    techvirtualkeyboard.h
+    techvirtualkeyboard.h \
+    timeseriestypes.h \
+    timeseriesmanager.h \
+    timeserieswriter.h \
+    timeseriesqueryservice.h \
+    timeserieschartwidget.h \
+    timeseriesdialog.h
 
 FORMS += \
     mainwindow.ui

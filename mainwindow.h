@@ -41,6 +41,10 @@
 #include "agvmodbusmanager.h"
 #include "steeringmodeselector.h"
 #include "enablebuttonworker.h"
+#include "timeseriestypes.h"
+
+class TimeSeriesManager;
+class TimeSeriesDialog;
 
 
 #include <QPushButton>
@@ -405,6 +409,14 @@ public:
     void initializeHistoryPage();
     /** @brief 配置 TCP 传输 UI */
     void setupTcpTransmissionUI();
+    /** @brief 读取 [TimeSeries] 配置并启动按天 SQLite 采样 */
+    void initializeTimeSeries();
+    /** @brief 停止采样并等待写线程刷盘，可重复调用 */
+    void shutdownTimeSeries();
+    /** @brief 打开独立数据曲线对话框 */
+    void showTimeSeriesDialog();
+    /** @brief 把界面最终显示值写入时序快照 */
+    void recordTimeSeriesValue(TimeSeriesChannel channel, double value);
     /** @brief 启用或禁用 TCP 传输 */
     void enableTcpTransmission(bool enabled);    /** @brief 更新TCP服务器IP（仅修改主机号） */
     void updateTcpServerHost(const QString &hostSuffix);
@@ -804,6 +816,8 @@ private:
     QPushButton *m_historyNewerPageButton = nullptr;
     QPushButton *m_historyOlderPageButton = nullptr;
     QLabel *m_historyPageLabel = nullptr;
+    TimeSeriesManager *m_timeSeriesManager = nullptr;
+    TimeSeriesDialog *m_timeSeriesDialog = nullptr;
     RobotTotalPowerCard *m_robotTotalPowerCard = nullptr;
     RobotTotalTorqueCard *m_robotTotalTorqueCard = nullptr;
     RobotTotalTorqueCard *m_robotCounterweightTorqueCard = nullptr;

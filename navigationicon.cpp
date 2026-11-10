@@ -61,6 +61,19 @@ void drawPermission(QPainter &p, const QRectF &r, const QColor &color)
                QPointF(cx, r.top() + r.height() * 0.72));
 }
 
+void drawTrend(QPainter &p, const QRectF &r, const QColor &color)
+{
+    beginIconStroke(p, color);
+    p.drawLine(QPointF(r.left(), r.bottom()), QPointF(r.left(), r.top()));
+    p.drawLine(QPointF(r.left(), r.bottom()), QPointF(r.right(), r.bottom()));
+    QPainterPath line;
+    line.moveTo(r.left() + r.width() * 0.12, r.bottom() - r.height() * 0.28);
+    line.lineTo(r.left() + r.width() * 0.38, r.bottom() - r.height() * 0.52);
+    line.lineTo(r.left() + r.width() * 0.62, r.bottom() - r.height() * 0.36);
+    line.lineTo(r.left() + r.width() * 0.88, r.top() + r.height() * 0.18);
+    p.drawPath(line);
+}
+
 void drawHistory(QPainter &p, const QRectF &r, const QColor &color)
 {
     beginIconStroke(p, color);
@@ -280,6 +293,9 @@ void paintNavIcon(QPainter &painter, NavIconKind kind, const QSize &size, const 
         break;
     case NavIconKind::History:
         drawHistory(painter, bounds, color);
+        break;
+    case NavIconKind::Trend:
+        drawTrend(painter, bounds, color);
         break;
     case NavIconKind::Craft:
         drawCraft(painter, bounds, color);

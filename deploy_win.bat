@@ -69,6 +69,14 @@ if not exist "%DIST%\libwinpthread-1.dll" (
   echo [error] missing libwinpthread-1.dll
   exit /b 1
 )
+if not exist "%DIST%\Qt5Sql.dll" (
+  echo [error] missing Qt5Sql.dll
+  exit /b 1
+)
+if not exist "%DIST%\sqldrivers\qsqlite.dll" (
+  echo [error] missing sqldrivers\qsqlite.dll
+  exit /b 1
+)
 
 echo.
 echo Packaged to:

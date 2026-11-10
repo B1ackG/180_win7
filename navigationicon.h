@@ -10,6 +10,7 @@ enum class NavIconKind {
     Home,
     Permission,
     History,
+    Trend,
     Craft,
     DeviceMenu,
     Fixture,

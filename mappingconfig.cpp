@@ -51,6 +51,7 @@ void MappingConfig::initDefaultMappings()
         m_controlNameMap["TBtn_craft"] = "工艺切换按钮";
         m_controlNameMap["TBtn_RemoveWarning"] = "消除报警按钮";
         m_controlNameMap["TBtn_HistoryRecord"] = "历史记录按钮";
+        m_controlNameMap["TBtn_DataCurve"] = "数据曲线按钮";
         m_controlNameMap["TBtn_HomePage"] = "主控制臂";
         m_controlNameMap["TBtn_SixAxies"] = "六自由度";
         m_controlNameMap["TBtn_ChassisControl"] = "底盘控制";

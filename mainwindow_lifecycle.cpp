@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "featureswitchmanager.h"
+#include "timeseriesmanager.h"
 
 #include <QApplication>
 #include <QStackedWidget>
@@ -107,6 +108,8 @@ MainWindow::~MainWindow()
         m_historyLoadWatcher = nullptr;
     }
 
+    shutdownTimeSeries();
+
     qDebug() << "正在清理资源...";
 
     if (m_keyManager) {
@@ -203,6 +206,7 @@ void MainWindow::shutdownForExit()
     }
     m_shuttingDown = true;
     qDebug() << "正在停止后台线程并退出...";
+    shutdownTimeSeries();
 
     if (m_modbusPollTimer) {
         m_modbusPollTimer->stop();
@@ -295,6 +299,7 @@ void MainWindow::initializeCorePagesAndUi()
     initUI();
     setupSliderLabelCopies();
     applyFeatureConsoleRuntimeSettings();
+    initializeTimeSeries();
 }
 
 void MainWindow::initializeCoreSubsystems()

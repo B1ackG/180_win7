@@ -1216,6 +1216,30 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
       </widget>
      </item>
      <item>
+      <widget class="TechChamferToolButton" name="TBtn_DataCurve">
+       <property name="font">
+        <font>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="text">
+        <string>数据曲线</string>
+       </property>
+       <property name="iconSize">
+        <size>
+         <width>22</width>
+         <height>22</height>
+        </size>
+       </property>
+       <property name="toolButtonStyle">
+        <enum>Qt::ToolButtonTextBesideIcon</enum>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="TechChamferToolButton" name="TBtn_HomePage">
        <property name="font">
         <font>
