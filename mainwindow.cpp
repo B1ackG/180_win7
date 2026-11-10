@@ -615,6 +615,9 @@ void MainWindow::applyRobotTorqueRuntimeSettings()
     if (m_robotTotalTorqueCard) {
         m_robotTotalTorqueCard->setDangerThreshold(m_robotTorqueDangerPercent);
     }
+    if (m_robotCounterweightTorqueCard) {
+        m_robotCounterweightTorqueCard->setDangerThreshold(m_robotTorqueDangerPercent);
+    }
 }
 
 void MainWindow::applyButtonVisibilityRuntimeSettings()
@@ -658,6 +661,7 @@ void MainWindow::applyButtonVisibilityRuntimeSettings()
     const bool robotVisible = settings.value(QStringLiteral("TBtn_RobotControl"), true).toBool();
     const bool chassisVisible = settings.value(QStringLiteral("TBtn_ChassisControl"), true).toBool();
     const bool sixVisible = settings.value(QStringLiteral("TBtn_SixAxies"), true).toBool();
+    const bool safetyVisible = settings.value(QStringLiteral("TBtn_SafetyMonitor"), true).toBool();
     if (QWidget *robotBtn = resolveDeviceButton(QStringLiteral("TBtn_RobotControl"))) {
         robotBtn->setVisible(robotVisible);
     }
@@ -667,8 +671,12 @@ void MainWindow::applyButtonVisibilityRuntimeSettings()
     if (QWidget *sixBtn = resolveDeviceButton(QStringLiteral("TBtn_SixAxies"))) {
         sixBtn->setVisible(sixVisible);
     }
+    if (QWidget *safetyBtn = resolveDeviceButton(QStringLiteral("TBtn_SafetyMonitor"))) {
+        safetyBtn->setVisible(safetyVisible);
+    }
     if (m_deviceControlMenuButton) {
-        m_deviceControlMenuButton->setVisible(robotVisible || chassisVisible || sixVisible);
+        m_deviceControlMenuButton->setVisible(
+            robotVisible || chassisVisible || sixVisible || safetyVisible);
     }
     settings.endGroup();
 }
@@ -720,6 +728,7 @@ void MainWindow::setupNavigationConnections()
         ui->TBtn_HomePage,
         ui->TBtn_SixAxies,
         ui->TBtn_ChassisControl,
+        ui->TBtn_SafetyMonitor,
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord
     };
@@ -739,6 +748,7 @@ void MainWindow::setupNavigationConnections()
         ui->TBtn_HomePage,
         ui->TBtn_SixAxies,
         ui->TBtn_ChassisControl,
+        ui->TBtn_SafetyMonitor,
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord
     };
@@ -796,6 +806,20 @@ void MainWindow::setupNavigationConnections()
         suppressOffPageRobotLimitToasts();
         syncRobotSoftLimitToasts();
     });
+
+    connect(ui->TBtn_SafetyMonitor, &QPushButton::clicked, [this]() {
+        if (ui->StackedWidget && ui->page_Robot) {
+            ui->StackedWidget->setCurrentWidget(ui->page_Robot);
+        }
+        if (ui->stackedWidget_RobotStatus && ui->page_SafetyMonitor) {
+            ui->stackedWidget_RobotStatus->setCurrentWidget(ui->page_SafetyMonitor);
+        }
+        ui->TBtn_SafetyMonitor->setChecked(true);
+        updateNavButtonStyles(nullptr);
+        dismissSixAxisInitToast();
+        suppressOffPageRobotLimitToasts();
+        syncRobotSoftLimitToasts();
+    });
 }
 
 void MainWindow::setupNavigationMenuIcons()
@@ -821,6 +845,7 @@ void MainWindow::setupNavigationMenuIcons()
     setIcon(ui->TBtn_HomePage, NavIconKind::Home, 22);
     setIcon(ui->TBtn_SixAxies, NavIconKind::SixAxis, 22);
     setIcon(ui->TBtn_ChassisControl, NavIconKind::Chassis, 22);
+    setIcon(ui->TBtn_SafetyMonitor, NavIconKind::SafetyMonitor, 22);
 
     constexpr QColor kClearAlarmIcon(255, 244, 244);
     if (ui->TBtn_RemoveWarning) {
@@ -914,7 +939,8 @@ void MainWindow::setupCollapsibleControlPanels()
     m_deviceControlPopup = makePopup(QStringLiteral("deviceControlPopup"));
     moveButtonsToPopup(hiddenLayout,
                        m_deviceControlPopup,
-                       {ui->TBtn_HomePage, ui->TBtn_SixAxies, ui->TBtn_ChassisControl});
+                       {ui->TBtn_HomePage, ui->TBtn_SixAxies, ui->TBtn_ChassisControl,
+                        ui->TBtn_SafetyMonitor});
 
     m_deviceControlMenuButton = ui->TBtn_DeviceControlMenu;
     initMenuButton(m_deviceControlMenuButton, QStringLiteral("设备控制"));
@@ -945,6 +971,7 @@ void MainWindow::setupCollapsibleControlPanels()
         ui->TBtn_HomePage,
         ui->TBtn_SixAxies,
         ui->TBtn_ChassisControl,
+        ui->TBtn_SafetyMonitor,
         ui->TBtn_ControlMode
     };
     for (QToolButton *button : closeAfterNavClick) {
@@ -1371,6 +1398,7 @@ void MainWindow::updateNavigationButtonVisuals()
         ui->TBtn_HomePage,
         ui->TBtn_SixAxies,
         ui->TBtn_ChassisControl,
+        ui->TBtn_SafetyMonitor,
         ui->TBtn_PermissionPage,
         ui->TBtn_HistoryRecord
     };
@@ -1445,7 +1473,7 @@ void MainWindow::applyToolButtonStyles(const QList<QToolButton*> &buttons)
             const QString name = btn->objectName();
             if (name == "TBtn_RemoveWarning" ||
                 name == "TBtn_HomePage" || name == "TBtn_SixAxies" ||
-                name == "TBtn_ChassisControl" ||
+                name == "TBtn_ChassisControl" || name == "TBtn_SafetyMonitor" ||
                 name == "TBtn_PermissionPage" ||
                 name == "TBtn_HistoryRecord" ||
                 name == "TBtn_PageNavMenu" || name == "TBtn_DeviceControlMenu" ||
@@ -1882,41 +1910,48 @@ void MainWindow::updateRobotTotalPower(quint16 powerValue)
 
 void MainWindow::initRobotTotalTorqueCard()
 {
-    QWidget *torqueHost = findChild<QWidget*>(QStringLiteral("quickWidget_Robottest2Torque"));
-    if (!torqueHost) {
-        torqueHost = findChild<QWidget*>(QStringLiteral("quickWidget_RobotTotalTorque"));
-    }
-    if (!torqueHost) {
-        qCWarning(lcMainWindow) << "未找到 quickWidget_Robottest2Torque，跳过扭矩卡片初始化";
-        return;
-    }
-
     loadRobotTorqueRuntimeSettings();
 
-    if (torqueHost->layout()) {
-        QLayoutItem *item = nullptr;
-        while ((item = torqueHost->layout()->takeAt(0)) != nullptr) {
-            if (item->widget()) {
-                item->widget()->deleteLater();
-            }
-            delete item;
+    auto initOne = [this](const QString &hostName, const QString &title,
+                          RobotTotalTorqueCard *&cardOut) {
+        QWidget *torqueHost = findChild<QWidget*>(hostName);
+        if (!torqueHost) {
+            qCWarning(lcMainWindow) << "未找到" << hostName << "，跳过扭矩卡片初始化";
+            return;
         }
-        delete torqueHost->layout();
-    }
 
-    torqueHost->setStyleSheet(QStringLiteral("background: transparent; border: none;"));
+        if (torqueHost->layout()) {
+            QLayoutItem *item = nullptr;
+            while ((item = torqueHost->layout()->takeAt(0)) != nullptr) {
+                if (item->widget()) {
+                    item->widget()->deleteLater();
+                }
+                delete item;
+            }
+            delete torqueHost->layout();
+        }
 
-    auto *layout = new QVBoxLayout(torqueHost);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
+        torqueHost->setStyleSheet(QStringLiteral("background: transparent; border: none;"));
 
-    m_robotTotalTorqueCard = new RobotTotalTorqueCard(torqueHost);
-    m_robotTotalTorqueCard->setTitle(QStringLiteral("立柱升降扭矩"));
-    m_robotTotalTorqueCard->setUnit(QStringLiteral("%"));
-    m_robotTotalTorqueCard->setDecimals(1);
-    m_robotTotalTorqueCard->setDangerThreshold(m_robotTorqueDangerPercent);
-    m_robotTotalTorqueCard->setValue(0.0, false);
-    layout->addWidget(m_robotTotalTorqueCard);
+        auto *layout = new QVBoxLayout(torqueHost);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
+
+        cardOut = new RobotTotalTorqueCard(torqueHost);
+        cardOut->setTitle(title);
+        cardOut->setUnit(QStringLiteral("%"));
+        cardOut->setDecimals(1);
+        cardOut->setDangerThreshold(m_robotTorqueDangerPercent);
+        cardOut->setValue(0.0, false);
+        layout->addWidget(cardOut);
+    };
+
+    initOne(QStringLiteral("quickWidget_Robottest2Torque"),
+            QStringLiteral("立柱升降扭矩"),
+            m_robotTotalTorqueCard);
+    initOne(QStringLiteral("quickWidget_Robottest5Torque"),
+            QStringLiteral("配重缸升降扭矩"),
+            m_robotCounterweightTorqueCard);
 }
 
 void MainWindow::updateRobotTotalTorquePercent(double percent, bool valid)
@@ -5660,21 +5695,29 @@ void MainWindow::updateDeviceCoordPanelFromCache()
 
 void MainWindow::updateRobotTorqueFromCache()
 {
-    constexpr int kRegs[] = {276, 277, 278, 279};
-    for (int a : kRegs) {
-        if (!g_registerCache.contains(a)) {
+    auto applyLreal = [this](int startAddr, RobotTotalTorqueCard *card) {
+        if (!card) {
             return;
         }
-    }
+        for (int i = 0; i < 4; ++i) {
+            if (!g_registerCache.contains(startAddr + i)) {
+                return;
+            }
+        }
+        const double value = registersToDoubleDCBAFEHG(
+            g_registerCache[startAddr],
+            g_registerCache[startAddr + 1],
+            g_registerCache[startAddr + 2],
+            g_registerCache[startAddr + 3]);
+        if (!std::isfinite(value)) {
+            card->setValue(0.0, false);
+            return;
+        }
+        card->setValue(value, true);
+    };
 
-    const double value = registersToDoubleDCBAFEHG(
-        g_registerCache[276], g_registerCache[277],
-        g_registerCache[278], g_registerCache[279]);
-    if (!std::isfinite(value)) {
-        updateRobotTotalTorquePercent(0.0, false);
-        return;
-    }
-    updateRobotTotalTorquePercent(value, true);
+    applyLreal(276, m_robotTotalTorqueCard);
+    applyLreal(280, m_robotCounterweightTorqueCard);
 }
 
 void MainWindow::refreshJointGaugeFromCache(const QString &labelName)
@@ -5872,7 +5915,7 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
         updateDeviceCoordPanelFromCache();
     }
 
-    if (address >= 276 && address <= 279) {
+    if (address >= 276 && address <= 283) {
         updateRobotTorqueFromCache();
     }
 
@@ -6281,8 +6324,8 @@ void MainWindow::readMainControlSyncRegisters()
     // 当前负载重量：192.168.1.13 的 123 寄存器
     MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 123, 1);
 
-    // 扭矩：192.168.1.13 的 276~279 LREAL（DCBA FEHG）
-    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 276, 4);
+    // 立柱/配重缸扭矩：192.168.1.13 的 276~279 / 280~283 LREAL（DCBA FEHG）
+    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 276, 8);
 }
 // 配置所有TechSliderLabel的参数
 void MainWindow::setupSliderLabelConfigs()

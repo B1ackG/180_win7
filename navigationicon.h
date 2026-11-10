@@ -16,6 +16,7 @@ enum class NavIconKind {
     Tighten,
     Chassis,
     SixAxis,
+    SafetyMonitor,
     ControlMenu,
     StepMove,
     WiredControl,

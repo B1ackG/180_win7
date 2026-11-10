@@ -125,6 +125,7 @@ QString configFieldLabel(const QString &group, const QString &key)
         {QStringLiteral("ButtonVisibility/TBtn_RobotControl"), QStringLiteral("机械臂控制入口")},
         {QStringLiteral("ButtonVisibility/TBtn_ChassisControl"), QStringLiteral("底盘控制入口")},
         {QStringLiteral("ButtonVisibility/TBtn_SixAxies"), QStringLiteral("六自由度入口")},
+        {QStringLiteral("ButtonVisibility/TBtn_SafetyMonitor"), QStringLiteral("安全监控入口")},
     };
     return labels.value(id, id);
 }
@@ -871,7 +872,7 @@ void FeatureSwitchWidget::setupDeviceControlChildVisibilityUI(QVBoxLayout *scrol
     auto *group = new QGroupBox(QStringLiteral("设备控制子按钮"));
     auto *layout = new QVBoxLayout(group);
     layout->addWidget(makeHintLabel(
-        QStringLiteral("分别控制底部「设备控制」弹出菜单中的三个入口是否显示。"
+        QStringLiteral("分别控制底部「设备控制」弹出菜单中的入口是否显示。"
                        "全部隐藏时，「设备控制」菜单本身也会收起。"),
         group));
 
@@ -879,6 +880,7 @@ void FeatureSwitchWidget::setupDeviceControlChildVisibilityUI(QVBoxLayout *scrol
         {QStringLiteral("TBtn_RobotControl"), QStringLiteral("机械臂控制")},
         {QStringLiteral("TBtn_ChassisControl"), QStringLiteral("底盘控制")},
         {QStringLiteral("TBtn_SixAxies"), QStringLiteral("六自由度")},
+        {QStringLiteral("TBtn_SafetyMonitor"), QStringLiteral("安全监控")},
     };
 
     auto *grid = new QGridLayout();

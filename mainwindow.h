@@ -417,7 +417,7 @@ public:
     void initSpeedGaugeUI();
     /** @brief 初始化机器人总功率卡片（纯 QWidget） */
     void initRobotTotalPowerCard();
-    /** @brief 初始化机器人扭矩卡片（quickWidget_Robottest2Torque，主控 276~279 LREAL） */
+    /** @brief 初始化立柱/配重缸扭矩卡片（276~279 / 280~283 LREAL） */
     void initRobotTotalTorqueCard();
     /** @brief 初始化底盘 X/Y 与悬臂 X/Y 倾角卡片（纯 QWidget，样式对标 InclinometerCard.qml） */
     void initInclinometerCards();
@@ -441,7 +441,7 @@ public:
     void updateSpeed(qreal newSpeed);
     /** @brief 更新机器人总功率显示（寄存器134） */
     void updateRobotTotalPower(quint16 powerValue);
-    /** @brief 更新机器人扭矩百分比显示（主控 276~279 LREAL） */
+    /** @brief 更新立柱升降扭矩百分比显示（主控 276~279 LREAL） */
     void updateRobotTotalTorquePercent(double percent, bool valid = true);
     /** @brief 更新当前负载显示（寄存器 123，单位 KG） */
     void updateCurrentLoadWeight(quint16 rawValue);
@@ -451,7 +451,7 @@ public:
     void updateRobotInclinometerFromCache();
     /** @brief 从寄存器缓存刷新位姿面板 */
     void updateDeviceCoordPanelFromCache();
-    /** @brief 从寄存器缓存刷新扭矩卡片（主控 276~279 LREAL / DCBA FEHG） */
+    /** @brief 从寄存器缓存刷新立柱/配重缸扭矩卡片（276~279 / 280~283 LREAL） */
     void updateRobotTorqueFromCache();
     /** @brief 初始化滑块编辑 UI */
     void initSliderEditUI();
@@ -806,6 +806,7 @@ private:
     QLabel *m_historyPageLabel = nullptr;
     RobotTotalPowerCard *m_robotTotalPowerCard = nullptr;
     RobotTotalTorqueCard *m_robotTotalTorqueCard = nullptr;
+    RobotTotalTorqueCard *m_robotCounterweightTorqueCard = nullptr;
     double m_robotTorqueDangerPercent = RobotTotalTorqueCard::kDefaultDangerPercent;
     DeviceCoordPanel *m_deviceCoordPanel = nullptr;
     InclinometerCard *m_inclinometerXCard = nullptr;

@@ -1,6 +1,7 @@
 #ifndef ROBOTTOTALTORQUECARD_H
 #define ROBOTTOTALTORQUECARD_H
 
+#include <QVector>
 #include <QWidget>
 
 class RobotTotalTorqueCard : public QWidget
@@ -29,12 +30,17 @@ protected:
     void paintEvent(QPaintEvent *event) override;
 
 private:
+    void appendSample(double percent);
+
     QString m_title;
     QString m_unit;
     double m_percent = 0.0;
     double m_dangerThreshold = kDefaultDangerPercent;
     bool m_valid = false;
     int m_decimals = 0;
+    QVector<double> m_samples;
+    int m_maxSamples = 50;
+    double m_maxDisplayPercent = 200.0;
 };
 
 #endif // ROBOTTOTALTORQUECARD_H

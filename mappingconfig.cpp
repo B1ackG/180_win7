@@ -54,6 +54,7 @@ void MappingConfig::initDefaultMappings()
         m_controlNameMap["TBtn_HomePage"] = "主控制臂";
         m_controlNameMap["TBtn_SixAxies"] = "六自由度";
         m_controlNameMap["TBtn_ChassisControl"] = "底盘控制";
+        m_controlNameMap["TBtn_SafetyMonitor"] = "安全监控";
         m_controlNameMap["TBtn_PermissionPage"] = "权限页面按钮";
         m_controlNameMap["TBtn_Stepmove"] = "步进模式按钮";
         m_controlNameMap["TBtn_ControlModeMenu"] = "控制模式菜单";

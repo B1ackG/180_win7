@@ -159,6 +159,25 @@ void drawSixAxis(QPainter &p, const QRectF &r, const QColor &color)
     arrowHead(o, QPointF(o.x() - len * 0.55, o.y() - len * 0.45));
 }
 
+void drawSafetyMonitor(QPainter &p, const QRectF &r, const QColor &color)
+{
+    beginIconStroke(p, color);
+    QPainterPath shield;
+    const qreal cx = r.center().x();
+    shield.moveTo(cx, r.top());
+    shield.lineTo(r.right(), r.top() + r.height() * 0.28);
+    shield.lineTo(r.right(), r.top() + r.height() * 0.62);
+    shield.quadTo(cx, r.bottom(), r.left(), r.top() + r.height() * 0.62);
+    shield.lineTo(r.left(), r.top() + r.height() * 0.28);
+    shield.closeSubpath();
+    p.drawPath(shield);
+    p.drawLine(QPointF(cx, r.top() + r.height() * 0.32),
+               QPointF(cx, r.top() + r.height() * 0.58));
+    p.setBrush(color);
+    p.drawEllipse(QPointF(cx, r.top() + r.height() * 0.70), 1.6, 1.6);
+    p.setBrush(Qt::NoBrush);
+}
+
 void drawControlMenu(QPainter &p, const QRectF &r, const QColor &color)
 {
     beginIconStroke(p, color);
@@ -279,6 +298,9 @@ void paintNavIcon(QPainter &painter, NavIconKind kind, const QSize &size, const 
         break;
     case NavIconKind::SixAxis:
         drawSixAxis(painter, bounds, color);
+        break;
+    case NavIconKind::SafetyMonitor:
+        drawSafetyMonitor(painter, bounds, color);
         break;
     case NavIconKind::ControlMenu:
         drawControlMenu(painter, bounds, color);
