@@ -275,6 +275,11 @@ void AGVModbusManager::setAutoReconnect(bool enable, int interval)
 
     if (!enable) {
         m_reconnectTimer->stop();
+        return;
+    }
+
+    if (!isConnected() && !m_host.isEmpty() && m_reconnectTimer && !m_reconnectTimer->isActive()) {
+        m_reconnectTimer->start(m_reconnectInterval);
     }
 }
 

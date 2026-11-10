@@ -47,6 +47,7 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <QTableWidgetItem>
 #include <QtMath>
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <fcntl.h>
 #include <unistd.h>
@@ -295,6 +296,7 @@ void MainWindow::loadPollingRuntimeSettings()
     settings.beginGroup("Network");
     m_agvHost = settings.value("agv_host", "192.168.1.88").toString();
     m_agvPort = static_cast<quint16>(settings.value("agv_port", 502).toUInt());
+    m_remoteSimulatorHost = settings.value("remote_simulator_host", QStringLiteral("192.168.1.70")).toString();
     settings.endGroup();
 
     m_mainModbusPollIntervalMs = qBound(50, m_mainModbusPollIntervalMs, 60000);
@@ -332,6 +334,7 @@ void MainWindow::savePollingRuntimeSettings() const
     settings.beginGroup("Network");
     settings.setValue("agv_host", m_agvHost);
     settings.setValue("agv_port", m_agvPort);
+    settings.setValue("remote_simulator_host", m_remoteSimulatorHost);
     settings.endGroup();
     settings.sync();
 }
@@ -415,7 +418,7 @@ void MainWindow::applySliderLabelRuntimeSettings()
             m_sliderLabelInstances[name]->setRange(config.minValue, config.maxValue);
         }
 
-        // 环形仪表实例（widget_test1~4）
+        // 环形仪表实例（widget_test1~5）
         if (m_arcGauges.contains(name)) {
             m_arcGauges[name]->setRange(config.minValue, config.maxValue);
         }
@@ -441,6 +444,8 @@ void MainWindow::applyFeatureConsoleRuntimeSettings()
     applySliderEditRuntimeSettings();
     loadPlaneHeightOffsetRuntimeSettings();
     applyPlaneHeightOffsetRuntimeSettings();
+    loadRobotTorqueRuntimeSettings();
+    applyRobotTorqueRuntimeSettings();
     applyButtonVisibilityRuntimeSettings();
     applyPasswordHintRuntimeSettings();
 
@@ -455,6 +460,79 @@ void MainWindow::applyFeatureConsoleRuntimeSettings()
                     ? QStringLiteral("本机历史记录测试：127.0.0.1:12345")
                     : QStringLiteral("历史记录接收：0.0.0.0:%1").arg(WIN7_PORT),
                 5000);
+        }
+    }
+
+    reconnectModbusEndpointsIfChanged();
+}
+
+MainWindow::RuntimeEndpoint MainWindow::resolvedMainEndpoint() const
+{
+    const MainModbusEndpoint endpoint = MainModbusConnector::selectEndpoint(
+        isFeatureEnabled(QStringLiteral("tcp_transmission"), QStringLiteral("tcp.local_simulator")),
+        isFeatureEnabled(QStringLiteral("tcp_transmission"), QStringLiteral("tcp.remote_simulator")),
+        m_remoteSimulatorHost);
+    return {endpoint.host, endpoint.port};
+}
+
+MainWindow::RuntimeEndpoint MainWindow::resolvedAgvEndpoint() const
+{
+    const MainModbusEndpoint endpoint = MainModbusConnector::selectAgvEndpoint(
+        isFeatureEnabled(QStringLiteral("tcp_transmission"), QStringLiteral("tcp.local_simulator")),
+        isFeatureEnabled(QStringLiteral("tcp_transmission"), QStringLiteral("tcp.remote_simulator")),
+        m_remoteSimulatorHost,
+        m_agvHost,
+        m_agvPort);
+    return {endpoint.host, endpoint.port};
+}
+
+void MainWindow::reconnectModbusEndpointsIfChanged()
+{
+    const RuntimeEndpoint mainEndpoint = resolvedMainEndpoint();
+    if (m_modbusManager) {
+        if (!m_hasConnectedMainEndpoint || m_connectedMainEndpoint != mainEndpoint) {
+            ModbusThreadManager *manager = m_modbusManager;
+            const QString host = mainEndpoint.host;
+            const quint16 port = mainEndpoint.port;
+            const int pollInterval = m_mainModbusPollIntervalMs;
+            const int reconnectInterval = m_mainReconnectIntervalMs;
+            QMetaObject::invokeMethod(manager, [manager, host, port, pollInterval, reconnectInterval]() {
+                manager->setAutoReconnect(false);
+                manager->disconnectFromDevice();
+                manager->setPollInterval(pollInterval);
+                manager->setAutoReconnect(true, reconnectInterval);
+                manager->connectToDevice(host, port);
+            }, Qt::QueuedConnection);
+            m_connectedMainEndpoint = mainEndpoint;
+            m_hasConnectedMainEndpoint = true;
+            qCDebug(lcMainWindow) << "[MainModbus] 已排队切换端点:" << host << ":" << port;
+        } else {
+            qCDebug(lcMainWindow) << "[MainModbus] 端点未变化，跳过重连"
+                                  << mainEndpoint.host << mainEndpoint.port;
+        }
+    }
+
+    const RuntimeEndpoint agvEndpoint = resolvedAgvEndpoint();
+    if (m_agvModbusManager) {
+        if (!m_hasConnectedAgvEndpoint || m_connectedAgvEndpoint != agvEndpoint) {
+            AGVModbusManager *agv = m_agvModbusManager;
+            const QString host = agvEndpoint.host;
+            const quint16 port = agvEndpoint.port;
+            const int pollInterval = m_agvPollIntervalMs;
+            const int reconnectInterval = m_agvReconnectIntervalMs;
+            QMetaObject::invokeMethod(agv, [agv, host, port, pollInterval, reconnectInterval]() {
+                agv->setAutoReconnect(false);
+                agv->disconnectFromDevice();
+                agv->setPollInterval(pollInterval);
+                agv->setAutoReconnect(true, reconnectInterval);
+                agv->connectToDevice(host, port);
+            }, Qt::QueuedConnection);
+            m_connectedAgvEndpoint = agvEndpoint;
+            m_hasConnectedAgvEndpoint = true;
+            qCDebug(lcMainWindow) << "[AGVModbus] 已排队切换端点:" << host << ":" << port;
+        } else {
+            qCDebug(lcMainWindow) << "[AGVModbus] 端点未变化，跳过重连"
+                                  << agvEndpoint.host << agvEndpoint.port;
         }
     }
 }
@@ -520,6 +598,25 @@ void MainWindow::applyPlaneHeightOffsetRuntimeSettings()
     refreshPlaneHeightCard();
 }
 
+void MainWindow::loadRobotTorqueRuntimeSettings()
+{
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("RobotTorque"));
+    m_robotTorqueDangerPercent = qBound(
+        1.0,
+        settings.value(QStringLiteral("danger_percent"),
+                       RobotTotalTorqueCard::kDefaultDangerPercent).toDouble(),
+        999.0);
+    settings.endGroup();
+}
+
+void MainWindow::applyRobotTorqueRuntimeSettings()
+{
+    if (m_robotTotalTorqueCard) {
+        m_robotTotalTorqueCard->setDangerThreshold(m_robotTorqueDangerPercent);
+    }
+}
+
 void MainWindow::applyButtonVisibilityRuntimeSettings()
 {
     QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
@@ -530,6 +627,7 @@ void MainWindow::applyButtonVisibilityRuntimeSettings()
         QStringLiteral("robot_ArcGauge_J2Height"),
         QStringLiteral("robot_ArcGauge_J3Length"),
         QStringLiteral("robot_ArcGauge_J4Angle"),
+        QStringLiteral("robot_ArcGauge_CounterweightHeight"),
         QStringLiteral("robot_ArcGauge_SixAxis1"),
         QStringLiteral("robot_ArcGauge_SixAxis2"),
         QStringLiteral("robot_ArcGauge_SixAxis3"),
@@ -1648,6 +1746,7 @@ void MainWindow::initSpeedGaugeUI()
         {ui->widget_test2, "robot_ArcGauge_J2Height", "升降高度", QString(), "mm", -850, 1150, 0},
         {ui->widget_test3, "robot_ArcGauge_J3Length", "总伸展长度", QString(), "mm", 0, 1600, 0},
         {ui->widget_test4, "robot_ArcGauge_J4Angle", "末端角度", QString(), "°", -180, 180, 1},
+        {ui->widget_test5, "robot_ArcGauge_CounterweightHeight", "配重缸升降", QString(), "mm", 0, 2000, 0},
         {ui->widget_SixAxies_1, "robot_ArcGauge_SixAxis1", "RX当前角度", QString(), "°", -15, 15, 2},
         {ui->widget_SixAxies_2, "robot_ArcGauge_SixAxis2", "RY当前角度", QString(), "°", -15, 15, 2},
         {ui->widget_SixAxies_3, "robot_ArcGauge_SixAxis3", "RZ当前角度", QString(), "°", -17, 17, 2},
@@ -1698,6 +1797,9 @@ void MainWindow::initSpeedGaugeUI()
             } else if (cfg.name == "robot_ArcGauge_J4Angle") {
                 arcGauge->setSecondMaximum(2.0);  // J4 速度范围 0~2 °/s
                 arcGauge->setSecondSuffix("°/s");
+            } else if (cfg.name == "robot_ArcGauge_CounterweightHeight") {
+                arcGauge->setSecondMaximum(15.0); // 配重缸速度范围 0~15 mm/s（与 J2 同类）
+                arcGauge->setSecondSuffix("mm/s");
             }
 
             arcGauge->setLabelText(cfg.label);
@@ -1776,6 +1878,53 @@ void MainWindow::updateRobotTotalPower(quint16 powerValue)
         return;
     }
     m_robotTotalPowerCard->setCurrentPower(static_cast<double>(powerValue));
+}
+
+void MainWindow::initRobotTotalTorqueCard()
+{
+    QWidget *torqueHost = findChild<QWidget*>(QStringLiteral("quickWidget_Robottest2Torque"));
+    if (!torqueHost) {
+        torqueHost = findChild<QWidget*>(QStringLiteral("quickWidget_RobotTotalTorque"));
+    }
+    if (!torqueHost) {
+        qCWarning(lcMainWindow) << "未找到 quickWidget_Robottest2Torque，跳过扭矩卡片初始化";
+        return;
+    }
+
+    loadRobotTorqueRuntimeSettings();
+
+    if (torqueHost->layout()) {
+        QLayoutItem *item = nullptr;
+        while ((item = torqueHost->layout()->takeAt(0)) != nullptr) {
+            if (item->widget()) {
+                item->widget()->deleteLater();
+            }
+            delete item;
+        }
+        delete torqueHost->layout();
+    }
+
+    torqueHost->setStyleSheet(QStringLiteral("background: transparent; border: none;"));
+
+    auto *layout = new QVBoxLayout(torqueHost);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    m_robotTotalTorqueCard = new RobotTotalTorqueCard(torqueHost);
+    m_robotTotalTorqueCard->setTitle(QStringLiteral("立柱升降扭矩"));
+    m_robotTotalTorqueCard->setUnit(QStringLiteral("%"));
+    m_robotTotalTorqueCard->setDecimals(1);
+    m_robotTotalTorqueCard->setDangerThreshold(m_robotTorqueDangerPercent);
+    m_robotTotalTorqueCard->setValue(0.0, false);
+    layout->addWidget(m_robotTotalTorqueCard);
+}
+
+void MainWindow::updateRobotTotalTorquePercent(double percent, bool valid)
+{
+    if (!m_robotTotalTorqueCard) {
+        return;
+    }
+    m_robotTotalTorqueCard->setValue(percent, valid);
 }
 
 void MainWindow::initInclinometerCards()
@@ -5172,7 +5321,10 @@ void MainWindow::setupModbusManager()
 
     const MainModbusEndpoint endpoint = MainModbusConnector::selectEndpoint(
         isFeatureEnabled("tcp_transmission", "tcp.local_simulator"),
-        isFeatureEnabled("tcp_transmission", "tcp.remote_simulator"));
+        isFeatureEnabled("tcp_transmission", "tcp.remote_simulator"),
+        m_remoteSimulatorHost);
+    m_connectedMainEndpoint = {endpoint.host, endpoint.port};
+    m_hasConnectedMainEndpoint = true;
     if (endpoint.host == "127.0.0.1") {
         qCDebug(lcMainWindow) << "启用本机 TCP 模拟器模式：主设备 ->" << endpoint.host << ":" << endpoint.port;
     } else if (endpoint.port == 5020) {
@@ -5506,6 +5658,25 @@ void MainWindow::updateDeviceCoordPanelFromCache()
     m_deviceCoordPanel->setCoordinates(cx, cy, cz, car);
 }
 
+void MainWindow::updateRobotTorqueFromCache()
+{
+    constexpr int kRegs[] = {276, 277, 278, 279};
+    for (int a : kRegs) {
+        if (!g_registerCache.contains(a)) {
+            return;
+        }
+    }
+
+    const double value = registersToDoubleDCBAFEHG(
+        g_registerCache[276], g_registerCache[277],
+        g_registerCache[278], g_registerCache[279]);
+    if (!std::isfinite(value)) {
+        updateRobotTotalTorquePercent(0.0, false);
+        return;
+    }
+    updateRobotTotalTorquePercent(value, true);
+}
+
 void MainWindow::refreshJointGaugeFromCache(const QString &labelName)
 {
     if (!m_sliderLabelConfigs.contains(labelName)) {
@@ -5610,6 +5781,12 @@ void MainWindow::updateSliderLabelValue(const QString& labelName, float value)
                 double v = registersToDoubleDCBAFEHG(g_registerCache[56], g_registerCache[57], g_registerCache[58], g_registerCache[59]);
                 m_arcGauges[labelName]->setSecondValue(qAbs(v));
             }
+        } else if (labelName == "robot_ArcGauge_CounterweightHeight") {
+            // 配重缸速度 = 44-47, LREAL
+            if (g_registerCache.contains(44) && g_registerCache.contains(47)) {
+                double v = registersToDoubleDCBAFEHG(g_registerCache[44], g_registerCache[45], g_registerCache[46], g_registerCache[47]);
+                m_arcGauges[labelName]->setSecondValue(qAbs(v));
+            }
         }
     }
 
@@ -5695,8 +5872,13 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
         updateDeviceCoordPanelFromCache();
     }
 
+    if (address >= 276 && address <= 279) {
+        updateRobotTorqueFromCache();
+    }
+
     const QStringList targetLabels = {
-        "robot_ArcGauge_J1Angle", "robot_ArcGauge_J2Height", "robot_ArcGauge_J3Length", "robot_ArcGauge_J4Angle"
+        "robot_ArcGauge_J1Angle", "robot_ArcGauge_J2Height", "robot_ArcGauge_J3Length", "robot_ArcGauge_J4Angle",
+        "robot_ArcGauge_CounterweightHeight"
     };
 
     // J1~J4 数值显示应始终跟随主寄存器数据，不受“控件状态同步”开关影响。
@@ -5718,6 +5900,10 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
                     break;
                 }
             }
+        }
+        if (!usesAddress && labelName == QStringLiteral("robot_ArcGauge_CounterweightHeight")
+            && address >= 44 && address <= 47) {
+            usesAddress = true;
         }
         if (!usesAddress) {
             continue;
@@ -6094,6 +6280,9 @@ void MainWindow::readMainControlSyncRegisters()
 
     // 当前负载重量：192.168.1.13 的 123 寄存器
     MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 123, 1);
+
+    // 扭矩：192.168.1.13 的 276~279 LREAL（DCBA FEHG）
+    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 276, 4);
 }
 // 配置所有TechSliderLabel的参数
 void MainWindow::setupSliderLabelConfigs()
@@ -6170,6 +6359,22 @@ void MainWindow::setupSliderLabelConfigs()
         1                    // 精度：1位小数
     };
 
+    m_sliderLabelConfigs["robot_ArcGauge_CounterweightHeight"] = {
+        "配重缸升降:",
+        "mm",
+        0.0,
+        2000.0,
+        0.0,
+        "mm",
+        8,
+        9,
+        10,
+        11,
+        true,
+        allTargetPages,
+        0
+    };
+
     auto addArcGaugeRangeOnly = [&](const QString &key, const QString &label, const QString &suffix,
                                     double minVal, double maxVal, int precision) {
         m_sliderLabelConfigs[key] = {
@@ -6189,6 +6394,7 @@ void MainWindow::setupSliderLabelConfigs()
     m_sliderLabelConfigs["robot_ArcGauge_J2Height"].secondLabelText = QStringLiteral("立柱升降");
     m_sliderLabelConfigs["robot_ArcGauge_J3Length"].secondLabelText = QStringLiteral("伸缩平衡臂");
     m_sliderLabelConfigs["robot_ArcGauge_J4Angle"].secondLabelText = QStringLiteral("末端组件");
+    m_sliderLabelConfigs["robot_ArcGauge_CounterweightHeight"].secondLabelText = QStringLiteral("配重缸");
     m_sliderLabelConfigs["robot_ArcGauge_SixAxis1"].secondLabelText = QStringLiteral("绕X轴旋转");
     m_sliderLabelConfigs["robot_ArcGauge_SixAxis2"].secondLabelText = QStringLiteral("绕Y轴旋转");
     m_sliderLabelConfigs["robot_ArcGauge_SixAxis3"].secondLabelText = QStringLiteral("绕Z轴旋转");
@@ -6452,28 +6658,21 @@ void MainWindow::setupAGVModbus()
                 }
             });
 
-    // 配置
+    const MainModbusEndpoint agvEndpoint = MainModbusConnector::selectAgvEndpoint(
+        isFeatureEnabled("tcp_transmission", "tcp.local_simulator"),
+        isFeatureEnabled("tcp_transmission", "tcp.remote_simulator"),
+        m_remoteSimulatorHost,
+        m_agvHost,
+        m_agvPort);
+    m_connectedAgvEndpoint = {agvEndpoint.host, agvEndpoint.port};
+    m_hasConnectedAgvEndpoint = true;
+
     m_agvModbusManager->setPollInterval(m_agvPollIntervalMs);
     m_agvModbusManager->setAutoReconnect(true, m_agvReconnectIntervalMs);
+    m_agvModbusManager->connectToDevice(agvEndpoint.host, agvEndpoint.port);
 
-    // 连接到设备 - 88 -> 100
-    QString agvHost = m_agvHost;
-    quint16 agvPort = m_agvPort;
-
-    // 如果开启本机 TCP 模拟器模式，则重定向到本机 AGV 模拟端口
-    if (isFeatureEnabled("tcp_transmission", "tcp.local_simulator")) {
-        agvHost = "127.0.0.1";
-        agvPort = 5021;
-        qCDebug(lcMainWindow) << "启用本机 TCP 模拟器模式：AGV ->" << agvHost << ":" << agvPort;
-    } else if (isFeatureEnabled("tcp_transmission", "tcp.remote_simulator")) {
-        agvHost = "192.168.1.70";
-        agvPort = 5021;
-        qCDebug(lcMainWindow) << "启用远程 TCP 模拟器模式：AGV ->" << agvHost << ":" << agvPort;
-    }
-
-    m_agvModbusManager->connectToDevice(agvHost, agvPort);
-
-    qCDebug(lcMainWindow) << "AGV Modbus管理器初始化完成，目标:" << agvHost << ":" << agvPort;
+    qCDebug(lcMainWindow) << "AGV Modbus管理器初始化完成，目标:"
+                          << agvEndpoint.host << ":" << agvEndpoint.port;
 
     // 添加定时器检查连接状态
     QTimer::singleShot(2000, this, [this]() {
@@ -8411,28 +8610,18 @@ void MainWindow::updateTcpServerHost(const QString &hostSuffix)
 
 void MainWindow::updateSimulatorHost(const QString &hostSuffix)
 {
-    QString newIp = "192.168.1." + hostSuffix;
+    const QString newIp = QStringLiteral("192.168.1.") + hostSuffix;
     qCDebug(lcMainWindow) << "尝试更新模拟器IP为:" << newIp;
 
-    // 如果当前处于远程模拟器模式，则重新连接以使新 IP 生效
-    if (isFeatureEnabled("tcp_transmission", "tcp.remote_simulator")) {
-        if (m_modbusManager) {
-            m_modbusManager->disconnectFromDevice();
-            MainModbusConnector::connectAndConfigure(
-                m_modbusManager,
-                MainModbusEndpoint{newIp, 5020},
-                m_mainModbusPollIntervalMs,
-                m_mainReconnectIntervalMs);
-            qCDebug(lcMainWindow) << "[MainModbus] 已切换模拟器并重新连接:" << newIp << ":5020";
-        }
-        if (m_agvModbusManager) {
-            m_agvModbusManager->disconnectFromDevice();
-            m_agvModbusManager->connectToDevice(newIp, 5021);
-            qCDebug(lcMainWindow) << "[AGVModbus] 已切换模拟器并重新连接:" << newIp << ":5021";
-        }
-    } else {
-        qCDebug(lcMainWindow) << "当前未启用远程模拟器模式，仅打印新 IP 会在下次切换模式时生效";
-    }
+    m_remoteSimulatorHost = newIp;
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("Network"));
+    settings.setValue(QStringLiteral("remote_simulator_host"), m_remoteSimulatorHost);
+    settings.endGroup();
+
+    m_hasConnectedMainEndpoint = false;
+    m_hasConnectedAgvEndpoint = false;
+    reconnectModbusEndpointsIfChanged();
 }
 
 // 新增：TCP传输复选框槽函数

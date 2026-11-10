@@ -236,7 +236,7 @@ TechZonePanel {
 }
 #widget_SixAxies_1, #widget_SixAxies_2, #widget_SixAxies_3,
 #widget_SixAxies_4, #widget_SixAxies_5, #widget_SixAxies_6,
-#widget_test1, #widget_test2, #widget_test3, #widget_test4 {
+#widget_test1, #widget_test2, #widget_test3, #widget_test4, #widget_test5 {
   border: 2px dashed rgba(160, 210, 255, 0.90);
   background: rgba(60, 100, 140, 0.25);
   min-width: 193px;
@@ -674,7 +674,7 @@ TechZonePanel {
          <item>
           <widget class="QStackedWidget" name="stackedWidget_RobotStatus">
            <property name="currentIndex">
-            <number>1</number>
+            <number>2</number>
            </property>
            <widget class="QWidget" name="page_sixaxies">
             <layout class="QGridLayout" name="gridLayout_3">
@@ -808,40 +808,24 @@ TechZonePanel {
              <property name="spacing">
               <number>8</number>
              </property>
-             <item row="0" column="3">
-              <widget class="QWidget" name="widget_test3" native="true">
-               <property name="sizePolicy">
-                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                 <horstretch>1</horstretch>
-                 <verstretch>1</verstretch>
-                </sizepolicy>
-               </property>
-               <property name="minimumSize">
-                <size>
-                 <width>197</width>
-                 <height>197</height>
-                </size>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="0">
-              <widget class="QWidget" name="widget_test1" native="true">
-               <property name="sizePolicy">
-                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                 <horstretch>1</horstretch>
-                 <verstretch>1</verstretch>
-                </sizepolicy>
-               </property>
-               <property name="minimumSize">
-                <size>
-                 <width>197</width>
-                 <height>197</height>
-                </size>
-               </property>
-              </widget>
-             </item>
              <item row="1" column="0">
               <widget class="QWidget" name="widget_test4" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="3">
+              <widget class="QWidget" name="widget_test3" native="true">
                <property name="sizePolicy">
                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
                  <horstretch>1</horstretch>
@@ -872,23 +856,59 @@ TechZonePanel {
                </property>
               </widget>
              </item>
-             <item row="1" column="2">
-              <widget class="QWidget" name="quickWidget_robotInclinometer_X" native="true">
+             <item row="0" column="0">
+              <widget class="QWidget" name="widget_test1" native="true">
                <property name="sizePolicy">
-                <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
                  <horstretch>1</horstretch>
-                 <verstretch>0</verstretch>
+                 <verstretch>1</verstretch>
                 </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
                </property>
               </widget>
              </item>
              <item row="1" column="3">
-              <widget class="QWidget" name="quickWidget_robotInclinometer_Y" native="true">
+              <layout class="QGridLayout" name="gridLayout">
+               <item row="1" column="0">
+                <widget class="QWidget" name="quickWidget_robotInclinometer_Y" native="true">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                   <horstretch>1</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="0">
+                <widget class="QWidget" name="quickWidget_robotInclinometer_X" native="true">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                   <horstretch>1</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item row="1" column="2">
+              <widget class="QWidget" name="widget_test5" native="true">
                <property name="sizePolicy">
-                <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
                  <horstretch>1</horstretch>
-                 <verstretch>0</verstretch>
+                 <verstretch>1</verstretch>
                 </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
                </property>
               </widget>
              </item>
@@ -1068,6 +1088,22 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
           </widget>
          </item>
         </layout>
+       </widget>
+       <widget class="QWidget" name="quickWidget_Robottest2Torque" native="true">
+        <property name="geometry">
+         <rect>
+          <x>780</x>
+          <y>350</y>
+          <width>271</width>
+          <height>171</height>
+         </rect>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <horstretch>2</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
        </widget>
       </widget>
       <widget class="QWidget" name="page_HistoryRecord">
@@ -1277,9 +1313,9 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
    <container>1</container>
   </customwidget>
   <customwidget>
-   <class>TechZonePanel</class>
+   <class>TechSliderEdit</class>
    <extends>QWidget</extends>
-   <header location="global">techzonepanel.h</header>
+   <header location="global">techslideredit.h</header>
    <container>1</container>
   </customwidget>
   <customwidget>
@@ -1288,9 +1324,9 @@ font: 800 italic 11pt &quot;Ubuntu Sans&quot;;</string>
    <header location="global">techchamfertoolbutton.h</header>
   </customwidget>
   <customwidget>
-   <class>TechSliderEdit</class>
+   <class>TechZonePanel</class>
    <extends>QWidget</extends>
-   <header location="global">techslideredit.h</header>
+   <header location="global">techzonepanel.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

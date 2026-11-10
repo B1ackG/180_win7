@@ -55,6 +55,7 @@ SOURCES += \
     operationrecorder.cpp \
     poseprovider.cpp \
     robottotalpowercard.cpp \
+    robottotaltorquecard.cpp \
     speedmodeselector.cpp \
     steeringmodeselector.cpp \
     techarcgauge.cpp \
@@ -97,6 +98,7 @@ HEADERS += \
     operationrecorder.h \
     poseprovider.h \
     robottotalpowercard.h \
+    robottotaltorquecard.h \
     speedmodeselector.h \
     steeringmodeselector.h \
     techarcgauge.h \

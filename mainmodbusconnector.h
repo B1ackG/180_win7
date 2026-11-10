@@ -21,7 +21,7 @@ struct MainModbusEndpoint
 /**
  * @brief 主设备 Modbus 连接与配置辅助类。
  *
- * 负责根据功能开关选择目标端点，并在连接成功后统一配置轮询与自动重连参数。
+ * 负责根据功能开关选择目标端点，并在发起连接前统一配置轮询与自动重连参数。
  * 这使得主界面的启动逻辑更简洁，也便于在不同部署环境之间切换。
  */
 class MainModbusConnector
@@ -47,6 +47,16 @@ public:
     static MainModbusEndpoint selectEndpoint(bool localSimulatorEnabled,
                                              bool remoteSimulatorEnabled,
                                              const QString &remoteSimulatorHost = QStringLiteral("192.168.1.70"));
+
+    /**
+     * @brief 根据运行模式选择 AGV 连接端点。
+     * 本机模拟优先于远程模拟；实机使用 agvHost:agvPort。
+     */
+    static MainModbusEndpoint selectAgvEndpoint(bool localSimulatorEnabled,
+                                                bool remoteSimulatorEnabled,
+                                                const QString &remoteSimulatorHost,
+                                                const QString &agvHost,
+                                                quint16 agvPort);
 
     /**
      * @brief 连接指定端点并应用默认轮询/重连配置。

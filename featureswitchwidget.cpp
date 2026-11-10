@@ -78,6 +78,7 @@ QMap<QString, QPair<double, double>> builtinArcGaugeRanges()
         {QStringLiteral("robot_ArcGauge_J2Height"), qMakePair(4400.0, 8000.0)},
         {QStringLiteral("robot_ArcGauge_J3Length"), qMakePair(3765.0, 6805.0)},
         {QStringLiteral("robot_ArcGauge_J4Angle"), qMakePair(-90.0, 90.0)},
+        {QStringLiteral("robot_ArcGauge_CounterweightHeight"), qMakePair(0.0, 2000.0)},
         {QStringLiteral("robot_ArcGauge_SixAxis1"), qMakePair(-15.0, 15.0)},
         {QStringLiteral("robot_ArcGauge_SixAxis2"), qMakePair(-15.0, 15.0)},
         {QStringLiteral("robot_ArcGauge_SixAxis3"), qMakePair(-17.0, 17.0)},
@@ -118,6 +119,7 @@ QString configFieldLabel(const QString &group, const QString &key)
         {QStringLiteral("Polling/agv_poll_ms"), QStringLiteral("底盘轮询间隔")},
         {QStringLiteral("Polling/agv_reconnect_ms"), QStringLiteral("底盘重连间隔")},
         {QStringLiteral("PlaneHeight/offset_mm"), QStringLiteral("平面高度偏移")},
+        {QStringLiteral("RobotTorque/danger_percent"), QStringLiteral("总扭矩危险阈值")},
         {QStringLiteral("Permission/engineer_password"), QStringLiteral("工程师密码")},
         {QStringLiteral("Permission/admin_password"), QStringLiteral("管理员密码")},
         {QStringLiteral("ButtonVisibility/TBtn_RobotControl"), QStringLiteral("机械臂控制入口")},
@@ -440,6 +442,7 @@ void FeatureSwitchWidget::setupUI()
     setupPollingUI(commLayout);
     setupSliderLimitUI(displayLayout);
     setupPlaneHeightOffsetUI(displayLayout);
+    setupRobotTorqueUI(displayLayout);
     setupDeviceControlChildVisibilityUI(controlLayout);
 
     baseLayout->addStretch();
@@ -508,6 +511,7 @@ void FeatureSwitchWidget::loadCurrentState()
     loadSliderLimitState();
     loadTechSliderEditState();
     loadPlaneHeightOffsetState();
+    loadRobotTorqueState();
     loadPermissionPasswordState();
     loadButtonVisibilityState();
 }
@@ -603,6 +607,7 @@ void FeatureSwitchWidget::setupSliderLimitUI(QVBoxLayout *scrollLayout)
         QStringLiteral("robot_ArcGauge_J2Height"),
         QStringLiteral("robot_ArcGauge_J3Length"),
         QStringLiteral("robot_ArcGauge_J4Angle"),
+        QStringLiteral("robot_ArcGauge_CounterweightHeight"),
         QStringLiteral("robot_ArcGauge_SixAxis1"),
         QStringLiteral("robot_ArcGauge_SixAxis2"),
         QStringLiteral("robot_ArcGauge_SixAxis3"),
@@ -615,6 +620,7 @@ void FeatureSwitchWidget::setupSliderLimitUI(QVBoxLayout *scrollLayout)
         {QStringLiteral("robot_ArcGauge_J2Height"), QStringLiteral("升降高度 (J2)")},
         {QStringLiteral("robot_ArcGauge_J3Length"), QStringLiteral("总伸展长度 (J3)")},
         {QStringLiteral("robot_ArcGauge_J4Angle"), QStringLiteral("末端角度 (J4)")},
+        {QStringLiteral("robot_ArcGauge_CounterweightHeight"), QStringLiteral("配重缸升降")},
         {QStringLiteral("robot_ArcGauge_SixAxis1"), QStringLiteral("六轴 RX")},
         {QStringLiteral("robot_ArcGauge_SixAxis2"), QStringLiteral("六轴 RY")},
         {QStringLiteral("robot_ArcGauge_SixAxis3"), QStringLiteral("六轴 RZ")},
@@ -836,6 +842,28 @@ void FeatureSwitchWidget::setupPlaneHeightOffsetUI(QVBoxLayout *scrollLayout)
     planeLayout->addLayout(h);
     wireDoubleEdit(m_editPlaneHeightOffset, -100000.0, 100000.0, 1900.0);
     scrollLayout->addWidget(planeGroup);
+}
+
+void FeatureSwitchWidget::setupRobotTorqueUI(QVBoxLayout *scrollLayout)
+{
+    auto *group = new QGroupBox(QStringLiteral("总扭矩危险阈值"));
+    auto *layout = new QVBoxLayout(group);
+    layout->addWidget(makeHintLabel(
+        QStringLiteral("首页总扭矩卡片按百分比显示。达到或超过该阈值时切换为红色危险样式（与角度力控超限同色）。默认 140。"),
+        group));
+
+    auto *h = new QHBoxLayout();
+    h->addWidget(new QLabel(QStringLiteral("危险阈值")));
+    m_editRobotTorqueDanger = new QLineEdit();
+    m_editRobotTorqueDanger->setFixedWidth(120);
+    m_editRobotTorqueDanger->setValidator(new QDoubleValidator(1.0, 999.0, 0, this));
+    m_editRobotTorqueDanger->installEventFilter(this);
+    h->addWidget(m_editRobotTorqueDanger);
+    h->addWidget(new QLabel(QStringLiteral("%")));
+    h->addStretch();
+    layout->addLayout(h);
+    wireDoubleEdit(m_editRobotTorqueDanger, 1.0, 999.0, 140.0);
+    scrollLayout->addWidget(group);
 }
 
 void FeatureSwitchWidget::setupDeviceControlChildVisibilityUI(QVBoxLayout *scrollLayout)
@@ -1077,6 +1105,32 @@ bool FeatureSwitchWidget::savePlaneHeightOffsetState(QString *error)
     return settingsWriteOk(settings, QStringLiteral("config.ini"), error);
 }
 
+bool FeatureSwitchWidget::loadRobotTorqueState()
+{
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("RobotTorque"));
+    const double danger = settings.value(QStringLiteral("danger_percent"), 140.0).toDouble();
+    settings.endGroup();
+    if (m_editRobotTorqueDanger) {
+        m_editRobotTorqueDanger->setText(QString::number(danger, 'f', 0));
+        rememberValidEditText(m_editRobotTorqueDanger);
+    }
+    return true;
+}
+
+bool FeatureSwitchWidget::saveRobotTorqueState(QString *error)
+{
+    if (!validateDoubleEdit(m_editRobotTorqueDanger, 1.0, 999.0, 140.0, error)) {
+        return false;
+    }
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("RobotTorque"));
+    settings.setValue(QStringLiteral("danger_percent"),
+                      m_editRobotTorqueDanger->text().trimmed().toDouble());
+    settings.endGroup();
+    return settingsWriteOk(settings, QStringLiteral("config.ini"), error);
+}
+
 bool FeatureSwitchWidget::loadPermissionPasswordState()
 {
     if (m_editEngineerPassword) {
@@ -1238,7 +1292,8 @@ bool FeatureSwitchWidget::validateAllInputs(QString *error)
         || !validateIntEdit(m_editMainReconnect, 500, 120000, 5000, error)
         || !validateIntEdit(m_editAgvPoll, 50, 60000, 200, error)
         || !validateIntEdit(m_editAgvReconnect, 500, 120000, 5000, error)
-        || !validateDoubleEdit(m_editPlaneHeightOffset, -100000.0, 100000.0, 1900.0, error)) {
+        || !validateDoubleEdit(m_editPlaneHeightOffset, -100000.0, 100000.0, 1900.0, error)
+        || !validateDoubleEdit(m_editRobotTorqueDanger, 1.0, 999.0, 140.0, error)) {
         return false;
     }
 
@@ -1421,6 +1476,7 @@ bool FeatureSwitchWidget::onApply()
     const QMap<QString, QString> sliderBefore = snapshotIniGroup(ini, QStringLiteral("SliderLabelLimits"));
     const QMap<QString, QString> techSliderBefore = snapshotIniGroup(ini, QStringLiteral("TechSliderEditLimits"));
     const QMap<QString, QString> planeBefore = snapshotIniGroup(ini, QStringLiteral("PlaneHeight"));
+    const QMap<QString, QString> torqueBefore = snapshotIniGroup(ini, QStringLiteral("RobotTorque"));
     const QMap<QString, QString> buttonBefore = snapshotIniGroup(ini, QStringLiteral("ButtonVisibility"));
     const QMap<QString, QString> permissionBefore = snapshotIniGroup(ini, QStringLiteral("Permission"));
 
@@ -1428,6 +1484,7 @@ bool FeatureSwitchWidget::onApply()
         || !saveSliderLimitState(&error)
         || !saveTechSliderEditState(&error)
         || !savePlaneHeightOffsetState(&error)
+        || !saveRobotTorqueState(&error)
         || !savePermissionPasswordState(&error)
         || !saveButtonVisibilityState(&error)) {
         showConsoleError(error.isEmpty() ? QStringLiteral("无法写入 config.ini") : error);
@@ -1456,6 +1513,7 @@ bool FeatureSwitchWidget::onApply()
     recordIniChanges(ini, QStringLiteral("SliderLabelLimits"), sliderBefore);
     recordIniChanges(ini, QStringLiteral("TechSliderEditLimits"), techSliderBefore);
     recordIniChanges(ini, QStringLiteral("PlaneHeight"), planeBefore);
+    recordIniChanges(ini, QStringLiteral("RobotTorque"), torqueBefore);
     recordIniChanges(ini, QStringLiteral("ButtonVisibility"), buttonBefore);
     recordIniChanges(ini, QStringLiteral("Permission"), permissionBefore);
 

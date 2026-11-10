@@ -323,6 +323,8 @@ public:
 
 private:
     static constexpr int kMaxTcpQueueSize = 2000;
+    static constexpr int kTcpConnectTimeoutMs = 2000;
+    static constexpr int kTcpReconnectIntervalMs = 1000;
 
     QList<OperationRecord> m_records;
     int m_maxRecords = 1000; // 最大记录数
@@ -376,6 +378,7 @@ private:
     QByteArray m_signingKey;
     mutable qint64 m_lastDecodeWarnMs = 0;
     QTimer *m_reconnectTimer;
+    QTimer *m_connectTimeoutTimer = nullptr;
     QList<OperationRecord> m_tcpSendQueue;  // 待发送的记录队列
     QString m_lastTcpError;
     qint64 m_lastTcpErrorMs = 0;
@@ -392,6 +395,7 @@ private:
     void sendQueuedRecords();
     void connectTcpSocket();
     void disconnectTcpSocket();
+    void scheduleReconnect();
     void setupTcpReceiver();
     void scheduleListenRetry();
     bool targetsLocalReceiver() const;

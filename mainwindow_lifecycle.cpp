@@ -413,6 +413,7 @@ void MainWindow::initUI()
     initTechButtons();
     initSpeedGaugeUI();
     initRobotTotalPowerCard();
+    initRobotTotalTorqueCard();
     initInclinometerCards();
     initWeightCard();
     initPlaneHeightCard();

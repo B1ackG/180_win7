@@ -60,6 +60,7 @@ private:
     void setupTechSliderEditUI(QVBoxLayout *scrollLayout);
     void refreshTechSliderEditList();
     void setupPlaneHeightOffsetUI(QVBoxLayout *scrollLayout);
+    void setupRobotTorqueUI(QVBoxLayout *scrollLayout);
     void setupPermissionPasswordUI(QVBoxLayout *scrollLayout);
     void setupDeviceControlChildVisibilityUI(QVBoxLayout *scrollLayout);
 
@@ -71,6 +72,8 @@ private:
     bool saveTechSliderEditState(QString *error);
     bool loadPlaneHeightOffsetState();
     bool savePlaneHeightOffsetState(QString *error);
+    bool loadRobotTorqueState();
+    bool saveRobotTorqueState(QString *error);
     bool loadPermissionPasswordState();
     bool savePermissionPasswordState(QString *error);
     bool loadButtonVisibilityState();
@@ -116,6 +119,7 @@ private:
     QMap<QString, SliderEditEdits> m_sliderEditEdits;
     QMap<QString, QCheckBox*> m_deviceControlChildCheckboxes;
     QLineEdit *m_editPlaneHeightOffset = nullptr;
+    QLineEdit *m_editRobotTorqueDanger = nullptr;
     QLineEdit *m_editEngineerPassword = nullptr;
     QLineEdit *m_editAdminPassword = nullptr;
     QWidget *m_sliderEditListHost = nullptr;

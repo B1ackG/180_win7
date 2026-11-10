@@ -25,6 +25,7 @@
 #include "mappingconfig.h"
 #include "matrixkeymonitor.h"
 #include "robottotalpowercard.h"
+#include "robottotaltorquecard.h"
 #include "inclinometercard.h"
 #include "metricvaluecard.h"
 #include "devicecoordpanel.h"
@@ -129,6 +130,19 @@ public:
     static QString rolePassword(UserRole role);
     /** @brief 权限页密码提示文案（工程师/管理员当前口令） */
     static QString rolePasswordHintText();
+
+    struct RuntimeEndpoint {
+        QString host;
+        quint16 port = 502;
+        bool operator==(const RuntimeEndpoint &other) const
+        {
+            return host == other.host && port == other.port;
+        }
+        bool operator!=(const RuntimeEndpoint &other) const
+        {
+            return !(*this == other);
+        }
+    };
 
     // ==========================================
     // 1. 生命周期与核心初始化 (Life Cycle & Core)
@@ -403,6 +417,8 @@ public:
     void initSpeedGaugeUI();
     /** @brief 初始化机器人总功率卡片（纯 QWidget） */
     void initRobotTotalPowerCard();
+    /** @brief 初始化机器人扭矩卡片（quickWidget_Robottest2Torque，主控 276~279 LREAL） */
+    void initRobotTotalTorqueCard();
     /** @brief 初始化底盘 X/Y 与悬臂 X/Y 倾角卡片（纯 QWidget，样式对标 InclinometerCard.qml） */
     void initInclinometerCards();
     /** @brief 初始化当前负载卡片（寄存器 123） */
@@ -425,6 +441,8 @@ public:
     void updateSpeed(qreal newSpeed);
     /** @brief 更新机器人总功率显示（寄存器134） */
     void updateRobotTotalPower(quint16 powerValue);
+    /** @brief 更新机器人扭矩百分比显示（主控 276~279 LREAL） */
+    void updateRobotTotalTorquePercent(double percent, bool valid = true);
     /** @brief 更新当前负载显示（寄存器 123，单位 KG） */
     void updateCurrentLoadWeight(quint16 rawValue);
     /** @brief 更新倾角显示（AGV 151/152，寄存器值÷100） */
@@ -433,6 +451,8 @@ public:
     void updateRobotInclinometerFromCache();
     /** @brief 从寄存器缓存刷新位姿面板 */
     void updateDeviceCoordPanelFromCache();
+    /** @brief 从寄存器缓存刷新扭矩卡片（主控 276~279 LREAL / DCBA FEHG） */
+    void updateRobotTorqueFromCache();
     /** @brief 初始化滑块编辑 UI */
     void initSliderEditUI();
 
@@ -732,6 +752,11 @@ private:
     int m_agvReconnectIntervalMs = 5000;
     QString m_agvHost = "192.168.1.88";
     quint16 m_agvPort = 502;
+    QString m_remoteSimulatorHost = QStringLiteral("192.168.1.70");
+    RuntimeEndpoint m_connectedMainEndpoint;
+    bool m_hasConnectedMainEndpoint = false;
+    RuntimeEndpoint m_connectedAgvEndpoint;
+    bool m_hasConnectedAgvEndpoint = false;
 
     // ----- 其他组件与 UI 指针缓存 -----
     TechVirtualKeyboard *m_virtualKeyboard;
@@ -780,6 +805,8 @@ private:
     QPushButton *m_historyOlderPageButton = nullptr;
     QLabel *m_historyPageLabel = nullptr;
     RobotTotalPowerCard *m_robotTotalPowerCard = nullptr;
+    RobotTotalTorqueCard *m_robotTotalTorqueCard = nullptr;
+    double m_robotTorqueDangerPercent = RobotTotalTorqueCard::kDefaultDangerPercent;
     DeviceCoordPanel *m_deviceCoordPanel = nullptr;
     InclinometerCard *m_inclinometerXCard = nullptr;
     InclinometerCard *m_inclinometerYCard = nullptr;
@@ -893,10 +920,16 @@ public:
 
     /** @brief 统一应用功能控制台写入的运行时配置 */
     void applyFeatureConsoleRuntimeSettings();
+    RuntimeEndpoint resolvedMainEndpoint() const;
+    RuntimeEndpoint resolvedAgvEndpoint() const;
+    /** @brief 端点变化时排队断开并重连主控/AGV；未变化则不操作 */
+    void reconnectModbusEndpointsIfChanged();
     void loadSliderEditRuntimeSettings();
     void applySliderEditRuntimeSettings();
     void loadPlaneHeightOffsetRuntimeSettings();
     void applyPlaneHeightOffsetRuntimeSettings();
+    void loadRobotTorqueRuntimeSettings();
+    void applyRobotTorqueRuntimeSettings();
     void applyButtonVisibilityRuntimeSettings();
     void applyPasswordHintRuntimeSettings();
 
