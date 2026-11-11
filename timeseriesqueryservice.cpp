@@ -1,9 +1,13 @@
 #include "timeseriesqueryservice.h"
 
 #include <algorithm>
+#include <functional>
+#include <QDate>
+#include <QVariant>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QStringList>
 #include <QRegularExpression>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -269,6 +273,459 @@ TimeSeriesQueryResult TimeSeriesQueryService::query(const QString &directory,
     for (TimeSeriesSeries &item : series) {
         item.points = downsampleMinMax(item.points, maxPointsPerChannel);
         result.series.append(item);
+    }
+    return result;
+}
+
+namespace {
+
+bool aggregatesForDate(const QString &directory,
+                       const QDate &date,
+                       const QVector<TimeSeriesChannel> &channels,
+                       TimeSeriesCompareStat stat,
+                       QVector<TimeSeriesValue> *out,
+                       QString *error)
+{
+    out->fill(TimeSeriesValue(), channels.size());
+    if (!date.isValid()) {
+        return true;
+    }
+    const QString path = TimeSeriesMeta::dailyFilePath(directory, date);
+    if (!QFile::exists(path)) {
+        return true;
+    }
+
+    const QString connectionName = uniqueConnectionName();
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+        db.setDatabaseName(path);
+        if (!db.open()) {
+            closeAndRemove(connectionName);
+            return true;
+        }
+
+        int version = TimeSeriesConfig::kSupportedSchemaVersion;
+        QString versionError;
+        if (!readSchemaVersion(db, &version, &versionError)
+            || version > TimeSeriesConfig::kSupportedSchemaVersion) {
+            closeAndRemove(connectionName);
+            if (error) {
+                *error = QStringLiteral("不支持的数据库版本");
+            }
+            return false;
+        }
+
+        const QString sqlFn = TimeSeriesMeta::compareStatSql(stat);
+        QStringList columnSql;
+        for (TimeSeriesChannel channel : channels) {
+            columnSql << QStringLiteral("%1(%2)").arg(sqlFn, TimeSeriesMeta::columnName(channel));
+        }
+        QSqlQuery query(db);
+        if (!query.exec(QStringLiteral("SELECT %1 FROM samples").arg(columnSql.join(QLatin1Char(','))))) {
+            closeAndRemove(connectionName);
+            if (error) {
+                *error = query.lastError().text();
+            }
+            return false;
+        }
+        if (query.next()) {
+            for (int i = 0; i < channels.size(); ++i) {
+                const QVariant raw = query.value(i);
+                if (!raw.isValid() || raw.isNull()) {
+                    continue;
+                }
+                bool ok = false;
+                const double value = raw.toDouble(&ok);
+                if (!ok || !TimeSeriesMeta::isFiniteNumber(value)) {
+                    continue;
+                }
+                (*out)[i].value = value;
+                (*out)[i].valid = true;
+            }
+        }
+    }
+    closeAndRemove(connectionName);
+    return true;
+}
+
+void appendIfValid(QVector<TimeSeriesPoint> *points, int dayIndex, const TimeSeriesValue &value)
+{
+    if (!value.valid) {
+        return;
+    }
+    TimeSeriesPoint point;
+    point.tsUtcMs = dayIndex;
+    point.id = dayIndex + 1;
+    point.value = value.value;
+    points->append(point);
+}
+
+} // namespace
+
+TimeSeriesCompareResult TimeSeriesQueryService::queryDailyCompare(const QString &directory,
+                                                                  const QVector<TimeSeriesChannel> &channels,
+                                                                  TimeSeriesCompareKind kind,
+                                                                  const QDate &asOf,
+                                                                  TimeSeriesCompareStat stat)
+{
+    TimeSeriesCompareResult result;
+    result.kind = kind;
+    result.stat = stat;
+    result.statLabel = TimeSeriesMeta::compareStatLabel(stat);
+    if (directory.isEmpty()) {
+        result.ok = false;
+        result.error = QStringLiteral("未配置时序数据目录");
+        return result;
+    }
+    if (channels.isEmpty()) {
+        result.ok = false;
+        result.error = QStringLiteral("请至少选择一个通道");
+        return result;
+    }
+
+    const QDate today = asOf.isValid() ? asOf : QDate::currentDate();
+    QVector<QDate> currentDates;
+    QVector<QDate> previousDates;
+    if (kind == TimeSeriesCompareKind::MonthOverMonth) {
+        result.currentLabel = QStringLiteral("本月");
+        result.previousLabel = QStringLiteral("上月");
+        const int dayCount = today.day();
+        const QDate thisStart(today.year(), today.month(), 1);
+        const QDate prevLast = thisStart.addDays(-1);
+        for (int day = 1; day <= dayCount; ++day) {
+            currentDates.append(QDate(today.year(), today.month(), day));
+            previousDates.append(QDate(prevLast.year(), prevLast.month(), day));
+            result.tickLabels.append(QString::number(day));
+        }
+    } else {
+        result.currentLabel = QStringLiteral("今年");
+        result.previousLabel = QStringLiteral("去年");
+        const QDate yearStart(today.year(), 1, 1);
+        const int dayCount = yearStart.daysTo(today) + 1;
+        for (int i = 0; i < dayCount; ++i) {
+            const QDate current = yearStart.addDays(i);
+            currentDates.append(current);
+            previousDates.append(QDate(today.year() - 1, current.month(), current.day()));
+            result.tickLabels.append(current.toString(QStringLiteral("MM-dd")));
+        }
+    }
+    result.dayCount = result.tickLabels.size();
+    result.series.resize(channels.size());
+    for (int i = 0; i < channels.size(); ++i) {
+        result.series[i].channel = channels.at(i);
+    }
+
+    QVector<TimeSeriesValue> values;
+    values.resize(channels.size());
+    for (int dayIndex = 0; dayIndex < result.dayCount; ++dayIndex) {
+        QString error;
+        if (!aggregatesForDate(directory, currentDates.at(dayIndex), channels, stat, &values, &error)) {
+            result.ok = false;
+            result.error = error;
+            return result;
+        }
+        for (int i = 0; i < channels.size(); ++i) {
+            appendIfValid(&result.series[i].currentPoints, dayIndex, values.at(i));
+        }
+        if (!aggregatesForDate(directory, previousDates.at(dayIndex), channels, stat, &values, &error)) {
+            result.ok = false;
+            result.error = error;
+            return result;
+        }
+        for (int i = 0; i < channels.size(); ++i) {
+            appendIfValid(&result.series[i].previousPoints, dayIndex, values.at(i));
+        }
+    }
+    return result;
+}
+
+namespace {
+
+TimeSeriesValue valueFromVariant(const QVariant &raw)
+{
+    TimeSeriesValue value;
+    if (!raw.isValid() || raw.isNull()) {
+        return value;
+    }
+    bool ok = false;
+    const double number = raw.toDouble(&ok);
+    if (!ok || !TimeSeriesMeta::isFiniteNumber(number)) {
+        return value;
+    }
+    value.value = number;
+    value.valid = true;
+    return value;
+}
+
+QString bucketSql(TimeSeriesChannel channel)
+{
+    const QString column = TimeSeriesMeta::columnName(channel);
+    const int quantum = TimeSeriesMeta::conditionQuantum(channel);
+    if (quantum <= 1) {
+        return QStringLiteral("CAST(ROUND(%1) AS INTEGER)").arg(column);
+    }
+    return QStringLiteral("CAST(ROUND(%1 / %2.0) AS INTEGER)").arg(column).arg(quantum);
+}
+
+QVector<TimeSeriesValue> valuesForChannels(const TimeSeriesSample &sample,
+                                           const QVector<TimeSeriesChannel> &channels)
+{
+    QVector<TimeSeriesValue> values;
+    values.reserve(channels.size());
+    for (TimeSeriesChannel channel : channels) {
+        const int index = static_cast<int>(channel);
+        if (index >= 0 && index < sample.values.size()) {
+            values.append(sample.values.at(index));
+        } else {
+            values.append(TimeSeriesValue());
+        }
+    }
+    return values;
+}
+
+bool readNearestSample(const QString &path,
+                       qint64 probeTsUtcMs,
+                       int windowMs,
+                       TimeSeriesSample *out)
+{
+    const QString connectionName = uniqueConnectionName();
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+        db.setDatabaseName(path);
+        if (!db.open()) {
+            closeAndRemove(connectionName);
+            return false;
+        }
+
+        int version = TimeSeriesConfig::kSupportedSchemaVersion;
+        QString versionError;
+        if (!readSchemaVersion(db, &version, &versionError)
+            || version > TimeSeriesConfig::kSupportedSchemaVersion) {
+            closeAndRemove(connectionName);
+            return false;
+        }
+
+        QStringList columns;
+        columns << QStringLiteral("ts_utc_ms")
+                << QStringLiteral("local_offset_min")
+                << QStringLiteral("session_id");
+        for (int i = 0; i < TimeSeriesMeta::channelCount(); ++i) {
+            columns << TimeSeriesMeta::columnName(TimeSeriesMeta::channelAt(i));
+        }
+
+        QSqlQuery query(db);
+        query.prepare(QStringLiteral(
+                          "SELECT %1 FROM samples WHERE ts_utc_ms >= ? AND ts_utc_ms <= ? "
+                          "ORDER BY ABS(ts_utc_ms - ?) ASC, id ASC LIMIT 1")
+                          .arg(columns.join(QLatin1Char(','))));
+        query.addBindValue(probeTsUtcMs - windowMs);
+        query.addBindValue(probeTsUtcMs + windowMs);
+        query.addBindValue(probeTsUtcMs);
+        if (!query.exec() || !query.next()) {
+            closeAndRemove(connectionName);
+            return false;
+        }
+
+        out->tsUtcMs = query.value(0).toLongLong();
+        out->localOffsetMinutes = query.value(1).toInt();
+        out->sessionId = query.value(2).toString();
+        out->values.resize(TimeSeriesMeta::channelCount());
+        for (int i = 0; i < TimeSeriesMeta::channelCount(); ++i) {
+            out->values[i] = valueFromVariant(query.value(3 + i));
+        }
+    }
+    closeAndRemove(connectionName);
+    return out->tsUtcMs > 0;
+}
+
+void appendMatchesFromDate(const QString &path,
+                           const QVector<TimeSeriesChannel> &workChannels,
+                           const QVector<qint64> &workBuckets,
+                           const QVector<TimeSeriesChannel> &stateChannels,
+                           qint64 excludeStartMs,
+                           qint64 excludeEndMs,
+                           int limit,
+                           QVector<TimeSeriesConditionHit> *hits)
+{
+    const QString connectionName = uniqueConnectionName();
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+        db.setDatabaseName(path);
+        if (!db.open()) {
+            closeAndRemove(connectionName);
+            return;
+        }
+
+        int version = TimeSeriesConfig::kSupportedSchemaVersion;
+        QString versionError;
+        if (!readSchemaVersion(db, &version, &versionError)
+            || version > TimeSeriesConfig::kSupportedSchemaVersion) {
+            closeAndRemove(connectionName);
+            return;
+        }
+
+        QStringList columns;
+        columns << QStringLiteral("ts_utc_ms");
+        for (TimeSeriesChannel channel : workChannels) {
+            columns << TimeSeriesMeta::columnName(channel);
+        }
+        for (TimeSeriesChannel channel : stateChannels) {
+            columns << TimeSeriesMeta::columnName(channel);
+        }
+
+        QStringList whereSql;
+        for (TimeSeriesChannel channel : workChannels) {
+            whereSql << QStringLiteral("%1 IS NOT NULL AND %2 = ?")
+                            .arg(TimeSeriesMeta::columnName(channel), bucketSql(channel));
+        }
+        whereSql << QStringLiteral("(ts_utc_ms < ? OR ts_utc_ms > ?)");
+
+        QSqlQuery query(db);
+        query.prepare(QStringLiteral(
+                          "SELECT %1 FROM samples WHERE %2 ORDER BY ts_utc_ms DESC LIMIT ?")
+                          .arg(columns.join(QLatin1Char(',')),
+                               whereSql.join(QStringLiteral(" AND "))));
+        for (qint64 bucket : workBuckets) {
+            query.addBindValue(bucket);
+        }
+        query.addBindValue(excludeStartMs);
+        query.addBindValue(excludeEndMs);
+        query.addBindValue(limit);
+        if (!query.exec()) {
+            closeAndRemove(connectionName);
+            return;
+        }
+
+        while (query.next()) {
+            TimeSeriesConditionHit hit;
+            hit.tsUtcMs = query.value(0).toLongLong();
+            hit.workValues.resize(workChannels.size());
+            hit.stateValues.resize(stateChannels.size());
+            for (int i = 0; i < workChannels.size(); ++i) {
+                hit.workValues[i] = valueFromVariant(query.value(1 + i));
+            }
+            for (int i = 0; i < stateChannels.size(); ++i) {
+                hit.stateValues[i] = valueFromVariant(query.value(1 + workChannels.size() + i));
+            }
+            hits->append(hit);
+        }
+    }
+    closeAndRemove(connectionName);
+}
+
+} // namespace
+
+TimeSeriesConditionSearchResult TimeSeriesQueryService::searchSimilarConditions(
+    const QString &directory,
+    qint64 probeTsUtcMs,
+    const QDate &asOf,
+    int lookbackDays)
+{
+    TimeSeriesConditionSearchResult result;
+    result.probeTsUtcMs = probeTsUtcMs;
+    result.lookbackDays = qMax(1, lookbackDays);
+    result.stateChannels = TimeSeriesMeta::conditionStateChannels();
+    if (directory.isEmpty()) {
+        result.ok = false;
+        result.error = QStringLiteral("未配置时序数据目录");
+        return result;
+    }
+    if (probeTsUtcMs <= 0) {
+        result.ok = false;
+        result.error = QStringLiteral("请先在曲线上点游标");
+        return result;
+    }
+
+    const QDateTime probeLocal = QDateTime::fromMSecsSinceEpoch(probeTsUtcMs, Qt::LocalTime);
+    TimeSeriesSample probe;
+    bool foundProbe = false;
+    for (int delta = 0; delta <= 1 && !foundProbe; ++delta) {
+        const QList<QDate> candidates = {
+            probeLocal.date().addDays(-delta),
+            probeLocal.date().addDays(delta)
+        };
+        for (const QDate &date : candidates) {
+            const QString path = TimeSeriesMeta::dailyFilePath(directory, date);
+            if (!QFile::exists(path)) {
+                continue;
+            }
+            if (readNearestSample(path, probeTsUtcMs, TimeSeriesConfig::kConditionProbeWindowMs, &probe)) {
+                foundProbe = true;
+                break;
+            }
+        }
+    }
+    if (!foundProbe) {
+        result.ok = false;
+        result.error = QStringLiteral("游标附近没有采样，请点在曲线上");
+        return result;
+    }
+    result.probeTsUtcMs = probe.tsUtcMs;
+
+    const QVector<TimeSeriesChannel> allWork = TimeSeriesMeta::conditionWorkChannels();
+    QVector<qint64> workBuckets;
+    for (TimeSeriesChannel channel : allWork) {
+        const int index = static_cast<int>(channel);
+        if (index < 0 || index >= probe.values.size() || !probe.values.at(index).valid) {
+            continue;
+        }
+        result.workChannels.append(channel);
+        workBuckets.append(TimeSeriesMeta::conditionBucket(
+            probe.values.at(index).value, TimeSeriesMeta::conditionQuantum(channel)));
+    }
+    if (result.workChannels.size() < TimeSeriesConfig::kConditionMinWorkKeys) {
+        result.ok = false;
+        result.error = QStringLiteral("游标处作业通道不足，至少需要悬臂角/升降/伸展/末端角/配重缸/装配面/负载中的3项");
+        return result;
+    }
+    result.probeWork = valuesForChannels(probe, result.workChannels);
+    result.probeState = valuesForChannels(probe, result.stateChannels);
+
+    const QDate today = asOf.isValid() ? asOf : QDate::currentDate();
+    const QDate oldest = today.addDays(-result.lookbackDays);
+    QList<QDate> dates = availableDates(directory);
+    std::sort(dates.begin(), dates.end(), std::greater<QDate>());
+
+    const qint64 excludeStart = probe.tsUtcMs - TimeSeriesConfig::kConditionProbeWindowMs;
+    const qint64 excludeEnd = probe.tsUtcMs + TimeSeriesConfig::kConditionProbeWindowMs;
+    QVector<TimeSeriesConditionHit> rawHits;
+    for (const QDate &date : dates) {
+        if (date > today || date < oldest) {
+            continue;
+        }
+        const QString path = TimeSeriesMeta::dailyFilePath(directory, date);
+        if (!QFile::exists(path)) {
+            continue;
+        }
+        ++result.scannedDays;
+        appendMatchesFromDate(path,
+                              result.workChannels,
+                              workBuckets,
+                              result.stateChannels,
+                              excludeStart,
+                              excludeEnd,
+                              200,
+                              &rawHits);
+        result.rawHitCount = rawHits.size();
+        if (rawHits.size() >= TimeSeriesConfig::kConditionMaxMatches * 4) {
+            break;
+        }
+    }
+
+    std::sort(rawHits.begin(), rawHits.end(),
+              [](const TimeSeriesConditionHit &left, const TimeSeriesConditionHit &right) {
+                  return left.tsUtcMs > right.tsUtcMs;
+              });
+    qint64 lastKept = -1;
+    for (const TimeSeriesConditionHit &hit : rawHits) {
+        if (lastKept >= 0 && lastKept - hit.tsUtcMs < TimeSeriesConfig::kConditionClusterMs) {
+            continue;
+        }
+        result.hits.append(hit);
+        lastKept = hit.tsUtcMs;
+        if (result.hits.size() >= TimeSeriesConfig::kConditionMaxMatches) {
+            break;
+        }
     }
     return result;
 }

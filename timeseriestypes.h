@@ -85,6 +85,36 @@ struct TimeSeriesQueryResult {
     int sampleIntervalMs = 1000;
 };
 
+enum class TimeSeriesCompareKind {
+    MonthOverMonth = 0,
+    YearOverYear
+};
+
+enum class TimeSeriesCompareStat {
+    Average = 0,
+    Minimum,
+    Maximum
+};
+
+struct TimeSeriesCompareChannel {
+    TimeSeriesChannel channel = TimeSeriesChannel::J1AngleDeg;
+    QVector<TimeSeriesPoint> currentPoints;
+    QVector<TimeSeriesPoint> previousPoints;
+};
+
+struct TimeSeriesCompareResult {
+    bool ok = true;
+    QString error;
+    TimeSeriesCompareKind kind = TimeSeriesCompareKind::MonthOverMonth;
+    TimeSeriesCompareStat stat = TimeSeriesCompareStat::Average;
+    QString currentLabel;
+    QString previousLabel;
+    QString statLabel;
+    QVector<TimeSeriesCompareChannel> series;
+    int dayCount = 0;
+    QVector<QString> tickLabels;
+};
+
 struct TimeSeriesConfig {
     bool enabled = true;
     int sampleIntervalMs = 1000;
@@ -113,11 +143,37 @@ struct TimeSeriesConfig {
     static constexpr int kSupportedSchemaVersion = 1;
     static constexpr int kInsertBatchTriggerRows = 20;
     static constexpr int kMaxQueryPointsPerChannel = 4000;
+    static constexpr int kConditionLookbackDays = 90;
+    static constexpr int kConditionMaxMatches = 40;
+    static constexpr int kConditionClusterMs = 60000;
+    static constexpr int kConditionMinWorkKeys = 3;
+    static constexpr int kConditionProbeWindowMs = 2000;
+    static constexpr int kConditionReviewSpanMs = 15 * 60 * 1000;
 
     static TimeSeriesConfig fromIni(const QString &iniPath = QStringLiteral("config.ini"));
     static QString defaultDirectory();
     QString resolvedDirectory() const;
     TimeSeriesConfig normalized() const;
+};
+
+struct TimeSeriesConditionHit {
+    qint64 tsUtcMs = 0;
+    QVector<TimeSeriesValue> workValues;
+    QVector<TimeSeriesValue> stateValues;
+};
+
+struct TimeSeriesConditionSearchResult {
+    bool ok = true;
+    QString error;
+    qint64 probeTsUtcMs = 0;
+    int lookbackDays = TimeSeriesConfig::kConditionLookbackDays;
+    int scannedDays = 0;
+    int rawHitCount = 0;
+    QVector<TimeSeriesChannel> workChannels;
+    QVector<TimeSeriesChannel> stateChannels;
+    QVector<TimeSeriesValue> probeWork;
+    QVector<TimeSeriesValue> probeState;
+    QVector<TimeSeriesConditionHit> hits;
 };
 
 namespace TimeSeriesMeta {
@@ -133,6 +189,12 @@ int displayDecimals(TimeSeriesChannel channel);
 QVector<TimeSeriesChannel> allChannels();
 QString dailyFileName(const QDate &date);
 QString dailyFilePath(const QString &directory, const QDate &date);
+QString compareStatSql(TimeSeriesCompareStat stat);
+QString compareStatLabel(TimeSeriesCompareStat stat);
+QVector<TimeSeriesChannel> conditionWorkChannels();
+QVector<TimeSeriesChannel> conditionStateChannels();
+int conditionQuantum(TimeSeriesChannel channel);
+qint64 conditionBucket(double value, int quantum);
 
 } // namespace TimeSeriesMeta
 
@@ -143,5 +205,8 @@ inline uint qHash(TimeSeriesChannel channel, uint seed = 0) noexcept
 
 Q_DECLARE_METATYPE(TimeSeriesSample)
 Q_DECLARE_METATYPE(TimeSeriesConfig)
+Q_DECLARE_METATYPE(TimeSeriesQueryResult)
+Q_DECLARE_METATYPE(TimeSeriesCompareResult)
+Q_DECLARE_METATYPE(TimeSeriesConditionSearchResult)
 
 #endif // TIMESERIESTYPES_H

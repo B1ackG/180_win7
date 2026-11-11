@@ -72,7 +72,10 @@ SOURCES += \
     timeserieswriter.cpp \
     timeseriesqueryservice.cpp \
     timeserieschartwidget.cpp \
-    timeseriesdialog.cpp
+    timeseriesdatazoom.cpp \
+    timeseriesdialog.cpp \
+    timeseriesfullscreendialog.cpp \
+    timeseriesconditiondialog.cpp
 
 HEADERS += \
     agvmodbusmanager.h \
@@ -122,7 +125,10 @@ HEADERS += \
     timeserieswriter.h \
     timeseriesqueryservice.h \
     timeserieschartwidget.h \
-    timeseriesdialog.h
+    timeseriesdatazoom.h \
+    timeseriesdialog.h \
+    timeseriesfullscreendialog.h \
+    timeseriesconditiondialog.h
 
 FORMS += \
     mainwindow.ui

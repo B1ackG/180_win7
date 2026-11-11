@@ -181,4 +181,79 @@ QString dailyFilePath(const QString &directory, const QDate &date)
     return QDir(directory).filePath(dailyFileName(date));
 }
 
+QString compareStatSql(TimeSeriesCompareStat stat)
+{
+    switch (stat) {
+    case TimeSeriesCompareStat::Minimum:
+        return QStringLiteral("MIN");
+    case TimeSeriesCompareStat::Maximum:
+        return QStringLiteral("MAX");
+    case TimeSeriesCompareStat::Average:
+    default:
+        return QStringLiteral("AVG");
+    }
+}
+
+QString compareStatLabel(TimeSeriesCompareStat stat)
+{
+    switch (stat) {
+    case TimeSeriesCompareStat::Minimum:
+        return QStringLiteral("日最小");
+    case TimeSeriesCompareStat::Maximum:
+        return QStringLiteral("日最大");
+    case TimeSeriesCompareStat::Average:
+    default:
+        return QStringLiteral("日均");
+    }
+}
+
+QVector<TimeSeriesChannel> conditionWorkChannels()
+{
+    return {
+        TimeSeriesChannel::J1AngleDeg,
+        TimeSeriesChannel::J2HeightMm,
+        TimeSeriesChannel::J3TotalLengthMm,
+        TimeSeriesChannel::J4AngleDeg,
+        TimeSeriesChannel::CounterweightHeightMm,
+        TimeSeriesChannel::PlaneHeightMm,
+        TimeSeriesChannel::LoadKg
+    };
+}
+
+QVector<TimeSeriesChannel> conditionStateChannels()
+{
+    return {
+        TimeSeriesChannel::ColumnTorquePercent,
+        TimeSeriesChannel::CounterweightTorquePercent,
+        TimeSeriesChannel::ArmTiltXDeg,
+        TimeSeriesChannel::ArmTiltYDeg,
+        TimeSeriesChannel::ChassisTiltXDeg,
+        TimeSeriesChannel::ChassisTiltYDeg,
+        TimeSeriesChannel::TotalPowerW
+    };
+}
+
+int conditionQuantum(TimeSeriesChannel channel)
+{
+    switch (channel) {
+    case TimeSeriesChannel::J2HeightMm:
+    case TimeSeriesChannel::J3TotalLengthMm:
+    case TimeSeriesChannel::CounterweightHeightMm:
+    case TimeSeriesChannel::PlaneHeightMm:
+        return 10;
+    case TimeSeriesChannel::LoadKg:
+        return 5;
+    case TimeSeriesChannel::TotalPowerW:
+        return 10;
+    default:
+        return 1;
+    }
+}
+
+qint64 conditionBucket(double value, int quantum)
+{
+    const int step = qMax(1, quantum);
+    return qRound(value / static_cast<double>(step));
+}
+
 } // namespace TimeSeriesMeta
