@@ -14,6 +14,7 @@
 class QDateEdit;
 class QHideEvent;
 class QLabel;
+class QMouseEvent;
 class QPushButton;
 class TimeSeriesDataZoom;
 class TimeSeriesFullscreenDialog;
@@ -43,6 +44,7 @@ public:
 protected:
     void hideEvent(QHideEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
 
 private slots:
     void onDateChanged(const QDate &date);
@@ -74,6 +76,9 @@ private:
     void updateChannelButtonStates();
     void setChannelDrawerExpanded(bool expanded);
     void setRecentDrawerExpanded(bool expanded);
+    void collapseChannelDrawerAndQuery();
+    bool isChannelDrawerChrome(const QObject *watched) const;
+    void updateRecentButtonText();
     void syncDataZoomFromChart();
     void applyDataZoom(int lower, int upper);
     void closeFullscreen();

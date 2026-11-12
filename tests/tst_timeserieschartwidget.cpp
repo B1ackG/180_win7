@@ -38,6 +38,7 @@ private slots:
     void defaultChannelSelectionAndLimit();
     void channelDrawerButtonSitsAboveCursor();
     void collapsingChannelDrawerRunsQuery();
+    void clickingChartCollapsesChannelDrawer();
     void conditionTableIncludesWorkColumns();
     void quickRangesUseLocalDates();
     void extremaMarkersFollowQueryMinMax();
@@ -306,7 +307,7 @@ void TestTimeSeriesChartWidget::channelDrawerButtonSitsAboveCursor()
     dialog.show();
     QVERIFY(QTest::qWaitForWindowExposed(&dialog));
     QVERIFY(qAbs(drawerButton->geometry().center().y() - conditionButton->geometry().center().y()) <= 4);
-    QVERIFY(drawerButton->geometry().right() <= conditionButton->geometry().left());
+    QVERIFY(conditionButton->geometry().right() <= drawerButton->geometry().left());
 }
 
 void TestTimeSeriesChartWidget::collapsingChannelDrawerRunsQuery()
@@ -326,6 +327,22 @@ void TestTimeSeriesChartWidget::collapsingChannelDrawerRunsQuery()
     QCOMPARE(drawerButton->text(), QStringLiteral("通道选择"));
     QTRY_VERIFY(status->text().contains(QStringLiteral("查询"))
                 || status->text().contains(QStringLiteral("没有采样")));
+}
+
+void TestTimeSeriesChartWidget::clickingChartCollapsesChannelDrawer()
+{
+    TimeSeriesDialog dialog(QStringLiteral("/tmp"));
+    auto *drawerButton = dialog.findChild<QPushButton *>(QStringLiteral("TBtn_ChannelDrawer"));
+    QVERIFY(drawerButton);
+    dialog.resize(900, 700);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+    drawerButton->click();
+    QVERIFY(dialog.isChannelDrawerExpanded());
+    QTest::mouseClick(dialog.chart(), Qt::LeftButton, Qt::NoModifier,
+                      dialog.chart()->rect().center());
+    QVERIFY(!dialog.isChannelDrawerExpanded());
+    QCOMPARE(drawerButton->text(), QStringLiteral("通道选择"));
 }
 
 void TestTimeSeriesChartWidget::conditionTableIncludesWorkColumns()
@@ -408,6 +425,9 @@ void TestTimeSeriesChartWidget::quickRangesUseLocalDates()
     recent->click();
     QVERIFY(dialog.isRecentDrawerExpanded());
     QVERIFY(last30->isVisibleTo(&dialog));
+    last30->click();
+    QCOMPARE(recent->text(), QStringLiteral("最近30分钟"));
+    QVERIFY(!dialog.isRecentDrawerExpanded());
 
     QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_Query")) == nullptr);
     QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_Reset")) == nullptr);

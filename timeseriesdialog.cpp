@@ -80,7 +80,7 @@ TimeSeriesDialog::TimeSeriesDialog(const QString &databaseDirectory, QWidget *pa
     m_recentButton = new QPushButton(QStringLiteral("近期状态"), this);
     m_recentButton->setObjectName(QStringLiteral("TBtn_RecentStatus"));
     m_recentButton->setCheckable(true);
-    m_recentButton->setMinimumSize(120, 48);
+    m_recentButton->setMinimumSize(148, 48);
     m_last30MinutesButton = new QPushButton(QStringLiteral("最近30分钟"), this);
     m_lastHourButton = new QPushButton(QStringLiteral("最近1小时"), this);
     m_last4HoursButton = new QPushButton(QStringLiteral("最近4小时"), this);
@@ -101,8 +101,8 @@ TimeSeriesDialog::TimeSeriesDialog(const QString &databaseDirectory, QWidget *pa
     filterRow->addWidget(dateLabel);
     filterRow->addWidget(m_dateEdit);
     filterRow->addWidget(m_recentButton);
-    filterRow->addWidget(m_channelDrawerButton);
     filterRow->addWidget(m_conditionButton);
+    filterRow->addWidget(m_channelDrawerButton);
     filterRow->addStretch(1);
     root->addLayout(filterRow);
 
@@ -188,6 +188,9 @@ TimeSeriesDialog::TimeSeriesDialog(const QString &databaseDirectory, QWidget *pa
             this, [this](qint64, qint64) { syncDataZoomFromChart(); });
     connect(m_dataZoom, &TimeSeriesDataZoom::selectedRangeChanged,
             this, &TimeSeriesDialog::applyDataZoom);
+    m_chart->installEventFilter(this);
+    m_dataZoom->installEventFilter(this);
+    m_statusLabel->installEventFilter(this);
 
     updateChannelButtonStates();
     setStatus(QStringLiteral("选择日期后自动查询，或点近期状态"));
@@ -252,7 +255,20 @@ bool TimeSeriesDialog::eventFilter(QObject *watched, QEvent *event)
             return true;
         }
     }
+    if (event->type() == QEvent::MouseButtonPress
+        && m_channelDrawerExpanded
+        && !isChannelDrawerChrome(watched)) {
+        collapseChannelDrawerAndQuery();
+    }
     return QWidget::eventFilter(watched, event);
+}
+
+void TimeSeriesDialog::mousePressEvent(QMouseEvent *event)
+{
+    if (m_channelDrawerExpanded) {
+        collapseChannelDrawerAndQuery();
+    }
+    QWidget::mousePressEvent(event);
 }
 
 void TimeSeriesDialog::openDateCalendar()
@@ -302,6 +318,8 @@ void TimeSeriesDialog::startQuickQuery(int seconds)
     const QDateTime now = QDateTime::currentDateTime();
     startQuery(now.addSecs(-seconds), now);
     m_lastQuickSeconds = seconds;
+    updateRecentButtonText();
+    setRecentDrawerExpanded(false);
 }
 
 void TimeSeriesDialog::repeatLastQuery()
@@ -346,6 +364,7 @@ void TimeSeriesDialog::startQuery(const QDateTime &start, const QDateTime &end)
     m_lastQueryStart = start;
     m_lastQueryEnd = end;
     m_lastQuickSeconds = 0;
+    updateRecentButtonText();
 
     closeFullscreen();
     setChannelDrawerExpanded(false);
@@ -464,11 +483,52 @@ void TimeSeriesDialog::onChannelButtonToggled(bool)
 void TimeSeriesDialog::onToggleChannelDrawer()
 {
     if (m_channelDrawerExpanded) {
-        setChannelDrawerExpanded(false);
-        repeatLastQuery();
+        collapseChannelDrawerAndQuery();
         return;
     }
     setChannelDrawerExpanded(true);
+}
+
+void TimeSeriesDialog::collapseChannelDrawerAndQuery()
+{
+    if (!m_channelDrawerExpanded) {
+        return;
+    }
+    setChannelDrawerExpanded(false);
+    repeatLastQuery();
+}
+
+bool TimeSeriesDialog::isChannelDrawerChrome(const QObject *watched) const
+{
+    const QWidget *widget = qobject_cast<const QWidget *>(watched);
+    if (!widget) {
+        return false;
+    }
+    if (widget == m_channelDrawerButton || widget == m_channelDrawerBody) {
+        return true;
+    }
+    return m_channelDrawerButton->isAncestorOf(widget)
+        || m_channelDrawerBody->isAncestorOf(widget);
+}
+
+void TimeSeriesDialog::updateRecentButtonText()
+{
+    if (!m_recentButton) {
+        return;
+    }
+    if (m_lastQuickSeconds == 30 * 60) {
+        m_recentButton->setText(QStringLiteral("最近30分钟"));
+        return;
+    }
+    if (m_lastQuickSeconds == 4 * 3600) {
+        m_recentButton->setText(QStringLiteral("最近4小时"));
+        return;
+    }
+    if (m_lastQuickSeconds == 3600) {
+        m_recentButton->setText(QStringLiteral("最近1小时"));
+        return;
+    }
+    m_recentButton->setText(QStringLiteral("近期状态"));
 }
 
 void TimeSeriesDialog::onToggleRecentDrawer()

@@ -296,7 +296,7 @@ void TimeSeriesChartWidget::paintEvent(QPaintEvent *)
         painter.setBrush(QColor(6, 22, 34, 180));
         painter.drawRect(item.plot);
 
-        drawGrid(painter, item);
+        drawGrid(painter, item, i == plots.size() - 1);
 
         QFont titleFont = painter.font();
         titleFont.setPixelSize(15);
@@ -564,19 +564,21 @@ void TimeSeriesChartWidget::panByPixels(int dx, const QRect &plot)
     update();
 }
 
-void TimeSeriesChartWidget::drawGrid(QPainter &painter, const PlotRect &plot) const
+void TimeSeriesChartWidget::drawGrid(QPainter &painter, const PlotRect &plot, bool showTimeLabels) const
 {
     painter.save();
     painter.setPen(QPen(QColor(154, 215, 234, 55), 1));
     for (int i = 0; i < 6; ++i) {
         const int x = plot.plot.left() + plot.plot.width() * i / 5;
         painter.drawLine(x, plot.plot.top(), x, plot.plot.bottom());
-        const qint64 ts = timeAtX(x, plot.plot);
-        painter.setPen(QColor(154, 215, 234, 180));
-        painter.drawText(QRect(x - 48, plot.plot.bottom() + 2, 96, kBottomTickHeight - 2),
-                         Qt::AlignHCenter | Qt::AlignTop,
-                         formatTimeTick(ts));
-        painter.setPen(QPen(QColor(154, 215, 234, 55), 1));
+        if (showTimeLabels) {
+            const qint64 ts = timeAtX(x, plot.plot);
+            painter.setPen(QColor(154, 215, 234, 180));
+            painter.drawText(QRect(x - 48, plot.plot.bottom() + 2, 96, kBottomTickHeight - 2),
+                             Qt::AlignHCenter | Qt::AlignTop,
+                             formatTimeTick(ts));
+            painter.setPen(QPen(QColor(154, 215, 234, 55), 1));
+        }
     }
     for (int i = 0; i < 5; ++i) {
         const int y = plot.plot.top() + plot.plot.height() * i / 4;
@@ -663,7 +665,8 @@ QVector<TimeSeriesChartWidget::PlotRect> TimeSeriesChartWidget::layoutPlots(cons
     if (count <= 0 || area.height() <= 0) {
         return plots;
     }
-    const int plotHeight = qMax(80, area.height() / count);
+    const int plotsAreaHeight = qMax(80, area.height() - kBottomTickHeight);
+    const int plotHeight = qMax(80, plotsAreaHeight / count);
     for (int i = 0; i < count; ++i) {
         PlotRect item;
         item.channel = m_result.series.at(i).channel;
@@ -671,7 +674,7 @@ QVector<TimeSeriesChartWidget::PlotRect> TimeSeriesChartWidget::layoutPlots(cons
         item.plot = QRect(area.left() + kLeftAxisWidth,
                           top + kTitleHeight,
                           qMax(40, area.width() - kLeftAxisWidth - 8),
-                          qMax(24, plotHeight - kTitleHeight - kBottomTickHeight));
+                          qMax(24, plotHeight - kTitleHeight));
         item.fullscreenButtonRect = QRect(item.plot.right() - 44,
                                           top,
                                           44,

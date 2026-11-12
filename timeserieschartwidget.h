@@ -108,7 +108,7 @@ private:
     void updatePointer(const QPoint &pos);
     void endPointer();
     void panByPixels(int dx, const QRect &plot);
-    void drawGrid(QPainter &painter, const PlotRect &plot) const;
+    void drawGrid(QPainter &painter, const PlotRect &plot, bool showTimeLabels) const;
     QString formatTimeTick(qint64 utcMs) const;
     QString formatValue(TimeSeriesChannel channel, double value) const;
     void applyVisibleRange(qint64 startUtcMs, qint64 endUtcMs, bool emitChange);
