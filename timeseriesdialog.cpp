@@ -1,15 +1,21 @@
 #include "timeseriesdialog.h"
 
+#include "historycalendarpanel.h"
 #include "timeserieschartwidget.h"
 #include "timeseriesdatazoom.h"
 #include "timeseriesconditiondialog.h"
 #include "timeseriesfullscreendialog.h"
 #include "timeseriesqueryservice.h"
 
-#include <QCloseEvent>
 #include <QDate>
+#include <QHideEvent>
 #include <QDateEdit>
 #include <QDateTime>
+#include <QEvent>
+#include <QLineEdit>
+#include <QMouseEvent>
+#include <QTime>
+#include <QToolButton>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -32,17 +38,14 @@ const QSet<TimeSeriesChannel> kDefaultChannels = {
 } // namespace
 
 TimeSeriesDialog::TimeSeriesDialog(const QString &databaseDirectory, QWidget *parent)
-    : QDialog(parent)
+    : QWidget(parent)
     , m_directory(databaseDirectory)
 {
-    setWindowTitle(QStringLiteral("数据曲线"));
-    setModal(false);
-    setAttribute(Qt::WA_DeleteOnClose, false);
-    resize(1480, 860);
+    setAttribute(Qt::WA_StyledBackground, true);
     setStyleSheet(QStringLiteral(
-        "QDialog { background: #08121c; color: #eaf9ff; }"
+        "TimeSeriesDialog { background: #08121c; color: #eaf9ff; }"
         "QLabel { color: #eaf9ff; font-size: 16px; }"
-        "QDateEdit { background: #102433; color: #eaf9ff; min-height: 36px; font-size: 16px; }"
+        "QDateEdit { background: #102433; color: #eaf9ff; min-height: 48px; font-size: 16px; }"
         "QPushButton { min-height: 48px; font-size: 16px;"
         "  background: #12364a; color: #eaf9ff; border: 1px solid #00c8ff; }"
         "QPushButton:checked { background: #1a6d8c; color: #ffffff; font-weight: bold;"
@@ -54,84 +57,66 @@ TimeSeriesDialog::TimeSeriesDialog(const QString &databaseDirectory, QWidget *pa
     root->setSpacing(10);
 
     auto *filterRow = new QHBoxLayout();
-    auto *startLabel = new QLabel(QStringLiteral("开始"), this);
-    auto *endLabel = new QLabel(QStringLiteral("结束"), this);
-    m_startEdit = new QDateEdit(this);
-    m_endEdit = new QDateEdit(this);
-    m_startEdit->setObjectName(QStringLiteral("Dt_Start"));
-    m_endEdit->setObjectName(QStringLiteral("Dt_End"));
-    m_startEdit->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
-    m_endEdit->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
-    m_startEdit->setCalendarPopup(true);
-    m_endEdit->setCalendarPopup(true);
-    const QDate today = QDate::currentDate();
-    m_endEdit->setDate(today);
-    m_startEdit->setDate(today);
+    auto *dateLabel = new QLabel(QStringLiteral("日期"), this);
+    m_dateEdit = new QDateEdit(this);
+    m_dateEdit->setObjectName(QStringLiteral("Dt_Date"));
+    m_dateEdit->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
+    m_dateEdit->setCalendarPopup(true);
+    m_dateEdit->setReadOnly(true);
+    m_dateEdit->setDate(QDate::currentDate());
+    m_dateEdit->setMinimumWidth(180);
+    m_dateEdit->setAttribute(Qt::WA_InputMethodEnabled, false);
+    m_dateEdit->installEventFilter(this);
+    const auto dateEditChildren = m_dateEdit->findChildren<QWidget *>();
+    for (QWidget *child : dateEditChildren) {
+        child->setAttribute(Qt::WA_InputMethodEnabled, false);
+        child->setFocusPolicy(Qt::NoFocus);
+        child->installEventFilter(this);
+        if (auto *lineEdit = qobject_cast<QLineEdit *>(child)) {
+            lineEdit->setReadOnly(true);
+        }
+    }
 
+    m_recentButton = new QPushButton(QStringLiteral("近期状态"), this);
+    m_recentButton->setObjectName(QStringLiteral("TBtn_RecentStatus"));
+    m_recentButton->setCheckable(true);
+    m_recentButton->setMinimumSize(120, 48);
     m_last30MinutesButton = new QPushButton(QStringLiteral("最近30分钟"), this);
     m_lastHourButton = new QPushButton(QStringLiteral("最近1小时"), this);
     m_last4HoursButton = new QPushButton(QStringLiteral("最近4小时"), this);
-    m_avgCompareButton = new QPushButton(QStringLiteral("日均"), this);
-    m_minCompareButton = new QPushButton(QStringLiteral("日最小"), this);
-    m_maxCompareButton = new QPushButton(QStringLiteral("日最大"), this);
-    m_monthCompareButton = new QPushButton(QStringLiteral("上月对比"), this);
-    m_yearCompareButton = new QPushButton(QStringLiteral("去年对比"), this);
     m_conditionButton = new QPushButton(QStringLiteral("工况反查"), this);
     m_last30MinutesButton->setObjectName(QStringLiteral("TBtn_QuickLast30Minutes"));
     m_lastHourButton->setObjectName(QStringLiteral("TBtn_QuickLastHour"));
     m_last4HoursButton->setObjectName(QStringLiteral("TBtn_QuickLast4Hours"));
-    m_avgCompareButton->setObjectName(QStringLiteral("TBtn_CompareAvg"));
-    m_minCompareButton->setObjectName(QStringLiteral("TBtn_CompareMin"));
-    m_maxCompareButton->setObjectName(QStringLiteral("TBtn_CompareMax"));
-    m_monthCompareButton->setObjectName(QStringLiteral("TBtn_MonthCompare"));
-    m_yearCompareButton->setObjectName(QStringLiteral("TBtn_YearCompare"));
     m_conditionButton->setObjectName(QStringLiteral("TBtn_ConditionSearch"));
     m_last30MinutesButton->setMinimumSize(120, 48);
     m_lastHourButton->setMinimumSize(120, 48);
     m_last4HoursButton->setMinimumSize(120, 48);
-    m_avgCompareButton->setMinimumSize(96, 48);
-    m_minCompareButton->setMinimumSize(96, 48);
-    m_maxCompareButton->setMinimumSize(96, 48);
-    m_monthCompareButton->setMinimumSize(120, 48);
-    m_yearCompareButton->setMinimumSize(120, 48);
     m_conditionButton->setMinimumSize(120, 48);
-    m_avgCompareButton->setCheckable(true);
-    m_minCompareButton->setCheckable(true);
-    m_maxCompareButton->setCheckable(true);
 
-    m_queryButton = new QPushButton(QStringLiteral("查询"), this);
-    m_resetButton = new QPushButton(QStringLiteral("重置"), this);
-    m_queryButton->setObjectName(QStringLiteral("TBtn_Query"));
-    m_resetButton->setObjectName(QStringLiteral("TBtn_Reset"));
-
-    filterRow->addWidget(startLabel);
-    filterRow->addWidget(m_startEdit, 1);
-    filterRow->addSpacing(8);
-    filterRow->addWidget(endLabel);
-    filterRow->addWidget(m_endEdit, 1);
-    filterRow->addWidget(m_last30MinutesButton);
-    filterRow->addWidget(m_lastHourButton);
-    filterRow->addWidget(m_last4HoursButton);
-    filterRow->addWidget(m_queryButton);
-    filterRow->addWidget(m_resetButton);
-    root->addLayout(filterRow);
-
-    auto *channelRow = new QHBoxLayout();
     m_channelDrawerButton = new QPushButton(QStringLiteral("通道选择"), this);
     m_channelDrawerButton->setObjectName(QStringLiteral("TBtn_ChannelDrawer"));
     m_channelDrawerButton->setMinimumSize(120, 48);
-    channelRow->addWidget(m_channelDrawerButton);
-    channelRow->addSpacing(12);
-    channelRow->addWidget(m_avgCompareButton);
-    channelRow->addWidget(m_minCompareButton);
-    channelRow->addWidget(m_maxCompareButton);
-    channelRow->addSpacing(12);
-    channelRow->addWidget(m_monthCompareButton);
-    channelRow->addWidget(m_yearCompareButton);
-    channelRow->addSpacing(12);
-    channelRow->addWidget(m_conditionButton);
-    channelRow->addStretch(1);
-    root->addLayout(channelRow);
+
+    filterRow->addWidget(dateLabel);
+    filterRow->addWidget(m_dateEdit);
+    filterRow->addWidget(m_recentButton);
+    filterRow->addWidget(m_channelDrawerButton);
+    filterRow->addWidget(m_conditionButton);
+    filterRow->addStretch(1);
+    root->addLayout(filterRow);
+
+    m_recentDrawerBody = new QWidget(this);
+    m_recentDrawerBody->setObjectName(QStringLiteral("Wgt_RecentDrawer"));
+    auto *recentLayout = new QHBoxLayout(m_recentDrawerBody);
+    recentLayout->setContentsMargins(0, 0, 0, 0);
+    recentLayout->setSpacing(10);
+    recentLayout->addWidget(m_last30MinutesButton);
+    recentLayout->addWidget(m_lastHourButton);
+    recentLayout->addWidget(m_last4HoursButton);
+    recentLayout->addStretch(1);
+    m_recentDrawerBody->setVisible(false);
+    root->addWidget(m_recentDrawerBody);
 
     m_channelDrawerBody = new QWidget(this);
     auto *channelLayout = new QGridLayout(m_channelDrawerBody);
@@ -157,27 +142,14 @@ TimeSeriesDialog::TimeSeriesDialog(const QString &databaseDirectory, QWidget *pa
     m_channelDrawerBody->setVisible(false);
     root->addWidget(m_channelDrawerBody);
 
-    auto *modeRow = new QHBoxLayout();
-    m_cursorButton = new QPushButton(QStringLiteral("游标"), this);
-    m_panButton = new QPushButton(QStringLiteral("平移"), this);
-    m_cursorButton->setObjectName(QStringLiteral("TBtn_CursorMode"));
-    m_panButton->setObjectName(QStringLiteral("TBtn_PanMode"));
-    m_cursorButton->setCheckable(true);
-    m_panButton->setCheckable(true);
-    m_cursorButton->setChecked(true);
-    m_cursorButton->setMinimumSize(120, 48);
-    m_panButton->setMinimumSize(120, 48);
-    modeRow->addWidget(m_cursorButton);
-    modeRow->addWidget(m_panButton);
-    modeRow->addStretch(1);
-    root->addLayout(modeRow);
-
     m_statusLabel = new QLabel(this);
+    m_statusLabel->setObjectName(QStringLiteral("Lbl_TimeSeriesStatus"));
     m_statusLabel->setWordWrap(true);
     root->addWidget(m_statusLabel);
 
     m_chart = new TimeSeriesChartWidget(this);
     m_chart->setObjectName(QStringLiteral("TimeSeriesChart"));
+    m_chart->setInteractionMode(TimeSeriesChartWidget::InteractionMode::Cursor);
     root->addWidget(m_chart, 1);
 
     m_dataZoom = new TimeSeriesDataZoom(this);
@@ -189,19 +161,15 @@ TimeSeriesDialog::TimeSeriesDialog(const QString &databaseDirectory, QWidget *pa
     root->addWidget(m_dataZoom);
 
     qRegisterMetaType<TimeSeriesQueryResult>("TimeSeriesQueryResult");
-    qRegisterMetaType<TimeSeriesCompareResult>("TimeSeriesCompareResult");
     qRegisterMetaType<TimeSeriesConditionSearchResult>("TimeSeriesConditionSearchResult");
     m_watcher = new QFutureWatcher<TimeSeriesQueryResult>(this);
-    m_compareWatcher = new QFutureWatcher<TimeSeriesCompareResult>(this);
     m_conditionWatcher = new QFutureWatcher<TimeSeriesConditionSearchResult>(this);
     connect(m_watcher, &QFutureWatcher<TimeSeriesQueryResult>::finished,
             this, &TimeSeriesDialog::onQueryFinished);
-    connect(m_compareWatcher, &QFutureWatcher<TimeSeriesCompareResult>::finished,
-            this, &TimeSeriesDialog::onCompareFinished);
     connect(m_conditionWatcher, &QFutureWatcher<TimeSeriesConditionSearchResult>::finished,
             this, &TimeSeriesDialog::onConditionFinished);
-    connect(m_queryButton, &QPushButton::clicked, this, &TimeSeriesDialog::onQueryClicked);
-    connect(m_resetButton, &QPushButton::clicked, this, &TimeSeriesDialog::onResetClicked);
+    connect(m_dateEdit, &QDateEdit::dateChanged, this, &TimeSeriesDialog::onDateChanged);
+    connect(m_recentButton, &QPushButton::clicked, this, &TimeSeriesDialog::onToggleRecentDrawer);
     connect(m_last30MinutesButton, &QPushButton::clicked, this, [this]() {
         startQuickQuery(30 * 60);
     });
@@ -211,30 +179,9 @@ TimeSeriesDialog::TimeSeriesDialog(const QString &databaseDirectory, QWidget *pa
     connect(m_last4HoursButton, &QPushButton::clicked, this, [this]() {
         startQuickQuery(4 * 3600);
     });
-    connect(m_avgCompareButton, &QPushButton::clicked, this, [this]() {
-        setCompareStat(TimeSeriesCompareStat::Average);
-    });
-    connect(m_minCompareButton, &QPushButton::clicked, this, [this]() {
-        setCompareStat(TimeSeriesCompareStat::Minimum);
-    });
-    connect(m_maxCompareButton, &QPushButton::clicked, this, [this]() {
-        setCompareStat(TimeSeriesCompareStat::Maximum);
-    });
-    connect(m_monthCompareButton, &QPushButton::clicked, this, [this]() {
-        startCompare(TimeSeriesCompareKind::MonthOverMonth);
-    });
-    connect(m_yearCompareButton, &QPushButton::clicked, this, [this]() {
-        startCompare(TimeSeriesCompareKind::YearOverYear);
-    });
     connect(m_conditionButton, &QPushButton::clicked, this, &TimeSeriesDialog::startConditionSearch);
     connect(m_channelDrawerButton, &QPushButton::clicked,
             this, &TimeSeriesDialog::onToggleChannelDrawer);
-    connect(m_cursorButton, &QPushButton::clicked, this, [this]() {
-        setInteractionMode(TimeSeriesChartWidget::InteractionMode::Cursor);
-    });
-    connect(m_panButton, &QPushButton::clicked, this, [this]() {
-        setInteractionMode(TimeSeriesChartWidget::InteractionMode::Pan);
-    });
     connect(m_chart, &TimeSeriesChartWidget::fullscreenRequested,
             this, &TimeSeriesDialog::onFullscreenRequested);
     connect(m_chart, &TimeSeriesChartWidget::visibleRangeChanged,
@@ -243,8 +190,7 @@ TimeSeriesDialog::TimeSeriesDialog(const QString &databaseDirectory, QWidget *pa
             this, &TimeSeriesDialog::applyDataZoom);
 
     updateChannelButtonStates();
-    setCompareStat(TimeSeriesCompareStat::Average);
-    setStatus(QStringLiteral("选择时间和通道后点击查询"));
+    setStatus(QStringLiteral("选择日期后自动查询，或点近期状态"));
 }
 
 void TimeSeriesDialog::reloadAvailableDates()
@@ -275,17 +221,10 @@ QVector<TimeSeriesChannel> TimeSeriesDialog::selectedChannels() const
     return selected;
 }
 
-void TimeSeriesDialog::applyQuickRange(QuickRange range)
+void TimeSeriesDialog::applyQuickRange(QuickRange)
 {
-    const QDateTime now = QDateTime::currentDateTime();
-    m_endEdit->setDate(now.date());
-    int seconds = 3600;
-    if (range == QuickRange::Last30Minutes) {
-        seconds = 30 * 60;
-    } else if (range == QuickRange::Last4Hours) {
-        seconds = 4 * 3600;
-    }
-    m_startEdit->setDate(now.addSecs(-seconds).date());
+    const QSignalBlocker blocker(m_dateEdit);
+    m_dateEdit->setDate(QDate::currentDate());
 }
 
 QPushButton *TimeSeriesDialog::channelButton(TimeSeriesChannel channel) const
@@ -293,13 +232,55 @@ QPushButton *TimeSeriesDialog::channelButton(TimeSeriesChannel channel) const
     return m_channelButtons.value(channel, nullptr);
 }
 
-void TimeSeriesDialog::closeEvent(QCloseEvent *event)
+void TimeSeriesDialog::hideEvent(QHideEvent *event)
 {
     closeFullscreen();
-    QDialog::closeEvent(event);
+    QWidget::hideEvent(event);
 }
 
-void TimeSeriesDialog::onQueryClicked()
+bool TimeSeriesDialog::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_dateEdit || (watched && watched->parent() == m_dateEdit)) {
+        if (event->type() == QEvent::MouseButtonPress
+            || event->type() == QEvent::MouseButtonDblClick) {
+            if (!m_busy && m_dateEdit->isEnabled()) {
+                openDateCalendar();
+            }
+            return true;
+        }
+        if (event->type() == QEvent::Wheel) {
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void TimeSeriesDialog::openDateCalendar()
+{
+    QList<QDate> dates = TimeSeriesQueryService::availableDates(m_directory);
+    const QDate today = QDate::currentDate();
+    if (!dates.contains(today)) {
+        dates.append(today);
+    }
+    HistoryCalendarPanel dialog(dates, window(),
+                                QStringLiteral("选择日期"),
+                                QStringLiteral("暂无已保存的时序数据"));
+    connect(&dialog, &HistoryCalendarPanel::dateChosen, this, [this](const QDate &date) {
+        if (m_dateEdit->date() == date) {
+            startDateQuery();
+            return;
+        }
+        m_dateEdit->setDate(date);
+    });
+    dialog.exec();
+}
+
+void TimeSeriesDialog::onDateChanged(const QDate &)
+{
+    startDateQuery();
+}
+
+void TimeSeriesDialog::startDateQuery()
 {
     QString error;
     if (!validateRange(&error)) {
@@ -320,51 +301,31 @@ void TimeSeriesDialog::startQuickQuery(int seconds)
     }
     const QDateTime now = QDateTime::currentDateTime();
     startQuery(now.addSecs(-seconds), now);
+    m_lastQuickSeconds = seconds;
 }
 
-void TimeSeriesDialog::setCompareStat(TimeSeriesCompareStat stat)
+void TimeSeriesDialog::repeatLastQuery()
 {
-    m_compareStat = stat;
-    m_avgCompareButton->setChecked(stat == TimeSeriesCompareStat::Average);
-    m_minCompareButton->setChecked(stat == TimeSeriesCompareStat::Minimum);
-    m_maxCompareButton->setChecked(stat == TimeSeriesCompareStat::Maximum);
-}
-
-TimeSeriesCompareStat TimeSeriesDialog::selectedCompareStat() const
-{
-    return m_compareStat;
-}
-
-void TimeSeriesDialog::startCompare(TimeSeriesCompareKind kind)
-{
-    const QVector<TimeSeriesChannel> channels = selectedChannels();
-    if (channels.isEmpty()) {
-        setStatus(QStringLiteral("请至少选择一个通道"), true);
+    if (m_lastQuickSeconds > 0) {
+        startQuickQuery(m_lastQuickSeconds);
         return;
     }
-    closeFullscreen();
-    setChannelDrawerExpanded(false);
-    const QString directory = m_directory;
-    const TimeSeriesCompareStat stat = selectedCompareStat();
-    const QString statLabel = TimeSeriesMeta::compareStatLabel(stat);
-    m_activeQueryToken = ++m_queryToken;
-    setBusy(true);
-    setStatus(kind == TimeSeriesCompareKind::MonthOverMonth
-                  ? QStringLiteral("正在对比上月%1…").arg(statLabel)
-                  : QStringLiteral("正在对比去年%1…").arg(statLabel));
-    m_compareWatcher->setFuture(QtConcurrent::run([directory, channels, kind, stat]() {
-        return TimeSeriesQueryService::queryDailyCompare(directory, channels, kind, QDate(), stat);
-    }));
+    if (m_lastQueryStart.isValid() && m_lastQueryEnd.isValid()) {
+        startQuery(m_lastQueryStart, m_lastQueryEnd);
+        return;
+    }
+    startDateQuery();
 }
 
 void TimeSeriesDialog::startConditionSearch()
 {
-    if (m_chart->isCompareMode() || !m_lastResult.ok || !m_chart->isCursorVisible()) {
+    if (!m_lastResult.ok || !m_chart->isCursorVisible()) {
         setStatus(QStringLiteral("请先查询1Hz曲线，在图上点游标后再工况反查"), true);
         return;
     }
     closeFullscreen();
     setChannelDrawerExpanded(false);
+    setRecentDrawerExpanded(false);
     const QString directory = m_directory;
     const qint64 probeTsUtcMs = m_chart->cursorTime();
     m_activeQueryToken = ++m_queryToken;
@@ -382,9 +343,13 @@ void TimeSeriesDialog::startQuery(const QDateTime &start, const QDateTime &end)
         setStatus(QStringLiteral("请至少选择一个通道"), true);
         return;
     }
+    m_lastQueryStart = start;
+    m_lastQueryEnd = end;
+    m_lastQuickSeconds = 0;
 
     closeFullscreen();
     setChannelDrawerExpanded(false);
+    setRecentDrawerExpanded(false);
 
     const qint64 startUtcMs = start.toUTC().toMSecsSinceEpoch();
     const qint64 endUtcMs = end.toUTC().toMSecsSinceEpoch();
@@ -397,12 +362,6 @@ void TimeSeriesDialog::startQuery(const QDateTime &start, const QDateTime &end)
     }));
 }
 
-void TimeSeriesDialog::onResetClicked()
-{
-    applyQuickRange(QuickRange::Last30Minutes);
-    m_chart->resetView();
-}
-
 void TimeSeriesDialog::onQueryFinished()
 {
     setBusy(false);
@@ -411,7 +370,6 @@ void TimeSeriesDialog::onQueryFinished()
     }
     const TimeSeriesQueryResult result = m_watcher->result();
     m_lastResult = result;
-    m_lastCompare = TimeSeriesCompareResult();
     if (!result.ok) {
         m_chart->clearSeries();
         m_lastResult = TimeSeriesQueryResult();
@@ -448,52 +406,6 @@ void TimeSeriesDialog::onQueryFinished()
         } else {
             setStatus(QStringLiteral("查询完成"));
         }
-    }
-}
-
-void TimeSeriesDialog::onCompareFinished()
-{
-    setBusy(false);
-    if (!m_compareWatcher) {
-        return;
-    }
-    const TimeSeriesCompareResult result = m_compareWatcher->result();
-    m_lastCompare = result;
-    m_lastResult = TimeSeriesQueryResult();
-    if (!result.ok) {
-        m_chart->clearSeries();
-        m_lastCompare = TimeSeriesCompareResult();
-        m_dataZoom->setEnabled(false);
-        {
-            const QSignalBlocker blocker(m_dataZoom);
-            m_dataZoom->setSelectedRange(0, 10000);
-        }
-        setStatus(result.error.isEmpty() ? QStringLiteral("对比失败") : result.error, true);
-        return;
-    }
-
-    bool hasPoints = false;
-    for (const TimeSeriesCompareChannel &item : result.series) {
-        if (!item.currentPoints.isEmpty() || !item.previousPoints.isEmpty()) {
-            hasPoints = true;
-            break;
-        }
-    }
-    m_chart->setCompareResult(result);
-    setChannelDrawerExpanded(false);
-    if (!hasPoints) {
-        m_dataZoom->setEnabled(false);
-        const QSignalBlocker blocker(m_dataZoom);
-        m_dataZoom->setSelectedRange(0, 10000);
-        setStatus(QStringLiteral("该对比范围内没有日数据"));
-    } else {
-        syncDataZoomFromChart();
-        const QString statLabel = result.statLabel.isEmpty()
-            ? TimeSeriesMeta::compareStatLabel(result.stat)
-            : result.statLabel;
-        setStatus(result.kind == TimeSeriesCompareKind::MonthOverMonth
-                      ? QStringLiteral("上月对比完成（按%1）").arg(statLabel)
-                      : QStringLiteral("去年对比完成（按%1）").arg(statLabel));
     }
 }
 
@@ -551,7 +463,17 @@ void TimeSeriesDialog::onChannelButtonToggled(bool)
 
 void TimeSeriesDialog::onToggleChannelDrawer()
 {
-    setChannelDrawerExpanded(!m_channelDrawerExpanded);
+    if (m_channelDrawerExpanded) {
+        setChannelDrawerExpanded(false);
+        repeatLastQuery();
+        return;
+    }
+    setChannelDrawerExpanded(true);
+}
+
+void TimeSeriesDialog::onToggleRecentDrawer()
+{
+    setRecentDrawerExpanded(!m_recentDrawerExpanded);
 }
 
 void TimeSeriesDialog::onFullscreenRequested(TimeSeriesChannel channel)
@@ -567,33 +489,18 @@ void TimeSeriesDialog::onFullscreenRequested(TimeSeriesChannel channel)
         m_fullscreen = nullptr;
     });
     const QPair<qint64, qint64> view = m_chart->visibleRange();
-    if (m_chart->isCompareMode()) {
-        const TimeSeriesCompareResult one = compareForChannel(channel);
-        if (one.series.isEmpty()) {
-            m_fullscreen->deleteLater();
-            m_fullscreen = nullptr;
-            return;
-        }
-        m_fullscreen->setCompareContent(one,
-                                        view.first,
-                                        view.second,
-                                        m_chart->cursorTime(),
-                                        m_chart->isCursorVisible(),
-                                        m_chart->interactionMode());
-    } else {
-        const TimeSeriesQueryResult one = seriesForChannel(channel);
-        if (one.series.isEmpty()) {
-            m_fullscreen->deleteLater();
-            m_fullscreen = nullptr;
-            return;
-        }
-        m_fullscreen->setContent(one,
-                                 view.first,
-                                 view.second,
-                                 m_chart->cursorTime(),
-                                 m_chart->isCursorVisible(),
-                                 m_chart->interactionMode());
+    const TimeSeriesQueryResult one = seriesForChannel(channel);
+    if (one.series.isEmpty()) {
+        m_fullscreen->deleteLater();
+        m_fullscreen = nullptr;
+        return;
     }
+    m_fullscreen->setContent(one,
+                             view.first,
+                             view.second,
+                             m_chart->cursorTime(),
+                             m_chart->isCursorVisible(),
+                             TimeSeriesChartWidget::InteractionMode::Cursor);
     m_fullscreen->showFullScreen();
 }
 
@@ -609,23 +516,22 @@ void TimeSeriesDialog::onFullscreenStateClosing(qint64 startUtcMs,
     } else {
         m_chart->clearCursor();
     }
-    setInteractionMode(mode);
+    Q_UNUSED(mode);
+    m_chart->setInteractionMode(TimeSeriesChartWidget::InteractionMode::Cursor);
 }
 
 bool TimeSeriesDialog::validateRange(QString *error) const
 {
-    const QDate start = m_startEdit->date();
-    const QDate end = m_endEdit->date();
-    const QDate today = QDate::currentDate();
-    if (end < start) {
+    const QDate date = m_dateEdit->date();
+    if (!date.isValid()) {
         if (error) {
-            *error = QStringLiteral("结束日期不能早于开始日期");
+            *error = QStringLiteral("请选择有效日期");
         }
         return false;
     }
-    if (end > today) {
+    if (date > QDate::currentDate()) {
         if (error) {
-            *error = QStringLiteral("结束日期不能晚于今天");
+            *error = QStringLiteral("日期不能晚于今天");
         }
         return false;
     }
@@ -634,38 +540,29 @@ bool TimeSeriesDialog::validateRange(QString *error) const
 
 QDateTime TimeSeriesDialog::rangeStartDateTime() const
 {
-    return QDateTime(m_startEdit->date(), QTime(0, 0, 0));
+    return QDateTime(m_dateEdit->date(), QTime(0, 0, 0));
 }
 
 QDateTime TimeSeriesDialog::rangeEndDateTime() const
 {
-    const QDate endDate = m_endEdit->date();
+    const QDate date = m_dateEdit->date();
     const QDateTime now = QDateTime::currentDateTime();
-    if (endDate == now.date()) {
+    if (date == now.date()) {
         return now;
     }
-    return QDateTime(endDate, QTime(23, 59, 59, 999));
+    return QDateTime(date, QTime(23, 59, 59, 999));
 }
 
 void TimeSeriesDialog::setBusy(bool busy)
 {
     m_busy = busy;
-    m_queryButton->setEnabled(!busy);
-    m_resetButton->setEnabled(!busy);
-    m_startEdit->setEnabled(!busy);
-    m_endEdit->setEnabled(!busy);
+    m_dateEdit->setEnabled(!busy);
+    m_recentButton->setEnabled(!busy);
     m_last30MinutesButton->setEnabled(!busy);
     m_lastHourButton->setEnabled(!busy);
     m_last4HoursButton->setEnabled(!busy);
-    m_avgCompareButton->setEnabled(!busy);
-    m_minCompareButton->setEnabled(!busy);
-    m_maxCompareButton->setEnabled(!busy);
-    m_monthCompareButton->setEnabled(!busy);
-    m_yearCompareButton->setEnabled(!busy);
     m_conditionButton->setEnabled(!busy);
     m_channelDrawerButton->setEnabled(!busy);
-    m_cursorButton->setEnabled(!busy);
-    m_panButton->setEnabled(!busy);
     m_chart->setEnabled(!busy);
     if (busy) {
         m_dataZoom->setEnabled(false);
@@ -710,15 +607,19 @@ void TimeSeriesDialog::setChannelDrawerExpanded(bool expanded)
     m_channelDrawerExpanded = expanded;
     m_channelDrawerBody->setVisible(expanded);
     m_channelDrawerButton->setText(expanded ? QStringLiteral("收起") : QStringLiteral("通道选择"));
+    if (expanded) {
+        setRecentDrawerExpanded(false);
+    }
 }
 
-void TimeSeriesDialog::setInteractionMode(TimeSeriesChartWidget::InteractionMode mode)
+void TimeSeriesDialog::setRecentDrawerExpanded(bool expanded)
 {
-    m_chart->setInteractionMode(mode);
-    m_cursorButton->setChecked(mode == TimeSeriesChartWidget::InteractionMode::Cursor);
-    m_panButton->setChecked(mode == TimeSeriesChartWidget::InteractionMode::Pan);
-    if (m_fullscreen) {
-        // Keep fullscreen in sync if it is still open.
+    m_recentDrawerExpanded = expanded;
+    m_recentDrawerBody->setVisible(expanded);
+    const QSignalBlocker blocker(m_recentButton);
+    m_recentButton->setChecked(expanded);
+    if (expanded) {
+        setChannelDrawerExpanded(false);
     }
 }
 
@@ -775,19 +676,6 @@ TimeSeriesQueryResult TimeSeriesDialog::seriesForChannel(TimeSeriesChannel chann
     for (const TimeSeriesSeries &series : m_lastResult.series) {
         if (series.channel == channel) {
             one.series.append(series);
-            break;
-        }
-    }
-    return one;
-}
-
-TimeSeriesCompareResult TimeSeriesDialog::compareForChannel(TimeSeriesChannel channel) const
-{
-    TimeSeriesCompareResult one = m_lastCompare;
-    one.series.clear();
-    for (const TimeSeriesCompareChannel &item : m_lastCompare.series) {
-        if (item.channel == channel) {
-            one.series.append(item);
             break;
         }
     }

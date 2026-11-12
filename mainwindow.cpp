@@ -63,6 +63,7 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <QProcess>
 #include <QPushButton>
 #include <QMetaObject>
+#include <QDateTimeEdit>
 
 namespace {
 SteeringMode steeringModeFromRegisterValue(quint16 value)
@@ -736,7 +737,8 @@ void MainWindow::setupNavigationConnections()
         ui->TBtn_ChassisControl,
         ui->TBtn_SafetyMonitor,
         ui->TBtn_PermissionPage,
-        ui->TBtn_HistoryRecord
+        ui->TBtn_HistoryRecord,
+        ui->TBtn_DataCurve
     };
     if (!m_navSubButtonGroup) {
         m_navSubButtonGroup = new QButtonGroup(this);
@@ -756,7 +758,8 @@ void MainWindow::setupNavigationConnections()
         ui->TBtn_ChassisControl,
         ui->TBtn_SafetyMonitor,
         ui->TBtn_PermissionPage,
-        ui->TBtn_HistoryRecord
+        ui->TBtn_HistoryRecord,
+        ui->TBtn_DataCurve
     };
     for (TechChamferToolButton *btn : navChamferButtons) {
         if (btn) {
@@ -828,7 +831,6 @@ void MainWindow::setupNavigationConnections()
     });
 
     if (ui->TBtn_DataCurve) {
-        ui->TBtn_DataCurve->setCheckable(false);
         connect(ui->TBtn_DataCurve, &QToolButton::clicked,
                 this, &MainWindow::showTimeSeriesDialog);
     }
@@ -1661,7 +1663,8 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
     // 处理LineEdit点击事件
     if (event->type() == QEvent::MouseButtonPress) {
         QLineEdit *lineEdit = qobject_cast<QLineEdit*>(obj);
-        if (lineEdit && lineEdit->isEnabled() && this->isAncestorOf(lineEdit)) {
+        if (lineEdit && lineEdit->isEnabled() && this->isAncestorOf(lineEdit)
+            && !qobject_cast<QDateTimeEdit *>(lineEdit->parentWidget())) {
             // // 检查是否为管理员页面的密码输入框
             // if (lineEdit->objectName() == "passwordEdit") {
             //     // 对于密码框，我们可能需要特殊处理
@@ -2169,16 +2172,44 @@ void MainWindow::initializeTimeSeries()
     if (!m_timeSeriesManager->initialize(TimeSeriesConfig::fromIni(), &error) && !error.isEmpty()) {
         showNotification(error);
     }
+    ensureTimeSeriesPage();
 }
 
 void MainWindow::shutdownTimeSeries()
 {
-    if (m_timeSeriesDialog) {
-        m_timeSeriesDialog->hide();
-    }
     if (m_timeSeriesManager) {
         m_timeSeriesManager->stopAndFlush();
     }
+}
+
+void MainWindow::ensureTimeSeriesPage()
+{
+    if (m_timeSeriesDialog || !ui || !ui->page_TimeSeries) {
+        return;
+    }
+
+    QString directory = TimeSeriesConfig::defaultDirectory();
+    if (m_timeSeriesManager) {
+        directory = m_timeSeriesManager->databaseDirectory();
+    } else {
+        directory = TimeSeriesConfig::fromIni().databaseDirectory;
+    }
+
+    QWidget *host = ui->quickWidget_TimeSeries;
+    if (!host) {
+        host = new QWidget(ui->page_TimeSeries);
+        host->setObjectName(QStringLiteral("quickWidget_TimeSeries"));
+        host->setGeometry(90, 0, 1761, 781);
+    }
+
+    QVBoxLayout *layout = qobject_cast<QVBoxLayout *>(host->layout());
+    if (!layout) {
+        layout = new QVBoxLayout(host);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
+    }
+    m_timeSeriesDialog = new TimeSeriesDialog(directory, host);
+    layout->addWidget(m_timeSeriesDialog, 1);
 }
 
 void MainWindow::showTimeSeriesDialog()
@@ -2193,21 +2224,19 @@ void MainWindow::showTimeSeriesDialog()
         return;
     }
 
-    QString directory = TimeSeriesConfig::defaultDirectory();
-    if (m_timeSeriesManager) {
-        directory = m_timeSeriesManager->databaseDirectory();
-    } else {
-        directory = TimeSeriesConfig::fromIni().databaseDirectory;
+    ensureTimeSeriesPage();
+    if (!ui->page_TimeSeries) {
+        return;
     }
-
-    if (!m_timeSeriesDialog) {
-        m_timeSeriesDialog = new TimeSeriesDialog(directory, this);
-        m_timeSeriesDialog->setModal(false);
+    if (m_timeSeriesDialog) {
+        m_timeSeriesDialog->reloadAvailableDates();
     }
-    m_timeSeriesDialog->reloadAvailableDates();
-    m_timeSeriesDialog->show();
-    m_timeSeriesDialog->raise();
-    m_timeSeriesDialog->activateWindow();
+    if (ui->StackedWidget) {
+        ui->StackedWidget->setCurrentWidget(ui->page_TimeSeries);
+    }
+    if (ui->TBtn_DataCurve) {
+        ui->TBtn_DataCurve->setChecked(true);
+    }
 }
 
 void MainWindow::recordTimeSeriesValue(TimeSeriesChannel channel, double value)
@@ -3241,7 +3270,7 @@ void MainWindow::onHistoryDateScanFinished()
         return;
     }
 
-    HistoryCalendarPanel dialog(m_historyDateEntries, this);
+    HistoryCalendarPanel dialog(m_historyDateEntries.keys(), this);
     connect(&dialog, &HistoryCalendarPanel::dateChosen, this, &MainWindow::loadHistoryDate);
     dialog.exec();
 }
@@ -5802,39 +5831,35 @@ void MainWindow::updateDeviceCoordPanelFromCache()
     m_deviceCoordPanel->setCoordinates(cx, cy, cz, car);
 }
 
-void MainWindow::updateRobotTorqueFromCache()
+void MainWindow::updateRobotTorqueFromCache(int startAddr)
 {
-    auto applyLreal = [this](int startAddr, RobotTotalTorqueCard *card) {
-        if (!card) {
+    RobotTotalTorqueCard *card = (startAddr == 276)
+        ? m_robotTotalTorqueCard
+        : m_robotCounterweightTorqueCard;
+    const TimeSeriesChannel channel = (startAddr == 276)
+        ? TimeSeriesChannel::ColumnTorquePercent
+        : TimeSeriesChannel::CounterweightTorquePercent;
+    if (!card) {
+        return;
+    }
+    for (int i = 0; i < 4; ++i) {
+        if (!g_registerCache.contains(startAddr + i)) {
             return;
         }
-        for (int i = 0; i < 4; ++i) {
-            if (!g_registerCache.contains(startAddr + i)) {
-                return;
-            }
-        }
-        const double value = registersToDoubleDCBAFEHG(
-            g_registerCache[startAddr],
-            g_registerCache[startAddr + 1],
-            g_registerCache[startAddr + 2],
-            g_registerCache[startAddr + 3]);
-        if (!std::isfinite(value)) {
-            card->setValue(0.0, false);
-            recordTimeSeriesValue(startAddr == 276
-                ? TimeSeriesChannel::ColumnTorquePercent
-                : TimeSeriesChannel::CounterweightTorquePercent,
-                std::numeric_limits<double>::quiet_NaN());
-            return;
-        }
-        card->setValue(value, true);
-        recordTimeSeriesValue(startAddr == 276
-            ? TimeSeriesChannel::ColumnTorquePercent
-            : TimeSeriesChannel::CounterweightTorquePercent,
-            value);
-    };
-
-    applyLreal(276, m_robotTotalTorqueCard);
-    applyLreal(280, m_robotCounterweightTorqueCard);
+    }
+    const double value = registersToDoubleDCBAFEHG(
+        g_registerCache[startAddr],
+        g_registerCache[startAddr + 1],
+        g_registerCache[startAddr + 2],
+        g_registerCache[startAddr + 3]);
+    // 指数在第 4 个寄存器。半包时前几个字先到、指数仍是 0，会解成 0.0% 或非规格数。
+    if (!TimeSeriesMeta::isFiniteNumber(value) || value < -1.0 || value > 10000.0) {
+        card->setValue(0.0, false);
+        recordTimeSeriesValue(channel, std::numeric_limits<double>::quiet_NaN());
+        return;
+    }
+    card->setValue(value, true);
+    recordTimeSeriesValue(channel, value);
 }
 
 void MainWindow::refreshJointGaugeFromCache(const QString &labelName)
@@ -6051,8 +6076,11 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
         updateDeviceCoordPanelFromCache();
     }
 
-    if (address >= 276 && address <= 283) {
-        updateRobotTorqueFromCache();
+    // 只在一组 4 字 LREAL 收齐后解码，避免逐字刷新把半包解成 0%。
+    if (address == 279) {
+        updateRobotTorqueFromCache(276);
+    } else if (address == 283) {
+        updateRobotTorqueFromCache(280);
     }
 
     const QStringList targetLabels = {
@@ -10487,7 +10515,6 @@ void MainWindow::repositionCenteredPopups()
         m_alarmWidget,
         m_robotWeightLockWidget,
         m_robotWeightOverloadWidget,
-        m_inclinometerTiltRiskDialog,
         m_agvStationOfflineAlarmWidget,
         m_agvDriveFaultAlarmWidget,
         m_agvBatteryLowDialog,
@@ -10537,7 +10564,6 @@ void MainWindow::hideNonEmergencyPopups()
     if (m_robotWeightLockWidget && m_robotWeightLockWidget->isVisible()) {
         m_robotWeightLockWidget->hide();
     }
-    hideInclinometerTiltRiskDialog();
 }
 
 void MainWindow::restoreConditionPopupsAfterEmergency()
@@ -10650,49 +10676,17 @@ void MainWindow::hideRobotWeightLockDialog()
     dismissToastByMessage(kRobotWeightLockToastText);
 }
 
-void MainWindow::showInclinometerTiltRiskDialog()
+void MainWindow::showInclinometerTiltRiskToast()
 {
-    if (m_emergencyStopAlarm || m_inclinometerTiltLockInZone) {
+    if (m_inclinometerTiltLockInZone) {
         return;
     }
-    if (!m_inclinometerTiltRiskDialog) {
-        m_inclinometerTiltRiskDialog = new QDialog(this);
-        m_inclinometerTiltRiskDialog->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint |
-                                                     Qt::WindowStaysOnTopHint);
-        m_inclinometerTiltRiskDialog->setModal(false);
-        m_inclinometerTiltRiskDialog->setObjectName(QStringLiteral("inclinometerTiltRiskDialog"));
-
-        auto *layout = new QVBoxLayout(m_inclinometerTiltRiskDialog);
-        layout->setContentsMargins(20, 15, 20, 15);
-        auto *label = new QLabel(kInclinometerTiltRiskText, m_inclinometerTiltRiskDialog);
-        label->setAlignment(Qt::AlignCenter);
-        label->setWordWrap(true);
-        layout->addWidget(label);
-        m_inclinometerTiltRiskDialog->setFixedSize(420, 130);
-        m_inclinometerTiltRiskDialog->setStyleSheet(
-            "#inclinometerTiltRiskDialog {"
-            "  background-color: rgba(50, 35, 0, 235);"
-            "  border: 3px solid #ffb000;"
-            "  border-radius: 10px;"
-            "}"
-            "QLabel {"
-            "  color: #ffcc33;"
-            "  font-size: 20px;"
-            "  font-weight: bold;"
-            "  background: transparent;"
-            "}");
-    }
-    m_inclinometerTiltRiskDialog->show();
-    m_inclinometerTiltRiskDialog->raise();
-    repositionCenteredPopups();
+    showPersistentToast(kInclinometerTiltRiskText);
 }
 
-void MainWindow::hideInclinometerTiltRiskDialog()
+void MainWindow::hideInclinometerTiltRiskToast()
 {
-    if (m_inclinometerTiltRiskDialog && m_inclinometerTiltRiskDialog->isVisible()) {
-        m_inclinometerTiltRiskDialog->hide();
-        repositionCenteredPopups();
-    }
+    dismissToastByMessage(kInclinometerTiltRiskText);
 }
 
 void MainWindow::refreshInclinometerTiltPresentation()
@@ -10722,7 +10716,7 @@ void MainWindow::refreshInclinometerTiltPresentation()
         m_inclinometerTiltLockInZone = inLockZone;
         if (inLockZone) {
             m_inclinometerTiltRiskInZone = false;
-            hideInclinometerTiltRiskDialog();
+            hideInclinometerTiltRiskToast();
             showPersistentToast(kInclinometerTiltLockToastText);
         } else {
             dismissToastByMessage(kInclinometerTiltLockToastText);
@@ -10738,15 +10732,26 @@ void MainWindow::refreshInclinometerTiltPresentation()
     if (inWarnZone != m_inclinometerTiltRiskInZone) {
         m_inclinometerTiltRiskInZone = inWarnZone;
         if (inWarnZone) {
-            showInclinometerTiltRiskDialog();
+            if (m_recorder) {
+                OperationRecord record;
+                record.timestamp = QDateTime::currentDateTime();
+                record.pageName = QStringLiteral("报警系统");
+                record.controlName = QStringLiteral("倾覆风险提示");
+                record.controlType = QStringLiteral("提示窗口");
+                record.operation = QStringLiteral("报警触发");
+                record.oldValue = QString();
+                record.newValue = kInclinometerTiltRiskText;
+                m_recorder->addRecord(record);
+            }
+            showInclinometerTiltRiskToast();
         } else {
-            hideInclinometerTiltRiskDialog();
+            hideInclinometerTiltRiskToast();
         }
         return;
     }
 
     if (inWarnZone) {
-        showInclinometerTiltRiskDialog();
+        showInclinometerTiltRiskToast();
     }
 }
 

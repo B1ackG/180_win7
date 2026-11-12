@@ -30,18 +30,9 @@ TimeSeriesFullscreenDialog::TimeSeriesFullscreenDialog(QWidget *parent)
 
     auto *top = new QHBoxLayout();
     m_titleLabel = new QLabel(this);
-    m_cursorButton = new QPushButton(QStringLiteral("游标"), this);
-    m_panButton = new QPushButton(QStringLiteral("平移"), this);
     m_exitButton = new QPushButton(QStringLiteral("退出全屏"), this);
-    m_cursorButton->setCheckable(true);
-    m_panButton->setCheckable(true);
-    m_cursorButton->setChecked(true);
-    m_cursorButton->setMinimumHeight(48);
-    m_panButton->setMinimumHeight(48);
     m_exitButton->setMinimumHeight(48);
     top->addWidget(m_titleLabel, 1);
-    top->addWidget(m_cursorButton);
-    top->addWidget(m_panButton);
     top->addWidget(m_exitButton);
     root->addLayout(top);
 
@@ -56,12 +47,6 @@ TimeSeriesFullscreenDialog::TimeSeriesFullscreenDialog(QWidget *parent)
     root->addWidget(m_dataZoom);
 
     connect(m_exitButton, &QPushButton::clicked, this, &QDialog::close);
-    connect(m_cursorButton, &QPushButton::clicked, this, [this]() {
-        setMode(TimeSeriesChartWidget::InteractionMode::Cursor);
-    });
-    connect(m_panButton, &QPushButton::clicked, this, [this]() {
-        setMode(TimeSeriesChartWidget::InteractionMode::Pan);
-    });
     connect(m_chart, &TimeSeriesChartWidget::visibleRangeChanged,
             this, [this](qint64, qint64) { syncDataZoomFromChart(); });
     connect(m_dataZoom, &TimeSeriesDataZoom::selectedRangeChanged,
@@ -88,37 +73,8 @@ void TimeSeriesFullscreenDialog::setContent(const TimeSeriesQueryResult &oneChan
     } else {
         m_chart->clearCursor();
     }
-    setMode(mode);
-    syncDataZoomFromChart();
-    m_dataZoom->setEnabled(m_chart->canPanZoom());
-}
-
-void TimeSeriesFullscreenDialog::setCompareContent(const TimeSeriesCompareResult &oneChannelResult,
-                                                   qint64 viewStartMs,
-                                                   qint64 viewEndMs,
-                                                   qint64 cursorTimeMs,
-                                                   bool cursorVisible,
-                                                   TimeSeriesChartWidget::InteractionMode mode)
-{
-    m_closingEmitted = false;
-    QString title = QStringLiteral("数据曲线对比");
-    if (!oneChannelResult.series.isEmpty()) {
-        title = TimeSeriesMeta::displayName(oneChannelResult.series.first().channel);
-        title += QStringLiteral("  %1 / %2")
-                     .arg(oneChannelResult.currentLabel, oneChannelResult.previousLabel);
-        if (!oneChannelResult.statLabel.isEmpty()) {
-            title += QStringLiteral("（%1）").arg(oneChannelResult.statLabel);
-        }
-    }
-    m_titleLabel->setText(title);
-    m_chart->setCompareResult(oneChannelResult);
-    m_chart->setVisibleRange(viewStartMs, viewEndMs);
-    if (cursorVisible) {
-        m_chart->setCursorTime(cursorTimeMs, true);
-    } else {
-        m_chart->clearCursor();
-    }
-    setMode(mode);
+    Q_UNUSED(mode);
+    setMode(TimeSeriesChartWidget::InteractionMode::Cursor);
     syncDataZoomFromChart();
     m_dataZoom->setEnabled(m_chart->canPanZoom());
 }
@@ -165,9 +121,8 @@ void TimeSeriesFullscreenDialog::keyPressEvent(QKeyEvent *event)
 
 void TimeSeriesFullscreenDialog::setMode(TimeSeriesChartWidget::InteractionMode mode)
 {
-    m_chart->setInteractionMode(mode);
-    m_cursorButton->setChecked(mode == TimeSeriesChartWidget::InteractionMode::Cursor);
-    m_panButton->setChecked(mode == TimeSeriesChartWidget::InteractionMode::Pan);
+    m_chart->setInteractionMode(TimeSeriesChartWidget::InteractionMode::Cursor);
+    Q_UNUSED(mode);
 }
 
 void TimeSeriesFullscreenDialog::syncDataZoomFromChart()

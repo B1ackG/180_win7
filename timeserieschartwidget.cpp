@@ -1,11 +1,14 @@
 #include "timeserieschartwidget.h"
 
 #include <QDateTime>
+#include <QFont>
+#include <QFontMetrics>
 #include <QGestureEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPinchGesture>
+#include <QPolygon>
 #include <QStringList>
 #include <QTouchEvent>
 #include <QWheelEvent>
@@ -45,8 +48,6 @@ TimeSeriesChartWidget::TimeSeriesChartWidget(QWidget *parent)
 
 void TimeSeriesChartWidget::setSeries(const TimeSeriesQueryResult &result)
 {
-    m_compareMode = false;
-    m_compare = TimeSeriesCompareResult();
     m_result = result;
     m_hasPoints = false;
     m_dataStartMs = result.startUtcMs;
@@ -75,35 +76,8 @@ void TimeSeriesChartWidget::setSeries(const TimeSeriesQueryResult &result)
     update();
 }
 
-void TimeSeriesChartWidget::setCompareResult(const TimeSeriesCompareResult &result)
-{
-    m_compareMode = true;
-    m_compare = result;
-    m_result = TimeSeriesQueryResult();
-    m_hasPoints = false;
-    m_dataStartMs = 0;
-    m_dataEndMs = qMax(0, result.dayCount - 1);
-    for (const TimeSeriesCompareChannel &item : result.series) {
-        if (!item.currentPoints.isEmpty() || !item.previousPoints.isEmpty()) {
-            m_hasPoints = true;
-            break;
-        }
-    }
-    if (m_dataEndMs <= m_dataStartMs) {
-        m_dataEndMs = m_dataStartMs + 1;
-    }
-    clearCursor();
-    applyVisibleRange(m_dataStartMs, m_dataEndMs, true);
-    if (!m_hasPoints) {
-        m_emptyText = QStringLiteral("该对比范围内没有日数据");
-    }
-    update();
-}
-
 void TimeSeriesChartWidget::clearSeries()
 {
-    m_compareMode = false;
-    m_compare = TimeSeriesCompareResult();
     m_result = TimeSeriesQueryResult();
     m_hasPoints = false;
     m_emptyText = QStringLiteral("没有可显示的曲线数据");
@@ -129,9 +103,6 @@ void TimeSeriesChartWidget::setInteractionMode(InteractionMode mode)
 
 void TimeSeriesChartWidget::setCursorTime(qint64 utcMs, bool visible)
 {
-    if (m_compareMode) {
-        utcMs = qRound(static_cast<qreal>(utcMs));
-    }
     const qint64 clamped = qBound(m_viewStartMs, utcMs, m_viewEndMs);
     const bool changed = (clamped != m_cursorTimeMs) || (visible != m_cursorVisible);
     m_cursorTimeMs = clamped;
@@ -202,6 +173,31 @@ QRect TimeSeriesChartWidget::plotRectFor(TimeSeriesChannel channel) const
     return QRect();
 }
 
+QPoint TimeSeriesChartWidget::extremumMarkerPos(TimeSeriesChannel channel, bool isMax) const
+{
+    const TimeSeriesSeries *series = seriesFor(channel);
+    if (!series) {
+        return QPoint();
+    }
+    TimeSeriesPoint minPoint;
+    TimeSeriesPoint maxPoint;
+    if (!queryExtrema(*series, &minPoint, &maxPoint)) {
+        return QPoint();
+    }
+    const TimeSeriesPoint &point = isMax ? maxPoint : minPoint;
+    if (point.tsUtcMs < m_viewStartMs || point.tsUtcMs > m_viewEndMs) {
+        return QPoint();
+    }
+    const QVector<PlotRect> plots = layoutPlots(contentRect());
+    for (const PlotRect &item : plots) {
+        if (item.channel != channel) {
+            continue;
+        }
+        return QPoint(xAtTime(point.tsUtcMs, item.plot), yAtValue(point.value, item));
+    }
+    return QPoint();
+}
+
 namespace {
 
 QString nearestPointText(const QVector<TimeSeriesPoint> &points,
@@ -237,18 +233,6 @@ QString TimeSeriesChartWidget::cursorValueText(TimeSeriesChannel channel) const
     if (!m_cursorVisible) {
         return QStringLiteral("--");
     }
-    if (m_compareMode) {
-        const TimeSeriesCompareChannel *item = compareChannel(channel);
-        if (!item) {
-            return QStringLiteral("--");
-        }
-        const int decimals = TimeSeriesMeta::displayDecimals(channel);
-        return QStringLiteral("%1 %2 / %3 %4")
-            .arg(m_compare.currentLabel,
-                 nearestPointText(item->currentPoints, m_cursorTimeMs, gapMs(), channel, decimals),
-                 m_compare.previousLabel,
-                 nearestPointText(item->previousPoints, m_cursorTimeMs, gapMs(), channel, decimals));
-    }
     const TimeSeriesSeries *series = seriesFor(channel);
     if (!series) {
         return QStringLiteral("--");
@@ -263,24 +247,12 @@ QString TimeSeriesChartWidget::cursorReadoutText() const
         return QStringLiteral("点击图表显示游标");
     }
     QStringList parts;
-    if (m_compareMode) {
-        const int index = qBound(0, static_cast<int>(m_cursorTimeMs), qMax(0, m_compare.dayCount - 1));
-        if (index >= 0 && index < m_compare.tickLabels.size()) {
-            parts << m_compare.tickLabels.at(index);
-        }
-        for (const TimeSeriesCompareChannel &item : m_compare.series) {
-            parts << QStringLiteral("%1：%2")
-                         .arg(TimeSeriesMeta::displayName(item.channel),
-                              cursorValueText(item.channel));
-        }
-    } else {
-        parts << QDateTime::fromMSecsSinceEpoch(m_cursorTimeMs, Qt::LocalTime)
-                     .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
-        for (const TimeSeriesSeries &series : m_result.series) {
-            parts << QStringLiteral("%1：%2")
-                         .arg(TimeSeriesMeta::displayName(series.channel),
-                              cursorValueText(series.channel));
-        }
+    parts << QDateTime::fromMSecsSinceEpoch(m_cursorTimeMs, Qt::LocalTime)
+                 .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    for (const TimeSeriesSeries &series : m_result.series) {
+        parts << QStringLiteral("%1：%2")
+                     .arg(TimeSeriesMeta::displayName(series.channel),
+                          cursorValueText(series.channel));
     }
     return parts.join(QStringLiteral("    "));
 }
@@ -326,22 +298,43 @@ void TimeSeriesChartWidget::paintEvent(QPaintEvent *)
 
         drawGrid(painter, item);
 
+        QFont titleFont = painter.font();
+        titleFont.setPixelSize(15);
+        painter.setFont(titleFont);
         painter.setPen(QColor(QStringLiteral("#eaf9ff")));
-        QString title = QStringLiteral("%1 (%2)")
-                            .arg(TimeSeriesMeta::displayName(item.channel),
-                                 TimeSeriesMeta::unit(item.channel));
-        if (m_compareMode) {
-            title += QStringLiteral("    %1 / %2")
-                         .arg(m_compare.currentLabel, m_compare.previousLabel);
-            if (!m_compare.statLabel.isEmpty()) {
-                title += QStringLiteral("（%1）").arg(m_compare.statLabel);
-            }
-        }
+        const QString title = QStringLiteral("%1 (%2)")
+                                  .arg(TimeSeriesMeta::displayName(item.channel),
+                                       TimeSeriesMeta::unit(item.channel));
         const QRect titleRect(item.plot.left(),
                               item.plot.top() - kTitleHeight,
                               item.plot.width() - (m_fullscreenButtonsVisible ? 48 : 0),
                               kTitleHeight);
-        painter.drawText(titleRect.adjusted(4, 0, -4, 0), Qt::AlignVCenter | Qt::AlignLeft, title);
+        const TimeSeriesSeries *series = seriesFor(item.channel);
+        TimeSeriesPoint minPoint;
+        TimeSeriesPoint maxPoint;
+        QString statsText;
+        if (series && queryExtrema(*series, &minPoint, &maxPoint)) {
+            statsText = QStringLiteral("最小 %1  最大 %2")
+                            .arg(formatValue(item.channel, minPoint.value),
+                                 formatValue(item.channel, maxPoint.value));
+        }
+        const QFontMetrics titleMetrics(titleFont);
+        const int statsWidth = statsText.isEmpty()
+            ? 0
+            : titleMetrics.horizontalAdvance(statsText) + 12;
+        const QRect nameRect = titleRect.adjusted(4, 0, -statsWidth - 4, 0);
+        painter.drawText(nameRect,
+                         Qt::AlignVCenter | Qt::AlignLeft,
+                         titleMetrics.elidedText(title, Qt::ElideRight, nameRect.width()));
+        if (!statsText.isEmpty()) {
+            painter.setPen(kPlotColors[i % 4]);
+            painter.drawText(QRect(titleRect.right() - statsWidth,
+                                   titleRect.top(),
+                                   statsWidth,
+                                   titleRect.height()),
+                             Qt::AlignVCenter | Qt::AlignRight,
+                             statsText);
+        }
 
         if (m_fullscreenButtonsVisible) {
             painter.setBrush(QColor(18, 54, 74));
@@ -351,17 +344,9 @@ void TimeSeriesChartWidget::paintEvent(QPaintEvent *)
         }
 
         bool drewAny = false;
-        if (m_compareMode) {
-            const TimeSeriesCompareChannel *compare = compareChannel(item.channel);
-            if (compare) {
-                drawSeriesPath(painter, compare->currentPoints, item, kPlotColors[0], &drewAny);
-                drawSeriesPath(painter, compare->previousPoints, item, kPlotColors[1], &drewAny);
-            }
-        } else {
-            const TimeSeriesSeries *series = seriesFor(item.channel);
-            if (series) {
-                drawSeriesPath(painter, series->points, item, kPlotColors[i % 4], &drewAny);
-            }
+        if (series) {
+            drawSeriesPath(painter, series->points, item, kPlotColors[i % 4], &drewAny);
+            drawExtrema(painter, *series, item, kPlotColors[i % 4]);
         }
         if (!drewAny) {
             painter.setPen(QColor(QStringLiteral("#9ad7ea")));
@@ -612,13 +597,6 @@ void TimeSeriesChartWidget::drawGrid(QPainter &painter, const PlotRect &plot) co
 
 QString TimeSeriesChartWidget::formatTimeTick(qint64 utcMs) const
 {
-    if (m_compareMode) {
-        const int index = qBound(0, static_cast<int>(utcMs), qMax(0, m_compare.dayCount - 1));
-        if (index >= 0 && index < m_compare.tickLabels.size()) {
-            return m_compare.tickLabels.at(index);
-        }
-        return QString::number(index);
-    }
     const qint64 span = qMax<qint64>(1, m_viewEndMs - m_viewStartMs);
     const QDateTime dt = QDateTime::fromMSecsSinceEpoch(utcMs, Qt::LocalTime);
     if (span < 24LL * 3600 * 1000) {
@@ -681,15 +659,14 @@ QRect TimeSeriesChartWidget::readoutRect() const
 QVector<TimeSeriesChartWidget::PlotRect> TimeSeriesChartWidget::layoutPlots(const QRect &area) const
 {
     QVector<PlotRect> plots;
-    const int count = m_compareMode ? m_compare.series.size() : m_result.series.size();
+    const int count = m_result.series.size();
     if (count <= 0 || area.height() <= 0) {
         return plots;
     }
     const int plotHeight = qMax(80, area.height() / count);
     for (int i = 0; i < count; ++i) {
         PlotRect item;
-        item.channel = m_compareMode ? m_compare.series.at(i).channel
-                                     : m_result.series.at(i).channel;
+        item.channel = m_result.series.at(i).channel;
         const int top = area.top() + i * plotHeight;
         item.plot = QRect(area.left() + kLeftAxisWidth,
                           top + kTitleHeight,
@@ -764,17 +741,9 @@ void TimeSeriesChartWidget::valueRange(TimeSeriesChannel channel, double *minVal
             }
         }
     };
-    if (m_compareMode) {
-        const TimeSeriesCompareChannel *item = compareChannel(channel);
-        if (item) {
-            consider(item->currentPoints);
-            consider(item->previousPoints);
-        }
-    } else {
-        const TimeSeriesSeries *series = seriesFor(channel);
-        if (series) {
-            consider(series->points);
-        }
+    const TimeSeriesSeries *series = seriesFor(channel);
+    if (series) {
+        consider(series->points);
     }
     if (first || qFuzzyCompare(minV, maxV)) {
         const double pad = qMax(qAbs(minV) * 0.05, 1.0);
@@ -801,9 +770,6 @@ const TimeSeriesSeries *TimeSeriesChartWidget::seriesFor(TimeSeriesChannel chann
 
 qint64 TimeSeriesChartWidget::gapMs() const
 {
-    if (m_compareMode) {
-        return 0;
-    }
     qint64 typicalMs = qMax(1, m_result.sampleIntervalMs);
     for (const TimeSeriesSeries &series : m_result.series) {
         if (series.points.size() < 8) {
@@ -828,22 +794,12 @@ qint64 TimeSeriesChartWidget::dataSpanMs() const
 
 qint64 TimeSeriesChartWidget::minimumSpan() const
 {
-    return m_compareMode ? 1 : kMinVisibleSpanMs;
+    return kMinVisibleSpanMs;
 }
 
 bool TimeSeriesChartWidget::canPanZoom() const
 {
     return m_hasPoints && dataSpanMs() > minimumSpan();
-}
-
-const TimeSeriesCompareChannel *TimeSeriesChartWidget::compareChannel(TimeSeriesChannel channel) const
-{
-    for (const TimeSeriesCompareChannel &item : m_compare.series) {
-        if (item.channel == channel) {
-            return &item;
-        }
-    }
-    return nullptr;
 }
 
 void TimeSeriesChartWidget::drawSeriesPath(QPainter &painter,
@@ -858,7 +814,7 @@ void TimeSeriesChartWidget::drawSeriesPath(QPainter &painter,
     QPainterPath path;
     bool drawing = false;
     qint64 lastTs = 0;
-    const qint64 gap = m_compareMode ? 1 : gapMs();
+    const qint64 gap = gapMs();
     painter.setPen(QPen(color, 2));
     for (const TimeSeriesPoint &point : points) {
         if (point.tsUtcMs < m_viewStartMs || point.tsUtcMs > m_viewEndMs) {
@@ -879,6 +835,109 @@ void TimeSeriesChartWidget::drawSeriesPath(QPainter &painter,
         }
     }
     painter.drawPath(path);
+}
+
+bool TimeSeriesChartWidget::queryExtrema(const TimeSeriesSeries &series,
+                                         TimeSeriesPoint *minPoint,
+                                         TimeSeriesPoint *maxPoint) const
+{
+    if (series.points.isEmpty()) {
+        return false;
+    }
+    TimeSeriesPoint minP = series.points.first();
+    TimeSeriesPoint maxP = series.points.first();
+    for (const TimeSeriesPoint &point : series.points) {
+        if (point.value < minP.value
+            || (qFuzzyCompare(point.value, minP.value) && point.tsUtcMs < minP.tsUtcMs)) {
+            minP = point;
+        }
+        if (point.value > maxP.value
+            || (qFuzzyCompare(point.value, maxP.value) && point.tsUtcMs < maxP.tsUtcMs)) {
+            maxP = point;
+        }
+    }
+    if (minPoint) {
+        *minPoint = minP;
+    }
+    if (maxPoint) {
+        *maxPoint = maxP;
+    }
+    return true;
+}
+
+void TimeSeriesChartWidget::drawExtrema(QPainter &painter,
+                                        const TimeSeriesSeries &series,
+                                        const PlotRect &item,
+                                        const QColor &color) const
+{
+    TimeSeriesPoint minPoint;
+    TimeSeriesPoint maxPoint;
+    if (!queryExtrema(series, &minPoint, &maxPoint)) {
+        return;
+    }
+
+    painter.save();
+    QFont labelFont = painter.font();
+    labelFont.setPixelSize(14);
+    labelFont.setBold(true);
+    painter.setFont(labelFont);
+    const QFontMetrics metrics(labelFont);
+
+    auto drawMark = [&](const TimeSeriesPoint &point, const QString &label, bool placeAbove) {
+        if (point.tsUtcMs < m_viewStartMs || point.tsUtcMs > m_viewEndMs) {
+            return;
+        }
+        const int x = xAtTime(point.tsUtcMs, item.plot);
+        const int y = yAtValue(point.value, item);
+        painter.setPen(QPen(QColor(color.red(), color.green(), color.blue(), 160), 1, Qt::DashLine));
+        painter.drawLine(item.plot.left(), y, item.plot.right(), y);
+
+        const int radius = 7;
+        QPolygon diamond;
+        diamond << QPoint(x, y - radius)
+                << QPoint(x + radius, y)
+                << QPoint(x, y + radius)
+                << QPoint(x - radius, y);
+        painter.setPen(QPen(Qt::white, 2));
+        painter.setBrush(color);
+        painter.drawPolygon(diamond);
+
+        const QString text = QStringLiteral("%1 %2")
+                                 .arg(label, formatValue(series.channel, point.value));
+        QRect textRect = metrics.boundingRect(text);
+        textRect.setSize(textRect.size() + QSize(10, 6));
+        int tx = x + 12;
+        int ty = placeAbove ? (y - textRect.height() - 8) : (y + 8);
+        if (tx + textRect.width() > item.plot.right() - 4) {
+            tx = x - 12 - textRect.width();
+        }
+        if (tx < item.plot.left() + 4) {
+            tx = item.plot.left() + 4;
+        }
+        if (ty < item.plot.top() + 2) {
+            ty = y + 8;
+        }
+        if (ty + textRect.height() > item.plot.bottom() - 2) {
+            ty = y - textRect.height() - 8;
+        }
+        ty = qBound(item.plot.top() + 2, ty, item.plot.bottom() - textRect.height() - 2);
+        textRect.moveTo(tx, ty);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(8, 18, 28, 210));
+        painter.drawRoundedRect(textRect, 4, 4);
+        painter.setPen(color);
+        painter.drawText(textRect, Qt::AlignCenter, text);
+    };
+
+    const bool samePoint = (minPoint.tsUtcMs == maxPoint.tsUtcMs
+                            && qFuzzyCompare(minPoint.value, maxPoint.value));
+    if (samePoint) {
+        drawMark(maxPoint, QStringLiteral("最小/最大"), true);
+    } else {
+        drawMark(maxPoint, QStringLiteral("最大"), true);
+        drawMark(minPoint, QStringLiteral("最小"), false);
+    }
+    painter.restore();
 }
 
 bool TimeSeriesChartWidget::isSynthesizedMouse(const QMouseEvent *event) const

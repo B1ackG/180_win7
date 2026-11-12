@@ -26,11 +26,8 @@ public:
     explicit TimeSeriesChartWidget(QWidget *parent = nullptr);
 
     void setSeries(const TimeSeriesQueryResult &result);
-    void setCompareResult(const TimeSeriesCompareResult &result);
     void clearSeries();
     void resetView();
-    bool isCompareMode() const { return m_compareMode; }
-    TimeSeriesCompareResult compareResult() const { return m_compare; }
 
     void setInteractionMode(InteractionMode mode);
     InteractionMode interactionMode() const { return m_mode; }
@@ -51,6 +48,7 @@ public:
     void setFullscreenButtonsVisible(bool visible);
     QRect fullscreenButtonRectFor(TimeSeriesChannel channel) const;
     QRect plotRectFor(TimeSeriesChannel channel) const;
+    QPoint extremumMarkerPos(TimeSeriesChannel channel, bool isMax) const;
     QString cursorValueText(TimeSeriesChannel channel) const;
     QString cursorReadoutText() const;
 
@@ -86,7 +84,6 @@ private:
     int yAtValue(double value, const PlotRect &item) const;
     void valueRange(TimeSeriesChannel channel, double *minValue, double *maxValue) const;
     const TimeSeriesSeries *seriesFor(TimeSeriesChannel channel) const;
-    const TimeSeriesCompareChannel *compareChannel(TimeSeriesChannel channel) const;
     qint64 gapMs() const;
     qint64 dataSpanMs() const;
     qint64 minimumSpan() const;
@@ -95,6 +92,13 @@ private:
                         const PlotRect &item,
                         const QColor &color,
                         bool *drewAny) const;
+    bool queryExtrema(const TimeSeriesSeries &series,
+                      TimeSeriesPoint *minPoint,
+                      TimeSeriesPoint *maxPoint) const;
+    void drawExtrema(QPainter &painter,
+                     const TimeSeriesSeries &series,
+                     const PlotRect &item,
+                     const QColor &color) const;
     bool isSynthesizedMouse(const QMouseEvent *event) const;
     bool gestureEvent(QGestureEvent *event);
     bool handleTouchEvent(QTouchEvent *event);
@@ -111,8 +115,6 @@ private:
     QRect readoutRect() const;
 
     TimeSeriesQueryResult m_result;
-    TimeSeriesCompareResult m_compare;
-    bool m_compareMode = false;
     qint64 m_viewStartMs = 0;
     qint64 m_viewEndMs = 1;
     qint64 m_dataStartMs = 0;

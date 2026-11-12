@@ -42,6 +42,20 @@ QTableWidgetItem *textItem(const QString &text, bool currentRow)
 QString conditionColumnTitle(TimeSeriesChannel channel)
 {
     switch (channel) {
+    case TimeSeriesChannel::J1AngleDeg:
+        return QStringLiteral("悬臂角");
+    case TimeSeriesChannel::J2HeightMm:
+        return QStringLiteral("升降");
+    case TimeSeriesChannel::J3TotalLengthMm:
+        return QStringLiteral("伸展");
+    case TimeSeriesChannel::J4AngleDeg:
+        return QStringLiteral("末端角");
+    case TimeSeriesChannel::CounterweightHeightMm:
+        return QStringLiteral("配重缸");
+    case TimeSeriesChannel::PlaneHeightMm:
+        return QStringLiteral("装配面");
+    case TimeSeriesChannel::LoadKg:
+        return QStringLiteral("负载");
     case TimeSeriesChannel::ColumnTorquePercent:
         return QStringLiteral("立柱扭矩");
     case TimeSeriesChannel::CounterweightTorquePercent:
@@ -69,7 +83,7 @@ TimeSeriesConditionDialog::TimeSeriesConditionDialog(QWidget *parent)
     setWindowTitle(QStringLiteral("工况反查"));
     setModal(true);
     setAttribute(Qt::WA_DeleteOnClose, true);
-    resize(1480, 760);
+    resize(1680, 760);
     setStyleSheet(QStringLiteral(
         "QDialog { background: #08121c; color: #eaf9ff; }"
         "QLabel { color: #eaf9ff; font-size: 16px; }"
@@ -102,6 +116,7 @@ TimeSeriesConditionDialog::TimeSeriesConditionDialog(QWidget *parent)
     m_table->verticalHeader()->setDefaultSectionSize(48);
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_table->horizontalHeader()->setMinimumSectionSize(72);
     m_table->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_table->setShowGrid(true);
 
@@ -138,36 +153,44 @@ void TimeSeriesConditionDialog::onCellClicked(int row, int)
 
 void TimeSeriesConditionDialog::fillTable()
 {
+    const int workCount = m_result.workChannels.size();
     const int stateCount = m_result.stateChannels.size();
     m_table->clear();
-    m_table->setColumnCount(1 + stateCount);
+    m_table->setColumnCount(1 + workCount + stateCount);
     QStringList headers;
     headers << QStringLiteral("时间");
+    for (TimeSeriesChannel channel : m_result.workChannels) {
+        headers << conditionColumnTitle(channel);
+    }
     for (TimeSeriesChannel channel : m_result.stateChannels) {
         headers << conditionColumnTitle(channel);
     }
     m_table->setHorizontalHeaderLabels(headers);
     m_table->setRowCount(1 + m_result.hits.size());
 
+    auto writeValues = [&](int row,
+                           int startColumn,
+                           const QVector<TimeSeriesChannel> &channels,
+                           const QVector<TimeSeriesValue> &values,
+                           bool currentRow) {
+        for (int i = 0; i < channels.size(); ++i) {
+            const TimeSeriesValue value = (i < values.size()) ? values.at(i) : TimeSeriesValue();
+            m_table->setItem(row, startColumn + i,
+                             textItem(formatValue(channels.at(i), value), currentRow));
+        }
+    };
+
     m_table->setItem(0, 0, textItem(QStringLiteral("当前"), true));
-    for (int i = 0; i < stateCount; ++i) {
-        const TimeSeriesValue value = (i < m_result.probeState.size())
-            ? m_result.probeState.at(i)
-            : TimeSeriesValue();
-        m_table->setItem(0, 1 + i, textItem(formatValue(m_result.stateChannels.at(i), value), true));
-    }
+    writeValues(0, 1, m_result.workChannels, m_result.probeWork, true);
+    writeValues(0, 1 + workCount, m_result.stateChannels, m_result.probeState, true);
 
     for (int row = 0; row < m_result.hits.size(); ++row) {
         const TimeSeriesConditionHit &hit = m_result.hits.at(row);
         const QString timeText = QDateTime::fromMSecsSinceEpoch(hit.tsUtcMs, Qt::LocalTime)
                                      .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
         m_table->setItem(row + 1, 0, textItem(timeText, false));
-        for (int i = 0; i < stateCount; ++i) {
-            const TimeSeriesValue value = (i < hit.stateValues.size())
-                ? hit.stateValues.at(i)
-                : TimeSeriesValue();
-            m_table->setItem(row + 1, 1 + i, textItem(formatValue(m_result.stateChannels.at(i), value), false));
-        }
+        writeValues(row + 1, 1, m_result.workChannels, hit.workValues, false);
+        writeValues(row + 1, 1 + workCount, m_result.stateChannels, hit.stateValues, false);
     }
 }
 

@@ -5,6 +5,7 @@
 #include <QDate>
 #include <QVariant>
 #include <QDateTime>
+#include <QtGlobal>
 #include <QDir>
 #include <QFile>
 #include <QStringList>
@@ -271,170 +272,17 @@ TimeSeriesQueryResult TimeSeriesQueryService::query(const QString &directory,
 
     result.sampleIntervalMs = sampleIntervalMs;
     for (TimeSeriesSeries &item : series) {
+        if (!item.points.isEmpty()) {
+            item.minValue = item.points.first().value;
+            item.maxValue = item.points.first().value;
+            for (const TimeSeriesPoint &point : item.points) {
+                item.minValue = qMin(item.minValue, point.value);
+                item.maxValue = qMax(item.maxValue, point.value);
+            }
+            item.hasStats = true;
+        }
         item.points = downsampleMinMax(item.points, maxPointsPerChannel);
         result.series.append(item);
-    }
-    return result;
-}
-
-namespace {
-
-bool aggregatesForDate(const QString &directory,
-                       const QDate &date,
-                       const QVector<TimeSeriesChannel> &channels,
-                       TimeSeriesCompareStat stat,
-                       QVector<TimeSeriesValue> *out,
-                       QString *error)
-{
-    out->fill(TimeSeriesValue(), channels.size());
-    if (!date.isValid()) {
-        return true;
-    }
-    const QString path = TimeSeriesMeta::dailyFilePath(directory, date);
-    if (!QFile::exists(path)) {
-        return true;
-    }
-
-    const QString connectionName = uniqueConnectionName();
-    {
-        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
-        db.setDatabaseName(path);
-        if (!db.open()) {
-            closeAndRemove(connectionName);
-            return true;
-        }
-
-        int version = TimeSeriesConfig::kSupportedSchemaVersion;
-        QString versionError;
-        if (!readSchemaVersion(db, &version, &versionError)
-            || version > TimeSeriesConfig::kSupportedSchemaVersion) {
-            closeAndRemove(connectionName);
-            if (error) {
-                *error = QStringLiteral("不支持的数据库版本");
-            }
-            return false;
-        }
-
-        const QString sqlFn = TimeSeriesMeta::compareStatSql(stat);
-        QStringList columnSql;
-        for (TimeSeriesChannel channel : channels) {
-            columnSql << QStringLiteral("%1(%2)").arg(sqlFn, TimeSeriesMeta::columnName(channel));
-        }
-        QSqlQuery query(db);
-        if (!query.exec(QStringLiteral("SELECT %1 FROM samples").arg(columnSql.join(QLatin1Char(','))))) {
-            closeAndRemove(connectionName);
-            if (error) {
-                *error = query.lastError().text();
-            }
-            return false;
-        }
-        if (query.next()) {
-            for (int i = 0; i < channels.size(); ++i) {
-                const QVariant raw = query.value(i);
-                if (!raw.isValid() || raw.isNull()) {
-                    continue;
-                }
-                bool ok = false;
-                const double value = raw.toDouble(&ok);
-                if (!ok || !TimeSeriesMeta::isFiniteNumber(value)) {
-                    continue;
-                }
-                (*out)[i].value = value;
-                (*out)[i].valid = true;
-            }
-        }
-    }
-    closeAndRemove(connectionName);
-    return true;
-}
-
-void appendIfValid(QVector<TimeSeriesPoint> *points, int dayIndex, const TimeSeriesValue &value)
-{
-    if (!value.valid) {
-        return;
-    }
-    TimeSeriesPoint point;
-    point.tsUtcMs = dayIndex;
-    point.id = dayIndex + 1;
-    point.value = value.value;
-    points->append(point);
-}
-
-} // namespace
-
-TimeSeriesCompareResult TimeSeriesQueryService::queryDailyCompare(const QString &directory,
-                                                                  const QVector<TimeSeriesChannel> &channels,
-                                                                  TimeSeriesCompareKind kind,
-                                                                  const QDate &asOf,
-                                                                  TimeSeriesCompareStat stat)
-{
-    TimeSeriesCompareResult result;
-    result.kind = kind;
-    result.stat = stat;
-    result.statLabel = TimeSeriesMeta::compareStatLabel(stat);
-    if (directory.isEmpty()) {
-        result.ok = false;
-        result.error = QStringLiteral("未配置时序数据目录");
-        return result;
-    }
-    if (channels.isEmpty()) {
-        result.ok = false;
-        result.error = QStringLiteral("请至少选择一个通道");
-        return result;
-    }
-
-    const QDate today = asOf.isValid() ? asOf : QDate::currentDate();
-    QVector<QDate> currentDates;
-    QVector<QDate> previousDates;
-    if (kind == TimeSeriesCompareKind::MonthOverMonth) {
-        result.currentLabel = QStringLiteral("本月");
-        result.previousLabel = QStringLiteral("上月");
-        const int dayCount = today.day();
-        const QDate thisStart(today.year(), today.month(), 1);
-        const QDate prevLast = thisStart.addDays(-1);
-        for (int day = 1; day <= dayCount; ++day) {
-            currentDates.append(QDate(today.year(), today.month(), day));
-            previousDates.append(QDate(prevLast.year(), prevLast.month(), day));
-            result.tickLabels.append(QString::number(day));
-        }
-    } else {
-        result.currentLabel = QStringLiteral("今年");
-        result.previousLabel = QStringLiteral("去年");
-        const QDate yearStart(today.year(), 1, 1);
-        const int dayCount = yearStart.daysTo(today) + 1;
-        for (int i = 0; i < dayCount; ++i) {
-            const QDate current = yearStart.addDays(i);
-            currentDates.append(current);
-            previousDates.append(QDate(today.year() - 1, current.month(), current.day()));
-            result.tickLabels.append(current.toString(QStringLiteral("MM-dd")));
-        }
-    }
-    result.dayCount = result.tickLabels.size();
-    result.series.resize(channels.size());
-    for (int i = 0; i < channels.size(); ++i) {
-        result.series[i].channel = channels.at(i);
-    }
-
-    QVector<TimeSeriesValue> values;
-    values.resize(channels.size());
-    for (int dayIndex = 0; dayIndex < result.dayCount; ++dayIndex) {
-        QString error;
-        if (!aggregatesForDate(directory, currentDates.at(dayIndex), channels, stat, &values, &error)) {
-            result.ok = false;
-            result.error = error;
-            return result;
-        }
-        for (int i = 0; i < channels.size(); ++i) {
-            appendIfValid(&result.series[i].currentPoints, dayIndex, values.at(i));
-        }
-        if (!aggregatesForDate(directory, previousDates.at(dayIndex), channels, stat, &values, &error)) {
-            result.ok = false;
-            result.error = error;
-            return result;
-        }
-        for (int i = 0; i < channels.size(); ++i) {
-            appendIfValid(&result.series[i].previousPoints, dayIndex, values.at(i));
-        }
     }
     return result;
 }

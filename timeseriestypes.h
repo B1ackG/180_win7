@@ -74,6 +74,9 @@ struct TimeSeriesPoint {
 struct TimeSeriesSeries {
     TimeSeriesChannel channel = TimeSeriesChannel::J1AngleDeg;
     QVector<TimeSeriesPoint> points;
+    bool hasStats = false;
+    double minValue = 0.0;
+    double maxValue = 0.0;
 };
 
 struct TimeSeriesQueryResult {
@@ -83,36 +86,6 @@ struct TimeSeriesQueryResult {
     qint64 startUtcMs = 0;
     qint64 endUtcMs = 0;
     int sampleIntervalMs = 1000;
-};
-
-enum class TimeSeriesCompareKind {
-    MonthOverMonth = 0,
-    YearOverYear
-};
-
-enum class TimeSeriesCompareStat {
-    Average = 0,
-    Minimum,
-    Maximum
-};
-
-struct TimeSeriesCompareChannel {
-    TimeSeriesChannel channel = TimeSeriesChannel::J1AngleDeg;
-    QVector<TimeSeriesPoint> currentPoints;
-    QVector<TimeSeriesPoint> previousPoints;
-};
-
-struct TimeSeriesCompareResult {
-    bool ok = true;
-    QString error;
-    TimeSeriesCompareKind kind = TimeSeriesCompareKind::MonthOverMonth;
-    TimeSeriesCompareStat stat = TimeSeriesCompareStat::Average;
-    QString currentLabel;
-    QString previousLabel;
-    QString statLabel;
-    QVector<TimeSeriesCompareChannel> series;
-    int dayCount = 0;
-    QVector<QString> tickLabels;
 };
 
 struct TimeSeriesConfig {
@@ -189,8 +162,6 @@ int displayDecimals(TimeSeriesChannel channel);
 QVector<TimeSeriesChannel> allChannels();
 QString dailyFileName(const QDate &date);
 QString dailyFilePath(const QString &directory, const QDate &date);
-QString compareStatSql(TimeSeriesCompareStat stat);
-QString compareStatLabel(TimeSeriesCompareStat stat);
 QVector<TimeSeriesChannel> conditionWorkChannels();
 QVector<TimeSeriesChannel> conditionStateChannels();
 int conditionQuantum(TimeSeriesChannel channel);
@@ -206,7 +177,6 @@ inline uint qHash(TimeSeriesChannel channel, uint seed = 0) noexcept
 Q_DECLARE_METATYPE(TimeSeriesSample)
 Q_DECLARE_METATYPE(TimeSeriesConfig)
 Q_DECLARE_METATYPE(TimeSeriesQueryResult)
-Q_DECLARE_METATYPE(TimeSeriesCompareResult)
 Q_DECLARE_METATYPE(TimeSeriesConditionSearchResult)
 
 #endif // TIMESERIESTYPES_H

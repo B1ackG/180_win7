@@ -77,3 +77,11 @@ system_check.log
 *.moc
 tests/tst_historyarchiveio
 tst_historyarchiveio
+
+# Added by Assistant staging review
+tests/tst_timeserieschartwidget
+tests/tst_timeseriesqueryservice
+tests/tst_timeserieswriter
+tst_timeserieschartwidget
+tst_timeseriesqueryservice
+tst_timeserieswriter

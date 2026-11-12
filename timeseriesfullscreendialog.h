@@ -23,12 +23,6 @@ public:
                     qint64 cursorTimeMs,
                     bool cursorVisible,
                     TimeSeriesChartWidget::InteractionMode mode);
-    void setCompareContent(const TimeSeriesCompareResult &oneChannelResult,
-                           qint64 viewStartMs,
-                           qint64 viewEndMs,
-                           qint64 cursorTimeMs,
-                           bool cursorVisible,
-                           TimeSeriesChartWidget::InteractionMode mode);
 
     TimeSeriesChartWidget *chart() const { return m_chart; }
     qint64 viewStartMs() const;
@@ -56,8 +50,6 @@ private:
 
     QLabel *m_titleLabel = nullptr;
     QPushButton *m_exitButton = nullptr;
-    QPushButton *m_cursorButton = nullptr;
-    QPushButton *m_panButton = nullptr;
     TimeSeriesChartWidget *m_chart = nullptr;
     TimeSeriesDataZoom *m_dataZoom = nullptr;
     bool m_closingEmitted = false;

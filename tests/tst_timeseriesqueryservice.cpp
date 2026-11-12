@@ -18,9 +18,6 @@ private slots:
     void queriesSingleDayAndKeepsNullChannelsEmpty();
     void queriesAcrossLocalMidnight();
     void downsampleKeepsMinAndMax();
-    void dailyCompareUsesAveragesAndAlignsMonth();
-    void dailyCompareUsesMinAndMax();
-    void dailyCompareBreaksOnMissingDayAndLeapDay();
     void conditionSearchMatchesRoundedWorkKeysAndReportsState();
     void conditionSearchRejectsDifferentPoseAndClustersDwell();
 
@@ -127,6 +124,10 @@ void TestTimeSeriesQueryService::queriesSingleDayAndKeepsNullChannelsEmpty()
     QCOMPARE(result.series.at(0).points.size(), 2);
     QCOMPARE(result.series.at(1).points.size(), 0);
     QVERIFY(result.series.at(0).points.at(0).tsUtcMs <= result.series.at(0).points.at(1).tsUtcMs);
+    QVERIFY(result.series.at(0).hasStats);
+    QCOMPARE(result.series.at(0).minValue, 1.2);
+    QCOMPARE(result.series.at(0).maxValue, 1.3);
+    QVERIFY(!result.series.at(1).hasStats);
 }
 
 void TestTimeSeriesQueryService::queriesAcrossLocalMidnight()
@@ -153,6 +154,9 @@ void TestTimeSeriesQueryService::queriesAcrossLocalMidnight()
     QCOMPARE(result.series.size(), 1);
     QCOMPARE(result.series.at(0).points.size(), 2);
     QVERIFY(result.series.at(0).points.at(0).tsUtcMs < result.series.at(0).points.at(1).tsUtcMs);
+    QVERIFY(result.series.at(0).hasStats);
+    QCOMPARE(result.series.at(0).minValue, -0.5);
+    QCOMPARE(result.series.at(0).maxValue, 0.4);
 }
 
 void TestTimeSeriesQueryService::downsampleKeepsMinAndMax()
@@ -182,147 +186,6 @@ void TestTimeSeriesQueryService::downsampleKeepsMinAndMax()
     }
     QVERIFY(sawMin);
     QVERIFY(sawMax);
-}
-
-void TestTimeSeriesQueryService::dailyCompareUsesAveragesAndAlignsMonth()
-{
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-
-    TimeSeriesWriter writer;
-    writer.initialize(testConfig(dir.path()));
-    auto writeDay = [&](const QDate &date, double first, double second) {
-        const QDateTime noon = QDateTime(date, QTime(12, 0, 0));
-        writer.enqueueSample(sampleAt(noon, TimeSeriesChannel::ArmTiltXDeg, first));
-        writer.enqueueSample(sampleAt(noon.addSecs(1), TimeSeriesChannel::ArmTiltXDeg, second));
-    };
-    writeDay(QDate(2026, 5, 1), 1.0, 3.0);
-    writeDay(QDate(2026, 5, 2), 4.0, 6.0);
-    writeDay(QDate(2026, 4, 1), 10.0, 10.0);
-    writeDay(QDate(2026, 4, 2), 20.0, 30.0);
-    writer.flush();
-    writer.shutdown();
-
-    const TimeSeriesCompareResult result = TimeSeriesQueryService::queryDailyCompare(
-        dir.path(),
-        {TimeSeriesChannel::ArmTiltXDeg},
-        TimeSeriesCompareKind::MonthOverMonth,
-        QDate(2026, 5, 3));
-
-    QVERIFY(result.ok);
-    QCOMPARE(result.dayCount, 3);
-    QCOMPARE(result.stat, TimeSeriesCompareStat::Average);
-    QCOMPARE(result.statLabel, QStringLiteral("日均"));
-    QCOMPARE(result.currentLabel, QStringLiteral("本月"));
-    QCOMPARE(result.previousLabel, QStringLiteral("上月"));
-    QCOMPARE(result.series.size(), 1);
-    QCOMPARE(result.series.first().currentPoints.size(), 2);
-    QCOMPARE(result.series.first().currentPoints.at(0).tsUtcMs, 0);
-    QCOMPARE(result.series.first().currentPoints.at(0).value, 2.0);
-    QCOMPARE(result.series.first().currentPoints.at(1).tsUtcMs, 1);
-    QCOMPARE(result.series.first().currentPoints.at(1).value, 5.0);
-    QCOMPARE(result.series.first().previousPoints.size(), 2);
-    QCOMPARE(result.series.first().previousPoints.at(0).value, 10.0);
-    QCOMPARE(result.series.first().previousPoints.at(1).value, 25.0);
-}
-
-void TestTimeSeriesQueryService::dailyCompareUsesMinAndMax()
-{
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-
-    TimeSeriesWriter writer;
-    writer.initialize(testConfig(dir.path()));
-    auto writeDay = [&](const QDate &date, double first, double second) {
-        const QDateTime noon = QDateTime(date, QTime(12, 0, 0));
-        writer.enqueueSample(sampleAt(noon, TimeSeriesChannel::ArmTiltXDeg, first));
-        writer.enqueueSample(sampleAt(noon.addSecs(1), TimeSeriesChannel::ArmTiltXDeg, second));
-    };
-    writeDay(QDate(2026, 5, 1), 1.0, 3.0);
-    writeDay(QDate(2026, 5, 2), 4.0, 6.0);
-    writeDay(QDate(2026, 4, 1), 10.0, 10.0);
-    writeDay(QDate(2026, 4, 2), 20.0, 30.0);
-    writer.flush();
-    writer.shutdown();
-
-    const QVector<TimeSeriesChannel> channels = {TimeSeriesChannel::ArmTiltXDeg};
-    const TimeSeriesCompareResult minResult = TimeSeriesQueryService::queryDailyCompare(
-        dir.path(),
-        channels,
-        TimeSeriesCompareKind::MonthOverMonth,
-        QDate(2026, 5, 3),
-        TimeSeriesCompareStat::Minimum);
-    QVERIFY(minResult.ok);
-    QCOMPARE(minResult.statLabel, QStringLiteral("日最小"));
-    QCOMPARE(minResult.series.first().currentPoints.at(0).value, 1.0);
-    QCOMPARE(minResult.series.first().currentPoints.at(1).value, 4.0);
-    QCOMPARE(minResult.series.first().previousPoints.at(0).value, 10.0);
-    QCOMPARE(minResult.series.first().previousPoints.at(1).value, 20.0);
-
-    const TimeSeriesCompareResult maxResult = TimeSeriesQueryService::queryDailyCompare(
-        dir.path(),
-        channels,
-        TimeSeriesCompareKind::MonthOverMonth,
-        QDate(2026, 5, 3),
-        TimeSeriesCompareStat::Maximum);
-    QVERIFY(maxResult.ok);
-    QCOMPARE(maxResult.statLabel, QStringLiteral("日最大"));
-    QCOMPARE(maxResult.series.first().currentPoints.at(0).value, 3.0);
-    QCOMPARE(maxResult.series.first().currentPoints.at(1).value, 6.0);
-    QCOMPARE(maxResult.series.first().previousPoints.at(0).value, 10.0);
-    QCOMPARE(maxResult.series.first().previousPoints.at(1).value, 30.0);
-}
-
-void TestTimeSeriesQueryService::dailyCompareBreaksOnMissingDayAndLeapDay()
-{
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
-
-    TimeSeriesConfig config = testConfig(dir.path());
-    config.retentionDays = TimeSeriesConfig::kMaxRetentionDays;
-    TimeSeriesWriter writer;
-    writer.initialize(config);
-    const QDateTime leap = QDateTime(QDate(2024, 2, 29), QTime(8, 0, 0));
-    writer.enqueueSample(sampleAt(leap, TimeSeriesChannel::LoadKg, 100.0));
-    writer.enqueueSample(sampleAt(QDateTime(QDate(2024, 3, 1), QTime(8, 0, 0)),
-                                  TimeSeriesChannel::LoadKg, 120.0));
-    writer.enqueueSample(sampleAt(QDateTime(QDate(2023, 3, 1), QTime(8, 0, 0)),
-                                  TimeSeriesChannel::LoadKg, 80.0));
-    writer.flush();
-    writer.shutdown();
-
-    const TimeSeriesCompareResult result = TimeSeriesQueryService::queryDailyCompare(
-        dir.path(),
-        {TimeSeriesChannel::LoadKg},
-        TimeSeriesCompareKind::YearOverYear,
-        QDate(2024, 3, 1));
-
-    QVERIFY(result.ok);
-    QVERIFY(result.dayCount >= 60);
-    const TimeSeriesCompareChannel &item = result.series.first();
-    bool sawLeapCurrent = false;
-    bool sawLeapPrevious = false;
-    qint64 leapIndex = -1;
-    for (int i = 0; i < result.tickLabels.size(); ++i) {
-        if (result.tickLabels.at(i) == QStringLiteral("02-29")) {
-            leapIndex = i;
-            break;
-        }
-    }
-    QVERIFY(leapIndex >= 0);
-    for (const TimeSeriesPoint &point : item.currentPoints) {
-        if (point.tsUtcMs == leapIndex) {
-            sawLeapCurrent = true;
-            QCOMPARE(point.value, 100.0);
-        }
-    }
-    for (const TimeSeriesPoint &point : item.previousPoints) {
-        if (point.tsUtcMs == leapIndex) {
-            sawLeapPrevious = true;
-        }
-    }
-    QVERIFY(sawLeapCurrent);
-    QVERIFY(!sawLeapPrevious);
 }
 
 void TestTimeSeriesQueryService::conditionSearchMatchesRoundedWorkKeysAndReportsState()

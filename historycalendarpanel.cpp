@@ -33,12 +33,19 @@ QString dayStyle(bool available, bool today, bool outsideMonth)
 
 } // namespace
 
-HistoryCalendarPanel::HistoryCalendarPanel(const QMap<QDate, HistoryDateEntry> &entries,
-                                           QWidget *parent)
+HistoryCalendarPanel::HistoryCalendarPanel(const QList<QDate> &availableDates,
+                                           QWidget *parent,
+                                           const QString &title,
+                                           const QString &emptyText)
     : QDialog(parent)
-    , m_entries(entries)
+    , m_emptyText(emptyText)
 {
-    setWindowTitle(QStringLiteral("查看历史记录"));
+    for (const QDate &date : availableDates) {
+        if (date.isValid()) {
+            m_dates.insert(date);
+        }
+    }
+    setWindowTitle(title);
     setModal(true);
     const QRect screen = QGuiApplication::primaryScreen()
         ? QGuiApplication::primaryScreen()->availableGeometry()
@@ -56,8 +63,13 @@ HistoryCalendarPanel::HistoryCalendarPanel(const QMap<QDate, HistoryDateEntry> &
     buildUi();
 
     QDate initial = QDate::currentDate();
-    if (!monthHasEntries(initial)) {
-        initial = m_entries.isEmpty() ? QDate::currentDate() : m_entries.lastKey();
+    if (!monthHasEntries(initial) && !m_dates.isEmpty()) {
+        initial = QDate();
+        for (const QDate &date : m_dates) {
+            if (!initial.isValid() || date > initial) {
+                initial = date;
+            }
+        }
     }
     showMonth(QDate(initial.year(), initial.month(), 1));
 }
@@ -118,7 +130,7 @@ void HistoryCalendarPanel::buildUi()
     }
     root->addLayout(grid, 1);
 
-    m_emptyLabel = new QLabel(QStringLiteral("暂无可查看的历史记录"), this);
+    m_emptyLabel = new QLabel(m_emptyText, this);
     m_emptyLabel->setAlignment(Qt::AlignCenter);
     m_emptyLabel->setStyleSheet(QStringLiteral("font-size: 20px; color: rgba(234, 249, 255, 0.70);"));
     root->addWidget(m_emptyLabel);
@@ -147,7 +159,7 @@ void HistoryCalendarPanel::showMonth(const QDate &month)
 {
     m_month = QDate(month.year(), month.month(), 1);
     m_titleLabel->setText(m_month.toString(QStringLiteral("yyyy年MM月")));
-    m_emptyLabel->setVisible(m_entries.isEmpty());
+    m_emptyLabel->setVisible(m_dates.isEmpty());
 
     const QDate today = QDate::currentDate();
     const QDate firstCell = m_month.addDays(1 - m_month.dayOfWeek());
@@ -155,27 +167,30 @@ void HistoryCalendarPanel::showMonth(const QDate &month)
         QToolButton *button = m_dayButtons.at(index);
         const QDate date = firstCell.addDays(index);
         const bool outside = date.month() != m_month.month() || date.year() != m_month.year();
-        const bool available = !outside && m_entries.contains(date);
+        const bool available = !outside && m_dates.contains(date);
         button->setText(QString::number(date.day()));
         button->setEnabled(available);
         button->setProperty("historyDate", date);
         button->setStyleSheet(dayStyle(available, date == today, outside));
     }
     updateMonthShortcuts();
-    m_previousButton->setEnabled(!m_entries.isEmpty());
-    m_nextButton->setEnabled(!m_entries.isEmpty());
+    m_previousButton->setEnabled(!m_dates.isEmpty());
+    m_nextButton->setEnabled(!m_dates.isEmpty());
 }
 
 bool HistoryCalendarPanel::monthHasEntries(const QDate &month) const
 {
-    const QDate first(month.year(), month.month(), 1);
-    auto it = m_entries.lowerBound(first);
-    return it != m_entries.cend() && it.key().year() == first.year() && it.key().month() == first.month();
+    for (const QDate &date : m_dates) {
+        if (date.year() == month.year() && date.month() == month.month()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void HistoryCalendarPanel::goToAvailableMonth(int direction)
 {
-    if (direction == 0 || m_entries.isEmpty()) {
+    if (direction == 0 || m_dates.isEmpty()) {
         return;
     }
     QDate cursor = m_month.addMonths(direction);

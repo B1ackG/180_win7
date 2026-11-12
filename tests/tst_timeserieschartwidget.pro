@@ -11,7 +11,8 @@ HEADERS += \
     ../timeseriesfullscreendialog.h \
     ../timeseriesconditiondialog.h \
     ../timeseriestypes.h \
-    ../timeseriesqueryservice.h
+    ../timeseriesqueryservice.h \
+    ../historycalendarpanel.h
 SOURCES += \
     tst_timeserieschartwidget.cpp \
     ../timeserieschartwidget.cpp \
@@ -20,4 +21,5 @@ SOURCES += \
     ../timeseriesfullscreendialog.cpp \
     ../timeseriesconditiondialog.cpp \
     ../timeseriestypes.cpp \
-    ../timeseriesqueryservice.cpp
+    ../timeseriesqueryservice.cpp \
+    ../historycalendarpanel.cpp

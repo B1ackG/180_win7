@@ -1,11 +1,10 @@
 #ifndef HISTORYCALENDARPANEL_H
 #define HISTORYCALENDARPANEL_H
 
-#include "historyarchiveio.h"
-
 #include <QDate>
 #include <QDialog>
-#include <QMap>
+#include <QList>
+#include <QSet>
 #include <QVector>
 
 class QLabel;
@@ -16,8 +15,10 @@ class HistoryCalendarPanel : public QDialog
     Q_OBJECT
 
 public:
-    explicit HistoryCalendarPanel(const QMap<QDate, HistoryDateEntry> &entries,
-                                  QWidget *parent = nullptr);
+    explicit HistoryCalendarPanel(const QList<QDate> &availableDates,
+                                  QWidget *parent = nullptr,
+                                  const QString &title = QStringLiteral("查看历史记录"),
+                                  const QString &emptyText = QStringLiteral("暂无可查看的历史记录"));
 
 signals:
     void dateChosen(const QDate &date);
@@ -29,7 +30,8 @@ private:
     bool monthHasEntries(const QDate &month) const;
     void updateMonthShortcuts();
 
-    QMap<QDate, HistoryDateEntry> m_entries;
+    QSet<QDate> m_dates;
+    QString m_emptyText;
     QDate m_month;
     QLabel *m_titleLabel = nullptr;
     QLabel *m_emptyLabel = nullptr;

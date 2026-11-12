@@ -9,6 +9,7 @@
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <limits>
 
 class TestTimeSeriesWriter : public QObject
 {
@@ -17,6 +18,7 @@ class TestTimeSeriesWriter : public QObject
 private slots:
     void initTestCase();
     void createsSchemaAndInsertsBatch();
+    void skipsDenormalTorqueAsNull();
     void splitsSamplesAcrossLocalDates();
     void deletesExpiredDailyFiles();
     void quarantinesCorruptDatabase();
@@ -95,6 +97,44 @@ void TestTimeSeriesWriter::createsSchemaAndInsertsBatch()
     const QString path = TimeSeriesMeta::dailyFilePath(dir.path(), now.date());
     QVERIFY(QFile::exists(path));
     QCOMPARE(rowCount(path), 2);
+}
+
+void TestTimeSeriesWriter::skipsDenormalTorqueAsNull()
+{
+    QVERIFY(!TimeSeriesMeta::isFiniteNumber(std::numeric_limits<double>::quiet_NaN()));
+    QVERIFY(!TimeSeriesMeta::isFiniteNumber(std::numeric_limits<double>::denorm_min()));
+    QVERIFY(TimeSeriesMeta::isFiniteNumber(0.0));
+    QVERIFY(TimeSeriesMeta::isFiniteNumber(14.8));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    TimeSeriesWriter writer;
+    writer.initialize(testConfig(dir.path()));
+
+    const QDateTime now = QDateTime::currentDateTime();
+    TimeSeriesSample sample = sampleAt(now, 12.0);
+    const int torqueIndex = static_cast<int>(TimeSeriesChannel::ColumnTorquePercent);
+    sample.values[torqueIndex].value = std::numeric_limits<double>::denorm_min();
+    sample.values[torqueIndex].valid = true;
+    writer.enqueueSample(sample);
+    writer.flush();
+    writer.shutdown();
+
+    const QString path = TimeSeriesMeta::dailyFilePath(dir.path(), now.date());
+    const QString name = QStringLiteral("tst_denorm_torque");
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), name);
+        db.setDatabaseName(path);
+        QVERIFY(db.open());
+        QSqlQuery query(db);
+        QVERIFY(query.exec(QStringLiteral(
+            "SELECT column_torque_percent, j1_angle_deg FROM samples LIMIT 1")));
+        QVERIFY(query.next());
+        QVERIFY(query.value(0).isNull());
+        QCOMPARE(query.value(1).toDouble(), 12.0);
+    }
+    QSqlDatabase::removeDatabase(name);
 }
 
 void TestTimeSeriesWriter::splitsSamplesAcrossLocalDates()

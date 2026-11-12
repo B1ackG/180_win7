@@ -152,7 +152,9 @@ TimeSeriesSource source(TimeSeriesChannel channel)
 
 bool isFiniteNumber(double value)
 {
-    return std::isfinite(value);
+    // 0 is a real idle reading. Denormals are not: a torn LREAL (exponent
+    // word still 0) decodes to ~1e-322 and plots as 0.0%.
+    return std::isfinite(value) && (value == 0.0 || std::isnormal(value));
 }
 
 int displayDecimals(TimeSeriesChannel channel)
@@ -179,32 +181,6 @@ QString dailyFileName(const QDate &date)
 QString dailyFilePath(const QString &directory, const QDate &date)
 {
     return QDir(directory).filePath(dailyFileName(date));
-}
-
-QString compareStatSql(TimeSeriesCompareStat stat)
-{
-    switch (stat) {
-    case TimeSeriesCompareStat::Minimum:
-        return QStringLiteral("MIN");
-    case TimeSeriesCompareStat::Maximum:
-        return QStringLiteral("MAX");
-    case TimeSeriesCompareStat::Average:
-    default:
-        return QStringLiteral("AVG");
-    }
-}
-
-QString compareStatLabel(TimeSeriesCompareStat stat)
-{
-    switch (stat) {
-    case TimeSeriesCompareStat::Minimum:
-        return QStringLiteral("日最小");
-    case TimeSeriesCompareStat::Maximum:
-        return QStringLiteral("日最大");
-    case TimeSeriesCompareStat::Average:
-    default:
-        return QStringLiteral("日均");
-    }
 }
 
 QVector<TimeSeriesChannel> conditionWorkChannels()

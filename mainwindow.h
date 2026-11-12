@@ -260,8 +260,8 @@ public:
     void hideRobotWeightOverloadDialog();
     void showRobotWeightLockDialog();
     void hideRobotWeightLockDialog();
-    void showInclinometerTiltRiskDialog();
-    void hideInclinometerTiltRiskDialog();
+    void showInclinometerTiltRiskToast();
+    void hideInclinometerTiltRiskToast();
     void refreshInclinometerTiltPresentation();
     void showLegArmInterlockToast();
     void hideLegArmInterlockToast();
@@ -426,8 +426,10 @@ public:
     void initializeTimeSeries();
     /** @brief 停止采样并等待写线程刷盘，可重复调用 */
     void shutdownTimeSeries();
-    /** @brief 打开独立数据曲线对话框 */
+    /** @brief 切到数据曲线栈页 */
     void showTimeSeriesDialog();
+    /** @brief 把曲线控件装进 page_TimeSeries，可重复调用 */
+    void ensureTimeSeriesPage();
     /** @brief 把界面最终显示值写入时序快照 */
     void recordTimeSeriesValue(TimeSeriesChannel channel, double value);
     /** @brief 启用或禁用 TCP 传输 */
@@ -476,8 +478,8 @@ public:
     void updateRobotInclinometerFromCache();
     /** @brief 从寄存器缓存刷新位姿面板 */
     void updateDeviceCoordPanelFromCache();
-    /** @brief 从寄存器缓存刷新立柱/配重缸扭矩卡片（276~279 / 280~283 LREAL） */
-    void updateRobotTorqueFromCache();
+    /** @brief 从寄存器缓存刷新一组扭矩 LREAL；startAddr 为 276 或 280 */
+    void updateRobotTorqueFromCache(int startAddr);
     /** @brief 初始化滑块编辑 UI */
     void initSliderEditUI();
 
@@ -724,7 +726,6 @@ private:
     QDialog *m_robotOperationHintDialog = nullptr;
     QWidget *m_robotWeightOverloadWidget = nullptr;
     QWidget *m_robotWeightLockWidget = nullptr;
-    QDialog *m_inclinometerTiltRiskDialog = nullptr;
 
     // ----- Modbus & 通信 (Main) -----
     ModbusThreadManager *m_modbusManager;

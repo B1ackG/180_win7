@@ -1,4 +1,5 @@
 #include "timeserieschartwidget.h"
+#include "timeseriesconditiondialog.h"
 #include "timeseriesdialog.h"
 #include "timeseriesfullscreendialog.h"
 #include "timeseriesqueryservice.h"
@@ -8,9 +9,12 @@
 #include <QDateTime>
 #include <QDateEdit>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSignalSpy>
+#include <QTableWidget>
 #include <QTime>
 #include <QtMath>
 #include <QtTest>
@@ -33,8 +37,10 @@ private slots:
     void fullscreenSyncsRangeAndCursor();
     void defaultChannelSelectionAndLimit();
     void channelDrawerButtonSitsAboveCursor();
+    void collapsingChannelDrawerRunsQuery();
+    void conditionTableIncludesWorkColumns();
     void quickRangesUseLocalDates();
-    void compareCursorShowsDashOnMissingDay();
+    void extremaMarkersFollowQueryMinMax();
 };
 
 namespace {
@@ -225,7 +231,7 @@ void TestTimeSeriesChartWidget::fullscreenSyncsRangeAndCursor()
     widget.setSeries(twoHourSeries());
     widget.setVisibleRange(widget.dataStartMs() + 10000, widget.dataStartMs() + 50000);
     widget.setCursorTime(widget.dataStartMs() + 20000, true);
-    widget.setInteractionMode(TimeSeriesChartWidget::InteractionMode::Pan);
+    widget.setInteractionMode(TimeSeriesChartWidget::InteractionMode::Cursor);
 
     TimeSeriesFullscreenDialog fullscreen;
     fullscreen.setContent(twoHourSeries(),
@@ -240,7 +246,7 @@ void TestTimeSeriesChartWidget::fullscreenSyncsRangeAndCursor()
     QCOMPARE(fullscreen.viewEndMs(), widget.visibleRange().second);
     QCOMPARE(fullscreen.cursorTimeMs(), widget.cursorTime());
     QVERIFY(fullscreen.isCursorVisible());
-    QCOMPARE(fullscreen.interactionMode(), TimeSeriesChartWidget::InteractionMode::Pan);
+    QCOMPARE(fullscreen.interactionMode(), TimeSeriesChartWidget::InteractionMode::Cursor);
 
     fullscreen.chart()->setVisibleRange(widget.dataStartMs() + 15000, widget.dataStartMs() + 40000);
     fullscreen.chart()->setCursorTime(widget.dataStartMs() + 25000, true);
@@ -290,37 +296,124 @@ void TestTimeSeriesChartWidget::channelDrawerButtonSitsAboveCursor()
 {
     TimeSeriesDialog dialog(QStringLiteral("/tmp"));
     auto *drawerButton = dialog.findChild<QPushButton *>(QStringLiteral("TBtn_ChannelDrawer"));
-    auto *cursorButton = dialog.findChild<QPushButton *>(QStringLiteral("TBtn_CursorMode"));
+    auto *conditionButton = dialog.findChild<QPushButton *>(QStringLiteral("TBtn_ConditionSearch"));
     QVERIFY(drawerButton);
-    QVERIFY(cursorButton);
+    QVERIFY(conditionButton);
     QCOMPARE(drawerButton->text(), QStringLiteral("通道选择"));
     QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("Lbl_SelectedSummary")) == nullptr);
+    QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_CursorMode")) == nullptr);
+    QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_PanMode")) == nullptr);
     dialog.show();
     QVERIFY(QTest::qWaitForWindowExposed(&dialog));
-    QVERIFY(drawerButton->geometry().bottom() <= cursorButton->geometry().top());
+    QVERIFY(qAbs(drawerButton->geometry().center().y() - conditionButton->geometry().center().y()) <= 4);
+    QVERIFY(drawerButton->geometry().right() <= conditionButton->geometry().left());
+}
+
+void TestTimeSeriesChartWidget::collapsingChannelDrawerRunsQuery()
+{
+    TimeSeriesDialog dialog(QStringLiteral("/tmp"));
+    auto *drawerButton = dialog.findChild<QPushButton *>(QStringLiteral("TBtn_ChannelDrawer"));
+    auto *status = dialog.findChild<QLabel *>(QStringLiteral("Lbl_TimeSeriesStatus"));
+    QVERIFY(drawerButton);
+    QVERIFY(status);
+
+    drawerButton->click();
+    QVERIFY(dialog.isChannelDrawerExpanded());
+    QCOMPARE(drawerButton->text(), QStringLiteral("收起"));
+
+    drawerButton->click();
+    QVERIFY(!dialog.isChannelDrawerExpanded());
+    QCOMPARE(drawerButton->text(), QStringLiteral("通道选择"));
+    QTRY_VERIFY(status->text().contains(QStringLiteral("查询"))
+                || status->text().contains(QStringLiteral("没有采样")));
+}
+
+void TestTimeSeriesChartWidget::conditionTableIncludesWorkColumns()
+{
+    TimeSeriesConditionSearchResult result;
+    result.ok = true;
+    result.workChannels = {
+        TimeSeriesChannel::J1AngleDeg,
+        TimeSeriesChannel::J2HeightMm,
+        TimeSeriesChannel::LoadKg
+    };
+    result.stateChannels = {
+        TimeSeriesChannel::ColumnTorquePercent,
+        TimeSeriesChannel::TotalPowerW
+    };
+    auto makeValue = [](double number) {
+        TimeSeriesValue value;
+        value.value = number;
+        value.valid = true;
+        return value;
+    };
+    result.probeWork = {makeValue(12.5), makeValue(800.0), makeValue(150.0)};
+    result.probeState = {makeValue(21.0), makeValue(300.0)};
+
+    TimeSeriesConditionHit hit;
+    hit.tsUtcMs = QDateTime(QDate(2026, 11, 12), QTime(10, 0, 0)).toMSecsSinceEpoch();
+    hit.workValues = {makeValue(12.4), makeValue(801.0), makeValue(148.0)};
+    hit.stateValues = {makeValue(18.0), makeValue(280.0)};
+    result.hits.append(hit);
+
+    TimeSeriesConditionDialog dialog;
+    dialog.setResult(result);
+    auto *table = dialog.findChild<QTableWidget *>(QStringLiteral("Tbl_ConditionHits"));
+    QVERIFY(table);
+    QCOMPARE(table->columnCount(), 6);
+    QCOMPARE(table->horizontalHeaderItem(1)->text(), QStringLiteral("悬臂角"));
+    QCOMPARE(table->horizontalHeaderItem(2)->text(), QStringLiteral("升降"));
+    QCOMPARE(table->horizontalHeaderItem(3)->text(), QStringLiteral("负载"));
+    QCOMPARE(table->horizontalHeaderItem(4)->text(), QStringLiteral("立柱扭矩"));
+    QCOMPARE(table->item(0, 1)->text(), QStringLiteral("12.5 °"));
+    QCOMPARE(table->item(1, 2)->text(), QStringLiteral("801 mm"));
+    QCOMPARE(table->item(1, 4)->text(), QStringLiteral("18.0 %"));
 }
 
 void TestTimeSeriesChartWidget::quickRangesUseLocalDates()
 {
     TimeSeriesDialog dialog(QStringLiteral("/tmp"));
-    auto *startEdit = dialog.findChild<QDateEdit *>(QStringLiteral("Dt_Start"));
-    auto *endEdit = dialog.findChild<QDateEdit *>(QStringLiteral("Dt_End"));
-    QVERIFY(startEdit);
-    QVERIFY(endEdit);
-    QCOMPARE(startEdit->displayFormat(), QStringLiteral("yyyy-MM-dd"));
-    QCOMPARE(endEdit->displayFormat(), QStringLiteral("yyyy-MM-dd"));
+    auto *dateEdit = dialog.findChild<QDateEdit *>(QStringLiteral("Dt_Date"));
+    QVERIFY(dateEdit);
+    QVERIFY(dialog.findChild<QDateEdit *>(QStringLiteral("Dt_Start")) == nullptr);
+    QVERIFY(dialog.findChild<QDateEdit *>(QStringLiteral("Dt_End")) == nullptr);
+    QCOMPARE(dateEdit->displayFormat(), QStringLiteral("yyyy-MM-dd"));
+    QCOMPARE(dateEdit->date(), QDate::currentDate());
+    QVERIFY(dateEdit->isReadOnly());
+    QVERIFY(dateEdit->calendarPopup());
+    auto *dateLine = dateEdit->findChild<QLineEdit *>();
+    QVERIFY(dateLine);
+    QCOMPARE(dateLine->focusPolicy(), Qt::NoFocus);
 
+    {
+        const QSignalBlocker blocker(dateEdit);
+        dateEdit->setDate(QDate::currentDate().addDays(-3));
+    }
     dialog.applyQuickRange(TimeSeriesDialog::QuickRange::Last30Minutes);
-    QCOMPARE(endEdit->date(), QDate::currentDate());
-    QCOMPARE(startEdit->date(), QDateTime::currentDateTime().addSecs(-30 * 60).date());
-
+    QCOMPARE(dateEdit->date(), QDate::currentDate());
     dialog.applyQuickRange(TimeSeriesDialog::QuickRange::LastHour);
-    QCOMPARE(endEdit->date(), QDate::currentDate());
-    QCOMPARE(startEdit->date(), QDateTime::currentDateTime().addSecs(-3600).date());
-
+    QCOMPARE(dateEdit->date(), QDate::currentDate());
     dialog.applyQuickRange(TimeSeriesDialog::QuickRange::Last4Hours);
-    QCOMPARE(endEdit->date(), QDate::currentDate());
-    QCOMPARE(startEdit->date(), QDateTime::currentDateTime().addSecs(-4 * 3600).date());
+    QCOMPARE(dateEdit->date(), QDate::currentDate());
+
+    auto *recent = dialog.findChild<QPushButton *>(QStringLiteral("TBtn_RecentStatus"));
+    auto *last30 = dialog.findChild<QPushButton *>(QStringLiteral("TBtn_QuickLast30Minutes"));
+    QVERIFY(recent);
+    QVERIFY(last30);
+    QCOMPARE(recent->text(), QStringLiteral("近期状态"));
+    QVERIFY(!dialog.isRecentDrawerExpanded());
+    QVERIFY(!last30->isVisibleTo(&dialog));
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+    recent->click();
+    QVERIFY(dialog.isRecentDrawerExpanded());
+    QVERIFY(last30->isVisibleTo(&dialog));
+
+    QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_Query")) == nullptr);
+    QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_Reset")) == nullptr);
+    QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_CursorMode")) == nullptr);
+    QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_PanMode")) == nullptr);
+    QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("Lbl_ChannelStats")) == nullptr);
 
     QCOMPARE(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_QuickLast30Minutes"))->text(),
              QStringLiteral("最近30分钟"));
@@ -328,36 +421,32 @@ void TestTimeSeriesChartWidget::quickRangesUseLocalDates()
              QStringLiteral("最近1小时"));
     QCOMPARE(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_QuickLast4Hours"))->text(),
              QStringLiteral("最近4小时"));
-    QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_CompareAvg"))->isChecked());
-    QVERIFY(!dialog.findChild<QPushButton *>(QStringLiteral("TBtn_CompareMin"))->isChecked());
-    QVERIFY(!dialog.findChild<QPushButton *>(QStringLiteral("TBtn_CompareMax"))->isChecked());
     QCOMPARE(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_ConditionSearch"))->text(),
              QStringLiteral("工况反查"));
+    QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_CompareAvg")) == nullptr);
+    QVERIFY(dialog.findChild<QPushButton *>(QStringLiteral("TBtn_MonthCompare")) == nullptr);
 }
 
-void TestTimeSeriesChartWidget::compareCursorShowsDashOnMissingDay()
+void TestTimeSeriesChartWidget::extremaMarkersFollowQueryMinMax()
 {
-    TimeSeriesCompareResult result;
-    result.ok = true;
-    result.kind = TimeSeriesCompareKind::MonthOverMonth;
-    result.currentLabel = QStringLiteral("本月");
-    result.previousLabel = QStringLiteral("上月");
-    result.dayCount = 5;
-    result.tickLabels << QStringLiteral("1") << QStringLiteral("2") << QStringLiteral("3")
-                      << QStringLiteral("4") << QStringLiteral("5");
-    TimeSeriesCompareChannel item;
-    item.channel = TimeSeriesChannel::ArmTiltXDeg;
-    item.currentPoints << pt(0, 1.0) << pt(1, 2.0) << pt(3, 4.0);
-    item.previousPoints << pt(0, 0.5) << pt(1, 0.6) << pt(2, 0.7);
-    result.series.append(item);
-
+    QVector<TimeSeriesPoint> points;
+    points << pt(0, 1.0) << pt(1000, 8.5) << pt(2000, -2.0) << pt(4000, 3.0) << pt(5000, 2.5);
     TimeSeriesChartWidget widget;
-    widget.setCompareResult(result);
-    QVERIFY(widget.isCompareMode());
-    widget.setCursorTime(2, true);
-    QVERIFY(widget.cursorValueText(TimeSeriesChannel::ArmTiltXDeg).contains(QStringLiteral("--")));
-    widget.setCursorTime(1, true);
-    QVERIFY(!widget.cursorValueText(TimeSeriesChannel::ArmTiltXDeg).contains(QStringLiteral("本月 --")));
+    widget.resize(900, 560);
+    widget.setSeries(makeResult(TimeSeriesChannel::ArmTiltXDeg, points));
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    const QPoint maxPos = widget.extremumMarkerPos(TimeSeriesChannel::ArmTiltXDeg, true);
+    const QPoint minPos = widget.extremumMarkerPos(TimeSeriesChannel::ArmTiltXDeg, false);
+    QVERIFY(!maxPos.isNull());
+    QVERIFY(!minPos.isNull());
+    QVERIFY(maxPos.x() < minPos.x());
+    QVERIFY(maxPos.y() < minPos.y());
+
+    widget.setVisibleRange(4000, 5000);
+    QCOMPARE(widget.extremumMarkerPos(TimeSeriesChannel::ArmTiltXDeg, true), QPoint());
+    QCOMPARE(widget.extremumMarkerPos(TimeSeriesChannel::ArmTiltXDeg, false), QPoint());
 }
 
 QTEST_MAIN(TestTimeSeriesChartWidget)
