@@ -238,6 +238,10 @@ public:
     void showAgvDriveFaultAlarm();
     /** @brief 隐藏驱动故障报警窗 */
     void hideAgvDriveFaultAlarm();
+    /** @brief 显示主控伺服故障窗（102.bit9 + 1000~1025） */
+    void showServoFaultAlarm();
+    /** @brief 隐藏主控伺服故障窗 */
+    void hideServoFaultAlarm();
     /** @brief 显示低电量提示窗（51.bit0=1），无按键，位清零后关闭 */
     void showAgvBatteryLowDialog();
     /** @brief 隐藏低电量提示窗 */
@@ -275,6 +279,15 @@ public:
     QStringList robotArmTeachPendantEstopFromRegister150(quint16 reg150) const;
     QStringList agvChassisEstopSourcesFromRegister150(quint16 reg150) const;
     void applyRobotSoftLimitRegister(quint16 value);
+    void applyMainRegister102ServoFaultBit(quint16 value);
+    void requestServoFaultCodePoll();
+    void refreshServoFaultStateFromCache();
+    void clearServoFaultTransientState();
+    void updateServoFaultAlarmVisibility();
+    void recordServoFaultMonitorHistory(const QString &oldSummary,
+                                        const QString &newSummary,
+                                        bool hasNonResettable);
+    void onServoFaultResetClicked();
     QString robotAxisLimitToastMessage(int axisIndex, bool positiveLimit) const;
     void showRobotAxisLimitToast(int slot);
     void hideRobotAxisLimitToast(int slot);
@@ -670,6 +683,8 @@ private:
     bool m_robotWeightLock150Bit7Flag = false;
     bool m_robotPositiveLimit102Bit2Flag = false;
     bool m_robotNegativeLimit102Bit3Flag = false;
+    /** @brief 主控 102.bit9：伺服故障总览 */
+    bool m_mainRegister102Bit9FaultFlag = false;
     static constexpr int kRobotAxisLimitSlotCount = 10;
     bool m_robotAxisLimitActive[kRobotAxisLimitSlotCount] = {};
     bool m_robotAxisLimitShown[kRobotAxisLimitSlotCount] = {};
@@ -693,6 +708,18 @@ private:
     QLabel *m_agvStationOfflineAlarmLabel = nullptr;
     QWidget *m_agvDriveFaultAlarmWidget = nullptr;
     QLabel *m_agvDriveFaultAlarmLabel = nullptr;
+    QDialog *m_servoFaultAlarmWidget = nullptr;
+    QLabel *m_servoFaultAlarmHeaderLabel = nullptr;
+    QLabel *m_servoFaultAlarmLabel = nullptr;
+    QWidget *m_servoFaultButtonRow = nullptr;
+    QPushButton *m_servoFaultResetButton = nullptr;
+    QStringList m_servoFaultLines;
+    QString m_lastServoFaultSignature;
+    QString m_servoFaultHistorySummary;
+    bool m_servoFaultHasNonResettable = false;
+    bool m_servoFaultHasResettable = false;
+    bool m_servoFaultDismissed = false;
+    bool m_servoFaultAwaitingPostResetRead = false;
     QDialog *m_agvBatteryLowDialog = nullptr;
     QDialog *m_robotOperationHintDialog = nullptr;
     QWidget *m_robotWeightOverloadWidget = nullptr;

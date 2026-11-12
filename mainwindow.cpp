@@ -5,6 +5,7 @@
 #include "featureswitchwidget.h"
 #include "maindevicemodbusapi.h"
 #include "mainmodbusconnector.h"
+#include "servofaultcodes.h"
 #include "mainmodbuslabelmapper.h"
 #include "mainmodbuspoller.h"
 #include "mainmodbusstatus.h"
@@ -60,6 +61,8 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <QUrl>
 #include <QTimer>
 #include <QProcess>
+#include <QPushButton>
+#include <QMetaObject>
 
 namespace {
 SteeringMode steeringModeFromRegisterValue(quint16 value)
@@ -6204,6 +6207,13 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
                 applyRobotSoftLimitRegister(g_registerCache.value(kRobotSoftLimitDetailReg));
             }
         }
+
+        applyMainRegister102ServoFaultBit(value);
+    }
+
+    if (address >= ServoFaultCodes::kRegisterStart
+        && address < ServoFaultCodes::kRegisterStart + ServoFaultCodes::kRegisterCount) {
+        refreshServoFaultStateFromCache();
     }
 
     if (address == kRobotSoftLimitDetailReg) {
@@ -9708,6 +9718,9 @@ void MainWindow::setupAlarmSystem()
     m_agvBatteryLowAcked = false;
     m_mainRegister150Valid = false;
     m_mainRegister150Shadow = 0;
+    m_mainRegister102Bit9FaultFlag = false;
+    clearServoFaultTransientState();
+    hideServoFaultAlarm();
 
     // 创建报警检测定时器
     if (!m_alarmCheckTimer) {
@@ -9733,6 +9746,12 @@ void MainWindow::checkAlarmConditions()
             MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 150, 1);
         }
         MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 102, 1);
+        if (g_registerCache.contains(102)) {
+            applyMainRegister102ServoFaultBit(g_registerCache.value(102));
+        }
+        if (m_mainRegister102Bit9FaultFlag) {
+            requestServoFaultCodePoll();
+        }
         MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 151, 1);
         if (m_robotPositiveLimit102Bit2Flag || m_robotNegativeLimit102Bit3Flag) {
             MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, kRobotSoftLimitDetailReg, 1);
@@ -10084,6 +10103,314 @@ void MainWindow::hideAgvDriveFaultAlarm()
     }
 }
 
+void MainWindow::applyMainRegister102ServoFaultBit(quint16 value)
+{
+    if (!isBigFeatureEnabled("alarm_system")) {
+        return;
+    }
+
+    const bool faultBit9 = (((value >> 9) & 0x01) == 1);
+    if (faultBit9 == m_mainRegister102Bit9FaultFlag) {
+        return;
+    }
+
+    m_mainRegister102Bit9FaultFlag = faultBit9;
+    if (!faultBit9) {
+        recordServoFaultMonitorHistory(m_servoFaultHistorySummary, QString(), false);
+        clearServoFaultTransientState();
+        updateServoFaultAlarmVisibility();
+        return;
+    }
+
+    requestServoFaultCodePoll();
+    refreshServoFaultStateFromCache();
+}
+
+void MainWindow::requestServoFaultCodePoll()
+{
+    if (!MainDeviceModbusApi::isReady(m_modbusManager)) {
+        return;
+    }
+    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager,
+                                              ServoFaultCodes::kRegisterStart,
+                                              ServoFaultCodes::kRegisterCount);
+}
+
+void MainWindow::clearServoFaultTransientState()
+{
+    m_servoFaultLines.clear();
+    m_lastServoFaultSignature.clear();
+    m_servoFaultHistorySummary.clear();
+    m_servoFaultHasNonResettable = false;
+    m_servoFaultHasResettable = false;
+    m_servoFaultDismissed = false;
+    m_servoFaultAwaitingPostResetRead = false;
+}
+
+void MainWindow::recordServoFaultMonitorHistory(const QString &oldSummary,
+                                                const QString &newSummary,
+                                                bool hasNonResettable)
+{
+    if (!m_recorder || oldSummary == newSummary) {
+        return;
+    }
+
+    OperationRecord record;
+    record.timestamp = QDateTime::currentDateTime();
+    record.pageName = QStringLiteral("报警系统");
+    record.controlName = QStringLiteral("机械臂伺服故障");
+    record.controlType = QStringLiteral("报警监控");
+    if (newSummary.isEmpty()) {
+        record.operation = QStringLiteral("报警解除");
+        record.oldValue = oldSummary;
+        record.newValue = QStringLiteral("机械臂伺服故障已解除");
+    } else {
+        const QString prefix = hasNonResettable
+                                   ? QStringLiteral("检测到不可复位故障，请重启设备尝试复位。")
+                                   : QStringLiteral("检测到可复位故障。");
+        record.operation = QStringLiteral("报警触发");
+        record.oldValue = oldSummary;
+        record.newValue = prefix + newSummary;
+    }
+    m_recorder->addRecord(record);
+}
+
+void MainWindow::refreshServoFaultStateFromCache()
+{
+    if (!m_mainRegister102Bit9FaultFlag) {
+        if (!m_servoFaultLines.isEmpty() || m_servoFaultDismissed || !m_lastServoFaultSignature.isEmpty()) {
+            recordServoFaultMonitorHistory(m_servoFaultHistorySummary, QString(), false);
+            clearServoFaultTransientState();
+            updateServoFaultAlarmVisibility();
+        }
+        return;
+    }
+
+    QVector<quint16> words(ServoFaultCodes::kRegisterCount);
+    for (int i = 0; i < ServoFaultCodes::kRegisterCount; ++i) {
+        const int address = ServoFaultCodes::kRegisterStart + i;
+        if (!g_registerCache.contains(address)) {
+            return;
+        }
+        words[i] = g_registerCache.value(address);
+    }
+
+    const QVector<ServoFaultCodes::AxisFault> faults =
+        ServoFaultCodes::decodeRegisterWords(words);
+    const QString signature = ServoFaultCodes::faultSignature(faults);
+    const QString newSummary = ServoFaultCodes::historySummary(faults);
+    const QString oldSummary = m_servoFaultHistorySummary;
+    if (signature != m_lastServoFaultSignature) {
+        m_lastServoFaultSignature = signature;
+        m_servoFaultDismissed = false;
+    }
+
+    m_servoFaultLines = ServoFaultCodes::faultLines(faults);
+    m_servoFaultHasNonResettable = ServoFaultCodes::hasKnownNonResettable(faults);
+    m_servoFaultHasResettable = ServoFaultCodes::hasResettableFault(faults);
+    m_servoFaultHistorySummary = newSummary;
+    if (m_servoFaultHasNonResettable) {
+        m_servoFaultDismissed = false;
+    }
+    recordServoFaultMonitorHistory(oldSummary, newSummary, m_servoFaultHasNonResettable);
+    updateServoFaultAlarmVisibility();
+}
+
+void MainWindow::updateServoFaultAlarmVisibility()
+{
+    const bool shouldShow = m_mainRegister102Bit9FaultFlag
+        && !m_servoFaultLines.isEmpty()
+        && (m_servoFaultHasNonResettable || !m_servoFaultDismissed)
+        && !m_emergencyStopAlarm;
+    if (shouldShow) {
+        showServoFaultAlarm();
+    } else {
+        hideServoFaultAlarm();
+    }
+}
+
+void MainWindow::showServoFaultAlarm()
+{
+    if (!isFeatureEnabled("alarm_system", "alarm.popup")) {
+        return;
+    }
+    if (m_emergencyStopAlarm || m_servoFaultLines.isEmpty()) {
+        return;
+    }
+
+    const bool allowReset = !m_servoFaultHasNonResettable && m_servoFaultHasResettable;
+    const QString header = m_servoFaultHasNonResettable
+                               ? QStringLiteral("请重启设备尝试复位\n检测到不可复位故障")
+                               : QStringLiteral("检测到可复位故障");
+    const QString body = m_servoFaultLines.join(QLatin1Char('\n'));
+
+    if (!m_servoFaultAlarmWidget) {
+        m_servoFaultAlarmWidget = new QDialog(this);
+        m_servoFaultAlarmWidget->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint |
+                                                Qt::WindowStaysOnTopHint);
+        m_servoFaultAlarmWidget->setWindowModality(Qt::WindowModal);
+        m_servoFaultAlarmWidget->setModal(true);
+        m_servoFaultAlarmWidget->setObjectName(QStringLiteral("servoFaultAlarmWidget"));
+
+        auto *layout = new QVBoxLayout(m_servoFaultAlarmWidget);
+        layout->setContentsMargins(20, 15, 20, 15);
+        layout->setSpacing(10);
+
+        m_servoFaultAlarmHeaderLabel = new QLabel(m_servoFaultAlarmWidget);
+        m_servoFaultAlarmHeaderLabel->setObjectName(QStringLiteral("servoFaultAlarmHeaderLabel"));
+        m_servoFaultAlarmHeaderLabel->setAlignment(Qt::AlignCenter);
+        m_servoFaultAlarmHeaderLabel->setWordWrap(true);
+        layout->addWidget(m_servoFaultAlarmHeaderLabel);
+
+        m_servoFaultAlarmLabel = new QLabel(m_servoFaultAlarmWidget);
+        m_servoFaultAlarmLabel->setObjectName(QStringLiteral("servoFaultAlarmLabel"));
+        m_servoFaultAlarmLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        m_servoFaultAlarmLabel->setWordWrap(true);
+        layout->addWidget(m_servoFaultAlarmLabel);
+
+        m_servoFaultButtonRow = new QWidget(m_servoFaultAlarmWidget);
+        m_servoFaultButtonRow->setObjectName(QStringLiteral("servoFaultButtonRow"));
+        auto *buttonLayout = new QHBoxLayout(m_servoFaultButtonRow);
+        buttonLayout->setContentsMargins(0, 0, 0, 0);
+        buttonLayout->addStretch();
+
+        m_servoFaultResetButton = new QPushButton(QStringLiteral("复位"), m_servoFaultButtonRow);
+        m_servoFaultResetButton->setObjectName(QStringLiteral("servoFaultResetButton"));
+        m_servoFaultResetButton->setAutoDefault(false);
+        m_servoFaultResetButton->setDefault(false);
+        connect(m_servoFaultResetButton, &QPushButton::clicked,
+                this, &MainWindow::onServoFaultResetClicked);
+        buttonLayout->addWidget(m_servoFaultResetButton);
+        buttonLayout->addStretch();
+        layout->addWidget(m_servoFaultButtonRow);
+
+        connect(m_servoFaultAlarmWidget, &QDialog::rejected, this, [this]() {
+            if (!m_servoFaultHasNonResettable) {
+                return;
+            }
+            QMetaObject::invokeMethod(this, [this]() {
+                if (m_servoFaultAlarmWidget
+                    && m_mainRegister102Bit9FaultFlag
+                    && !m_servoFaultLines.isEmpty()
+                    && !m_emergencyStopAlarm) {
+                    m_servoFaultAlarmWidget->show();
+                    repositionCenteredPopups();
+                }
+            }, Qt::QueuedConnection);
+        });
+    }
+
+    const bool sameVisible = m_servoFaultAlarmWidget->isVisible()
+        && m_servoFaultAlarmHeaderLabel
+        && m_servoFaultAlarmHeaderLabel->text() == header
+        && m_servoFaultAlarmLabel
+        && m_servoFaultAlarmLabel->text() == body
+        && m_servoFaultButtonRow
+        && m_servoFaultButtonRow->isVisible() == allowReset;
+    if (sameVisible) {
+        return;
+    }
+
+    if (m_servoFaultAlarmHeaderLabel) {
+        m_servoFaultAlarmHeaderLabel->setText(header);
+    }
+    if (m_servoFaultAlarmLabel) {
+        m_servoFaultAlarmLabel->setText(body);
+    }
+    if (m_servoFaultButtonRow) {
+        m_servoFaultButtonRow->setVisible(allowReset);
+    }
+    if (m_servoFaultResetButton) {
+        m_servoFaultResetButton->setVisible(allowReset);
+    }
+
+    const QString accentColor = m_servoFaultHasNonResettable
+                                    ? QStringLiteral("#ff5555")
+                                    : QStringLiteral("#ff8800");
+    const QString hoverColor = m_servoFaultHasNonResettable
+                                   ? QStringLiteral("#ff8888")
+                                   : QStringLiteral("#ffaa55");
+    m_servoFaultAlarmWidget->setStyleSheet(QStringLiteral(
+        "#servoFaultAlarmWidget {"
+        "  background-color: rgba(30, 0, 0, 230);"
+        "  border: 3px solid %1;"
+        "  border-radius: 10px;"
+        "}"
+        "#servoFaultAlarmHeaderLabel,"
+        "#servoFaultAlarmLabel {"
+        "  color: %1;"
+        "  font-size: 18px;"
+        "  font-weight: bold;"
+        "  background-color: transparent;"
+        "}"
+        "#servoFaultResetButton {"
+        "  background-color: %1;"
+        "  color: #202020;"
+        "  border: 2px solid %2;"
+        "  border-radius: 6px;"
+        "  padding: 8px 16px;"
+        "  font-size: 14px;"
+        "  font-weight: bold;"
+        "  min-width: 100px;"
+        "}"
+        "#servoFaultResetButton:hover {"
+        "  background-color: %2;"
+        "  border-color: %1;"
+        "}").arg(accentColor, hoverColor));
+
+    const int extraHeaderLines = m_servoFaultHasNonResettable ? 2 : 1;
+    const int buttonReserve = allowReset ? 52 : 0;
+    const int lineCount = m_servoFaultLines.size() + extraHeaderLines;
+    const int windowHeight = qBound(190, 56 + lineCount * 22 + buttonReserve, 520);
+    m_servoFaultAlarmWidget->setFixedSize(420, windowHeight);
+    m_servoFaultAlarmWidget->show();
+    m_servoFaultAlarmWidget->raise();
+    repositionCenteredPopups();
+}
+
+void MainWindow::hideServoFaultAlarm()
+{
+    if (m_servoFaultAlarmWidget && m_servoFaultAlarmWidget->isVisible()) {
+        m_servoFaultAlarmWidget->hide();
+        repositionCenteredPopups();
+    }
+}
+
+void MainWindow::onServoFaultResetClicked()
+{
+    if (m_servoFaultHasNonResettable) {
+        return;
+    }
+    writeToMainDevice(290, 1);
+    m_servoFaultDismissed = true;
+    m_servoFaultAwaitingPostResetRead = true;
+    requestServoFaultCodePoll();
+    updateServoFaultAlarmVisibility();
+    if (m_recorder) {
+        OperationRecord record;
+        record.timestamp = QDateTime::currentDateTime();
+        record.pageName = QStringLiteral("报警系统");
+        record.controlName = QStringLiteral("机械臂伺服故障");
+        record.controlType = QStringLiteral("报警操作");
+        record.operation = QStringLiteral("确认复位");
+        record.oldValue = m_servoFaultHistorySummary;
+        record.newValue = QStringLiteral("用户确认复位机械臂伺服故障，已通知主控");
+        m_recorder->addRecord(record);
+    }
+
+    QTimer::singleShot(800, this, [this]() {
+        if (!m_servoFaultAwaitingPostResetRead) {
+            return;
+        }
+        m_servoFaultAwaitingPostResetRead = false;
+        refreshServoFaultStateFromCache();
+        if (m_mainRegister102Bit9FaultFlag && !m_servoFaultLines.isEmpty()) {
+            m_servoFaultDismissed = false;
+            updateServoFaultAlarmVisibility();
+        }
+    });
+}
+
 void MainWindow::showAgvBatteryLowDialog()
 {
     if (!m_agvBatteryLowDialog) {
@@ -10163,7 +10490,8 @@ void MainWindow::repositionCenteredPopups()
         m_inclinometerTiltRiskDialog,
         m_agvStationOfflineAlarmWidget,
         m_agvDriveFaultAlarmWidget,
-        m_agvBatteryLowDialog
+        m_agvBatteryLowDialog,
+        m_servoFaultAlarmWidget
     };
 
     QList<QWidget*> popups;
@@ -10203,6 +10531,7 @@ void MainWindow::hideNonEmergencyPopups()
 {
     hideAgvStationOfflineAlarm();
     hideAgvDriveFaultAlarm();
+    hideServoFaultAlarm();
     hideAgvBatteryLowDialog();
     hideRobotWeightOverloadDialog();
     if (m_robotWeightLockWidget && m_robotWeightLockWidget->isVisible()) {
@@ -10219,6 +10548,7 @@ void MainWindow::restoreConditionPopupsAfterEmergency()
     if (m_agvDriveFault51Bit2Flag) {
         showAgvDriveFaultAlarm();
     }
+    updateServoFaultAlarmVisibility();
     if (m_agvBatteryLow51Bit0Flag) {
         showAgvBatteryLowDialog();
     }
