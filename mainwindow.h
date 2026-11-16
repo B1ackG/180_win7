@@ -444,12 +444,14 @@ public:
     void initSpeedGaugeUI();
     /** @brief 初始化机器人总功率卡片（纯 QWidget） */
     void initRobotTotalPowerCard();
-    /** @brief 初始化立柱/配重缸扭矩卡片（276~279 / 280~283 LREAL） */
+    /** @brief 初始化立柱/后配重缸/前配重缸扭矩卡片（276~279 / 280~283 / 296~299 LREAL） */
     void initRobotTotalTorqueCard();
     /** @brief 初始化底盘 X/Y 与悬臂 X/Y 倾角卡片（纯 QWidget，样式对标 InclinometerCard.qml） */
     void initInclinometerCards();
     /** @brief 初始化当前负载卡片（寄存器 123） */
     void initWeightCard();
+    /** @brief 初始化前支撑力卡片（寄存器 139 UINT） */
+    void initFrontSupportForceCard();
     /** @brief 初始化装配面高度卡片（J2 高度减偏移） */
     void initPlaneHeightCard();
     void refreshPlaneHeightCard();
@@ -472,13 +474,15 @@ public:
     void updateRobotTotalTorquePercent(double percent, bool valid = true);
     /** @brief 更新当前负载显示（寄存器 123，单位 KG） */
     void updateCurrentLoadWeight(quint16 rawValue);
+    /** @brief 更新前支撑力显示（寄存器 139 UINT，单位 KG） */
+    void updateFrontSupportForce(quint16 rawValue);
     /** @brief 更新倾角显示（AGV 151/152，寄存器值÷100） */
     void updateInclinometerValue(bool isXAxis, quint16 rawValue);
     /** @brief 从寄存器缓存刷新悬臂倾角（主控 135/137，REAL / CDAB） */
     void updateRobotInclinometerFromCache();
     /** @brief 从寄存器缓存刷新位姿面板 */
     void updateDeviceCoordPanelFromCache();
-    /** @brief 从寄存器缓存刷新一组扭矩 LREAL；startAddr 为 276 或 280 */
+    /** @brief 从寄存器缓存刷新一组扭矩 LREAL；startAddr 为 276、280 或 296 */
     void updateRobotTorqueFromCache(int startAddr);
     /** @brief 初始化滑块编辑 UI */
     void initSliderEditUI();
@@ -849,6 +853,7 @@ private:
     RobotTotalPowerCard *m_robotTotalPowerCard = nullptr;
     RobotTotalTorqueCard *m_robotTotalTorqueCard = nullptr;
     RobotTotalTorqueCard *m_robotCounterweightTorqueCard = nullptr;
+    RobotTotalTorqueCard *m_robotTest6TorqueCard = nullptr;
     double m_robotTorqueDangerPercent = RobotTotalTorqueCard::kDefaultDangerPercent;
     DeviceCoordPanel *m_deviceCoordPanel = nullptr;
     InclinometerCard *m_inclinometerXCard = nullptr;
@@ -856,6 +861,7 @@ private:
     InclinometerCard *m_robotInclinometerXCard = nullptr;
     InclinometerCard *m_robotInclinometerYCard = nullptr;
     MetricValueCard *m_weightCard = nullptr;
+    MetricValueCard *m_frontSupportForceCard = nullptr;
     MetricValueCard *m_planeHeightCard = nullptr;
     double m_planeHeightOffsetMm = 1900.0;
     bool m_hasLastJ2Height = false;

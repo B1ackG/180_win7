@@ -5,6 +5,7 @@
 #include <QDate>
 #include <QDateTime>
 #include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QTime>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -20,6 +21,7 @@ private slots:
     void downsampleKeepsMinAndMax();
     void conditionSearchMatchesRoundedWorkKeysAndReportsState();
     void conditionSearchRejectsDifferentPoseAndClustersDwell();
+    void queriesNewChannelsAndSkipsMissingLegacyColumns();
 
 private:
     TimeSeriesConfig testConfig(const QString &directory) const;
@@ -88,11 +90,13 @@ TimeSeriesSample TestTimeSeriesQueryService::poseSample(const QDateTime &local,
     set(TimeSeriesChannel::LoadKg, load);
     set(TimeSeriesChannel::ColumnTorquePercent, 21.0);
     set(TimeSeriesChannel::CounterweightTorquePercent, 14.0);
+    set(TimeSeriesChannel::ArmTorquePercent, 9.5);
     set(TimeSeriesChannel::ArmTiltXDeg, armX);
     set(TimeSeriesChannel::ArmTiltYDeg, armY);
     set(TimeSeriesChannel::TotalPowerW, 820);
     set(TimeSeriesChannel::ChassisTiltXDeg, 0.1);
     set(TimeSeriesChannel::ChassisTiltYDeg, -0.2);
+    set(TimeSeriesChannel::FrontSupportForceKg, 320);
     return sample;
 }
 
@@ -211,17 +215,19 @@ void TestTimeSeriesQueryService::conditionSearchMatchesRoundedWorkKeysAndReports
 
     QVERIFY(result.ok);
     QCOMPARE(TimeSeriesMeta::conditionWorkChannels().size(), 7);
-    QCOMPARE(TimeSeriesMeta::conditionStateChannels().size(), 7);
+    QCOMPARE(TimeSeriesMeta::conditionStateChannels().size(), 9);
     QVERIFY(TimeSeriesMeta::conditionWorkChannels().contains(TimeSeriesChannel::CounterweightHeightMm));
     QVERIFY(TimeSeriesMeta::conditionWorkChannels().contains(TimeSeriesChannel::PlaneHeightMm));
     QVERIFY(TimeSeriesMeta::conditionStateChannels().contains(TimeSeriesChannel::TotalPowerW));
     QVERIFY(TimeSeriesMeta::conditionStateChannels().contains(TimeSeriesChannel::ColumnTorquePercent));
+    QVERIFY(TimeSeriesMeta::conditionStateChannels().contains(TimeSeriesChannel::ArmTorquePercent));
+    QVERIFY(TimeSeriesMeta::conditionStateChannels().contains(TimeSeriesChannel::FrontSupportForceKg));
     QCOMPARE(result.hits.size(), 1);
     QCOMPARE(result.hits.first().tsUtcMs, match.toUTC().toMSecsSinceEpoch());
     QCOMPARE(result.workChannels.size(), 7);
     QVERIFY(result.probeWork.first().valid);
-    QCOMPARE(result.stateChannels.at(2), TimeSeriesChannel::ArmTiltXDeg);
-    QCOMPARE(result.hits.first().stateValues.at(2).value, 1.8);
+    QCOMPARE(result.stateChannels.at(3), TimeSeriesChannel::ArmTiltXDeg);
+    QCOMPARE(result.hits.first().stateValues.at(3).value, 1.8);
 }
 
 void TestTimeSeriesQueryService::conditionSearchRejectsDifferentPoseAndClustersDwell()
@@ -251,6 +257,78 @@ void TestTimeSeriesQueryService::conditionSearchRejectsDifferentPoseAndClustersD
     QCOMPARE(result.hits.size(), 1);
     QCOMPARE(result.hits.first().tsUtcMs, dwell.addSecs(2).toUTC().toMSecsSinceEpoch());
     QVERIFY(result.rawHitCount >= 3);
+}
+
+void TestTimeSeriesQueryService::queriesNewChannelsAndSkipsMissingLegacyColumns()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    TimeSeriesWriter writer;
+    writer.initialize(testConfig(dir.path()));
+    const QDateTime now = QDateTime(QDate(2026, 7, 1), QTime(8, 0, 0));
+    TimeSeriesSample sample = sampleAt(now, TimeSeriesChannel::ArmTorquePercent, 11.5);
+    sample.values[static_cast<int>(TimeSeriesChannel::FrontSupportForceKg)].value = 280;
+    sample.values[static_cast<int>(TimeSeriesChannel::FrontSupportForceKg)].valid = true;
+    writer.enqueueSample(sample);
+    writer.flush();
+    writer.shutdown();
+
+    const TimeSeriesQueryResult result = TimeSeriesQueryService::query(
+        dir.path(),
+        now.addSecs(-2).toUTC().toMSecsSinceEpoch(),
+        now.addSecs(2).toUTC().toMSecsSinceEpoch(),
+        {TimeSeriesChannel::ArmTorquePercent, TimeSeriesChannel::FrontSupportForceKg});
+    QVERIFY(result.ok);
+    QCOMPARE(result.series.size(), 2);
+    QCOMPARE(result.series.at(0).points.size(), 1);
+    QCOMPARE(result.series.at(0).points.first().value, 11.5);
+    QCOMPARE(result.series.at(1).points.size(), 1);
+    QCOMPARE(result.series.at(1).points.first().value, 280.0);
+
+    QTemporaryDir legacyDir;
+    QVERIFY(legacyDir.isValid());
+    const QString legacyPath = TimeSeriesMeta::dailyFilePath(legacyDir.path(), now.date());
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"),
+                                                    QStringLiteral("tst_legacy_query"));
+        db.setDatabaseName(legacyPath);
+        QVERIFY(db.open());
+        QVERIFY(QSqlQuery(db).exec(QStringLiteral(
+            "CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")));
+        QVERIFY(QSqlQuery(db).exec(QStringLiteral(
+            "INSERT INTO metadata(key, value) VALUES('schema_version','1')")));
+        QVERIFY(QSqlQuery(db).exec(QStringLiteral(
+            "CREATE TABLE samples("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "ts_utc_ms INTEGER NOT NULL,"
+            "local_offset_min INTEGER NOT NULL,"
+            "session_id TEXT NOT NULL,"
+            "arm_tilt_x_deg REAL)")));
+        QSqlQuery insert(db);
+        QVERIFY(insert.prepare(QStringLiteral(
+            "INSERT INTO samples(ts_utc_ms, local_offset_min, session_id, arm_tilt_x_deg) "
+            "VALUES(?,?,?,?)")));
+        insert.addBindValue(now.toUTC().toMSecsSinceEpoch());
+        insert.addBindValue(now.offsetFromUtc() / 60);
+        insert.addBindValue(QStringLiteral("legacy"));
+        insert.addBindValue(1.2);
+        QVERIFY(insert.exec());
+    }
+    QSqlDatabase::removeDatabase(QStringLiteral("tst_legacy_query"));
+
+    const TimeSeriesQueryResult legacy = TimeSeriesQueryService::query(
+        legacyDir.path(),
+        now.addSecs(-2).toUTC().toMSecsSinceEpoch(),
+        now.addSecs(2).toUTC().toMSecsSinceEpoch(),
+        {TimeSeriesChannel::ArmTiltXDeg, TimeSeriesChannel::ArmTorquePercent,
+         TimeSeriesChannel::FrontSupportForceKg});
+    QVERIFY(legacy.ok);
+    QCOMPARE(legacy.series.size(), 3);
+    QCOMPARE(legacy.series.at(0).points.size(), 1);
+    QCOMPARE(legacy.series.at(0).points.first().value, 1.2);
+    QCOMPARE(legacy.series.at(1).points.size(), 0);
+    QCOMPARE(legacy.series.at(2).points.size(), 0);
 }
 
 QTEST_GUILESS_MAIN(TestTimeSeriesQueryService)

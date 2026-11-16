@@ -56,10 +56,14 @@ QString conditionColumnTitle(TimeSeriesChannel channel)
         return QStringLiteral("装配面");
     case TimeSeriesChannel::LoadKg:
         return QStringLiteral("负载");
+    case TimeSeriesChannel::FrontSupportForceKg:
+        return QStringLiteral("前支撑力");
     case TimeSeriesChannel::ColumnTorquePercent:
         return QStringLiteral("立柱扭矩");
     case TimeSeriesChannel::CounterweightTorquePercent:
-        return QStringLiteral("配重扭矩");
+        return QStringLiteral("后配重扭矩");
+    case TimeSeriesChannel::ArmTorquePercent:
+        return QStringLiteral("前配重扭矩");
     case TimeSeriesChannel::ArmTiltXDeg:
         return QStringLiteral("悬臂X");
     case TimeSeriesChannel::ArmTiltYDeg:

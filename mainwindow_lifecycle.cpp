@@ -421,6 +421,7 @@ void MainWindow::initUI()
     initRobotTotalTorqueCard();
     initInclinometerCards();
     initWeightCard();
+    initFrontSupportForceCard();
     initPlaneHeightCard();
     initDeviceCoordPanel();
 

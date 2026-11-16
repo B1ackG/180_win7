@@ -276,6 +276,8 @@ void TestTimeSeriesChartWidget::defaultChannelSelectionAndLimit()
     QVERIFY(selected.contains(TimeSeriesChannel::ArmTiltYDeg));
     QVERIFY(selected.contains(TimeSeriesChannel::ChassisTiltXDeg));
     QVERIFY(selected.contains(TimeSeriesChannel::ChassisTiltYDeg));
+    QVERIFY(dialog.channelButton(TimeSeriesChannel::ArmTorquePercent));
+    QVERIFY(dialog.channelButton(TimeSeriesChannel::FrontSupportForceKg));
 
     QPushButton *j1 = dialog.channelButton(TimeSeriesChannel::J1AngleDeg);
     QPushButton *armX = dialog.channelButton(TimeSeriesChannel::ArmTiltXDeg);

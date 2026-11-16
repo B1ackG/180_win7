@@ -13,6 +13,7 @@
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QSet>
 #include <QUuid>
 
 namespace {
@@ -47,6 +48,19 @@ void closeAndRemove(const QString &connectionName)
     if (QSqlDatabase::contains(connectionName)) {
         QSqlDatabase::removeDatabase(connectionName);
     }
+}
+
+QSet<QString> sampleTableColumns(QSqlDatabase &db)
+{
+    QSet<QString> columns;
+    QSqlQuery info(db);
+    if (!info.exec(QStringLiteral("PRAGMA table_info(samples)"))) {
+        return columns;
+    }
+    while (info.next()) {
+        columns.insert(info.value(1).toString());
+    }
+    return columns;
 }
 
 int readSampleIntervalMs(QSqlDatabase &db)
@@ -227,10 +241,17 @@ TimeSeriesQueryResult TimeSeriesQueryService::query(const QString &directory,
 
             sampleIntervalMs = readSampleIntervalMs(db);
 
+            const QSet<QString> existingColumns = sampleTableColumns(db);
             QStringList columnSql;
             columnSql << QStringLiteral("id") << QStringLiteral("ts_utc_ms");
-            for (TimeSeriesChannel channel : channels) {
-                columnSql << TimeSeriesMeta::columnName(channel);
+            QVector<int> selectedIndexes;
+            for (int i = 0; i < channels.size(); ++i) {
+                const QString name = TimeSeriesMeta::columnName(channels.at(i));
+                if (!existingColumns.contains(name)) {
+                    continue;
+                }
+                columnSql << name;
+                selectedIndexes.append(i);
             }
             QSqlQuery query(db);
             query.prepare(QStringLiteral(
@@ -249,8 +270,8 @@ TimeSeriesQueryResult TimeSeriesQueryService::query(const QString &directory,
             while (query.next()) {
                 const qint64 id = query.value(0).toLongLong();
                 const qint64 ts = query.value(1).toLongLong();
-                for (int i = 0; i < channels.size(); ++i) {
-                    const QVariant raw = query.value(2 + i);
+                for (int col = 0; col < selectedIndexes.size(); ++col) {
+                    const QVariant raw = query.value(2 + col);
                     if (!raw.isValid() || raw.isNull()) {
                         continue;
                     }
@@ -263,7 +284,7 @@ TimeSeriesQueryResult TimeSeriesQueryService::query(const QString &directory,
                     point.tsUtcMs = ts;
                     point.id = id;
                     point.value = value;
-                    series[i].points.append(point);
+                    series[selectedIndexes.at(col)].points.append(point);
                 }
             }
         }
@@ -353,12 +374,19 @@ bool readNearestSample(const QString &path,
             return false;
         }
 
+        const QSet<QString> existingColumns = sampleTableColumns(db);
         QStringList columns;
         columns << QStringLiteral("ts_utc_ms")
                 << QStringLiteral("local_offset_min")
                 << QStringLiteral("session_id");
+        QVector<int> selectedIndexes;
         for (int i = 0; i < TimeSeriesMeta::channelCount(); ++i) {
-            columns << TimeSeriesMeta::columnName(TimeSeriesMeta::channelAt(i));
+            const QString name = TimeSeriesMeta::columnName(TimeSeriesMeta::channelAt(i));
+            if (!existingColumns.contains(name)) {
+                continue;
+            }
+            columns << name;
+            selectedIndexes.append(i);
         }
 
         QSqlQuery query(db);
@@ -378,8 +406,8 @@ bool readNearestSample(const QString &path,
         out->localOffsetMinutes = query.value(1).toInt();
         out->sessionId = query.value(2).toString();
         out->values.resize(TimeSeriesMeta::channelCount());
-        for (int i = 0; i < TimeSeriesMeta::channelCount(); ++i) {
-            out->values[i] = valueFromVariant(query.value(3 + i));
+        for (int col = 0; col < selectedIndexes.size(); ++col) {
+            out->values[selectedIndexes.at(col)] = valueFromVariant(query.value(3 + col));
         }
     }
     closeAndRemove(connectionName);
@@ -412,13 +440,25 @@ void appendMatchesFromDate(const QString &path,
             return;
         }
 
+        const QSet<QString> existingColumns = sampleTableColumns(db);
         QStringList columns;
         columns << QStringLiteral("ts_utc_ms");
         for (TimeSeriesChannel channel : workChannels) {
-            columns << TimeSeriesMeta::columnName(channel);
+            const QString name = TimeSeriesMeta::columnName(channel);
+            if (!existingColumns.contains(name)) {
+                closeAndRemove(connectionName);
+                return;
+            }
+            columns << name;
         }
-        for (TimeSeriesChannel channel : stateChannels) {
-            columns << TimeSeriesMeta::columnName(channel);
+        QVector<int> stateIndexes;
+        for (int i = 0; i < stateChannels.size(); ++i) {
+            const QString name = TimeSeriesMeta::columnName(stateChannels.at(i));
+            if (!existingColumns.contains(name)) {
+                continue;
+            }
+            columns << name;
+            stateIndexes.append(i);
         }
 
         QStringList whereSql;
@@ -452,8 +492,9 @@ void appendMatchesFromDate(const QString &path,
             for (int i = 0; i < workChannels.size(); ++i) {
                 hit.workValues[i] = valueFromVariant(query.value(1 + i));
             }
-            for (int i = 0; i < stateChannels.size(); ++i) {
-                hit.stateValues[i] = valueFromVariant(query.value(1 + workChannels.size() + i));
+            for (int col = 0; col < stateIndexes.size(); ++col) {
+                hit.stateValues[stateIndexes.at(col)] =
+                    valueFromVariant(query.value(1 + workChannels.size() + col));
             }
             hits->append(hit);
         }

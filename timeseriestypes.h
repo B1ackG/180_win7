@@ -24,6 +24,8 @@ enum class TimeSeriesChannel {
     TotalPowerW,
     ChassisTiltXDeg,
     ChassisTiltYDeg,
+    ArmTorquePercent,
+    FrontSupportForceKg,
     Count
 };
 
