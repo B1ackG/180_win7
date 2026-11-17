@@ -290,7 +290,9 @@ bool TimeSeriesWriter::createOrValidateSchema(QString *error)
         "load_kg REAL,"
         "total_power_w REAL,"
         "chassis_tilt_x_deg REAL,"
-        "chassis_tilt_y_deg REAL)");
+        "chassis_tilt_y_deg REAL,"
+        "arm_torque_percent REAL,"
+        "front_support_force_kg REAL)");
     if (!query.exec(createSamples)) {
         if (error) {
             *error = query.lastError().text();
@@ -326,6 +328,20 @@ bool TimeSeriesWriter::createOrValidateSchema(QString *error)
     QSet<QString> columns;
     while (info.next()) {
         columns.insert(info.value(1).toString());
+    }
+    QSqlQuery alter(db);
+    for (TimeSeriesChannel channel : TimeSeriesMeta::allChannels()) {
+        const QString column = TimeSeriesMeta::columnName(channel);
+        if (columns.contains(column) || column.isEmpty()) {
+            continue;
+        }
+        if (!alter.exec(QStringLiteral("ALTER TABLE samples ADD COLUMN %1 REAL").arg(column))) {
+            if (error) {
+                *error = alter.lastError().text();
+            }
+            return false;
+        }
+        columns.insert(column);
     }
     const QStringList required = columnListSql().split(QLatin1Char(','));
     for (const QString &column : required) {

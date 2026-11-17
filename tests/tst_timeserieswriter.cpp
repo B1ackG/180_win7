@@ -23,6 +23,7 @@ private slots:
     void deletesExpiredDailyFiles();
     void quarantinesCorruptDatabase();
     void flushOnShutdownPersistsQueue();
+    void persistsNewChannelsAndMigratesLegacySchema();
 
 private:
     TimeSeriesConfig testConfig(const QString &directory) const;
@@ -208,6 +209,116 @@ void TestTimeSeriesWriter::flushOnShutdownPersistsQueue()
     writer.shutdown();
 
     QCOMPARE(rowCount(TimeSeriesMeta::dailyFilePath(dir.path(), now.date())), 1);
+}
+
+void TestTimeSeriesWriter::persistsNewChannelsAndMigratesLegacySchema()
+{
+    QCOMPARE(TimeSeriesMeta::channelCount(), 16);
+    QCOMPARE(TimeSeriesMeta::columnName(TimeSeriesChannel::ArmTorquePercent),
+             QStringLiteral("arm_torque_percent"));
+    QCOMPARE(TimeSeriesMeta::columnName(TimeSeriesChannel::FrontSupportForceKg),
+             QStringLiteral("front_support_force_kg"));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    TimeSeriesWriter writer;
+    writer.initialize(testConfig(dir.path()));
+    const QDateTime now = QDateTime::currentDateTime();
+    TimeSeriesSample sample = sampleAt(now, 1.5);
+    sample.values[static_cast<int>(TimeSeriesChannel::ArmTorquePercent)].value = 12.5;
+    sample.values[static_cast<int>(TimeSeriesChannel::ArmTorquePercent)].valid = true;
+    sample.values[static_cast<int>(TimeSeriesChannel::FrontSupportForceKg)].value = 330;
+    sample.values[static_cast<int>(TimeSeriesChannel::FrontSupportForceKg)].valid = true;
+    writer.enqueueSample(sample);
+    writer.flush();
+    writer.shutdown();
+
+    const QString path = TimeSeriesMeta::dailyFilePath(dir.path(), now.date());
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"),
+                                                    QStringLiteral("tst_new_channels"));
+        db.setDatabaseName(path);
+        QVERIFY(db.open());
+        QSqlQuery query(db);
+        QVERIFY(query.exec(QStringLiteral(
+            "SELECT arm_torque_percent, front_support_force_kg FROM samples LIMIT 1")));
+        QVERIFY(query.next());
+        QCOMPARE(query.value(0).toDouble(), 12.5);
+        QCOMPARE(query.value(1).toDouble(), 330.0);
+    }
+    QSqlDatabase::removeDatabase(QStringLiteral("tst_new_channels"));
+
+    QTemporaryDir legacyDir;
+    QVERIFY(legacyDir.isValid());
+    const QDate today = QDate::currentDate();
+    const QString legacyPath = TimeSeriesMeta::dailyFilePath(legacyDir.path(), today);
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"),
+                                                    QStringLiteral("tst_legacy_writer"));
+        db.setDatabaseName(legacyPath);
+        QVERIFY(db.open());
+        QVERIFY(QSqlQuery(db).exec(QStringLiteral(
+            "CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")));
+        QVERIFY(QSqlQuery(db).exec(QStringLiteral(
+            "INSERT INTO metadata(key, value) VALUES('schema_version','1')")));
+        QVERIFY(QSqlQuery(db).exec(QStringLiteral(
+            "CREATE TABLE samples("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "ts_utc_ms INTEGER NOT NULL,"
+            "local_offset_min INTEGER NOT NULL,"
+            "session_id TEXT NOT NULL,"
+            "j1_angle_deg REAL)")));
+        QSqlQuery insert(db);
+        QVERIFY(insert.prepare(QStringLiteral(
+            "INSERT INTO samples(ts_utc_ms, local_offset_min, session_id, j1_angle_deg) "
+            "VALUES(?,?,?,?)")));
+        const QDateTime oldStamp(today, QTime(10, 0, 0));
+        insert.addBindValue(oldStamp.toUTC().toMSecsSinceEpoch());
+        insert.addBindValue(oldStamp.offsetFromUtc() / 60);
+        insert.addBindValue(QStringLiteral("legacy"));
+        insert.addBindValue(7.0);
+        QVERIFY(insert.exec());
+    }
+    QSqlDatabase::removeDatabase(QStringLiteral("tst_legacy_writer"));
+
+    TimeSeriesWriter migrator;
+    migrator.initialize(testConfig(legacyDir.path()));
+    TimeSeriesSample migrated = sampleAt(QDateTime(today, QTime(11, 0, 0)), 8.0);
+    migrated.values[static_cast<int>(TimeSeriesChannel::ArmTorquePercent)].value = 6.2;
+    migrated.values[static_cast<int>(TimeSeriesChannel::ArmTorquePercent)].valid = true;
+    migrated.values[static_cast<int>(TimeSeriesChannel::FrontSupportForceKg)].value = 210;
+    migrated.values[static_cast<int>(TimeSeriesChannel::FrontSupportForceKg)].valid = true;
+    migrator.enqueueSample(migrated);
+    migrator.flush();
+    migrator.shutdown();
+
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"),
+                                                    QStringLiteral("tst_migrated_writer"));
+        db.setDatabaseName(legacyPath);
+        QVERIFY(db.open());
+        QSqlQuery info(db);
+        QVERIFY(info.exec(QStringLiteral("PRAGMA table_info(samples)")));
+        QStringList columns;
+        while (info.next()) {
+            columns.append(info.value(1).toString());
+        }
+        QVERIFY(columns.contains(QStringLiteral("arm_torque_percent")));
+        QVERIFY(columns.contains(QStringLiteral("front_support_force_kg")));
+        QSqlQuery query(db);
+        QVERIFY(query.exec(QStringLiteral(
+            "SELECT j1_angle_deg, arm_torque_percent, front_support_force_kg "
+            "FROM samples ORDER BY ts_utc_ms")));
+        QVERIFY(query.next());
+        QCOMPARE(query.value(0).toDouble(), 7.0);
+        QVERIFY(query.value(1).isNull());
+        QVERIFY(query.value(2).isNull());
+        QVERIFY(query.next());
+        QCOMPARE(query.value(0).toDouble(), 8.0);
+        QCOMPARE(query.value(1).toDouble(), 6.2);
+        QCOMPARE(query.value(2).toDouble(), 210.0);
+    }
+    QSqlDatabase::removeDatabase(QStringLiteral("tst_migrated_writer"));
 }
 
 QTEST_GUILESS_MAIN(TestTimeSeriesWriter)

@@ -628,6 +628,9 @@ void MainWindow::applyRobotTorqueRuntimeSettings()
     if (m_robotCounterweightTorqueCard) {
         m_robotCounterweightTorqueCard->setDangerThreshold(m_robotTorqueDangerPercent);
     }
+    if (m_robotTest6TorqueCard) {
+        m_robotTest6TorqueCard->setDangerThreshold(m_robotTorqueDangerPercent);
+    }
 }
 
 void MainWindow::applyButtonVisibilityRuntimeSettings()
@@ -2248,8 +2251,11 @@ void MainWindow::initRobotTotalTorqueCard()
             QStringLiteral("立柱升降扭矩"),
             m_robotTotalTorqueCard);
     initOne(QStringLiteral("quickWidget_Robottest5Torque"),
-            QStringLiteral("配重缸升降扭矩"),
+            QStringLiteral("后配重缸升降扭矩"),
             m_robotCounterweightTorqueCard);
+    initOne(QStringLiteral("quickWidget_Robottest6Torque"),
+            QStringLiteral("前配重缸升降扭矩"),
+            m_robotTest6TorqueCard);
 }
 
 void MainWindow::updateRobotTotalTorquePercent(double percent, bool valid)
@@ -2342,6 +2348,22 @@ void MainWindow::initWeightCard()
     fillMetricHost(host, m_weightCard);
 }
 
+void MainWindow::initFrontSupportForceCard()
+{
+    QWidget *host = findChild<QWidget*>(QStringLiteral("quickWidget_Front_supportforce"));
+    if (!host) {
+        qCWarning(lcMainWindow) << "未找到 quickWidget_Front_supportforce，跳过前支撑力卡片初始化";
+        return;
+    }
+
+    m_frontSupportForceCard = new MetricValueCard(host);
+    m_frontSupportForceCard->setTitle(QStringLiteral("前支撑力"));
+    m_frontSupportForceCard->setUnit(QStringLiteral("KG"));
+    m_frontSupportForceCard->setDecimals(0);
+    m_frontSupportForceCard->setValue(0.0, false);
+    fillMetricHost(host, m_frontSupportForceCard);
+}
+
 void MainWindow::initPlaneHeightCard()
 {
     QWidget *host = findChild<QWidget*>(QStringLiteral("quickWidget_PlaneHeight"));
@@ -2391,6 +2413,16 @@ void MainWindow::updateCurrentLoadWeight(quint16 rawValue)
     const double kg = static_cast<double>(rawValue);
     m_weightCard->setValue(kg, true);
     recordTimeSeriesValue(TimeSeriesChannel::LoadKg, kg);
+}
+
+void MainWindow::updateFrontSupportForce(quint16 rawValue)
+{
+    if (!m_frontSupportForceCard) {
+        return;
+    }
+    const double kg = static_cast<double>(rawValue);
+    m_frontSupportForceCard->setValue(kg, true);
+    recordTimeSeriesValue(TimeSeriesChannel::FrontSupportForceKg, kg);
 }
 
 void MainWindow::initDeviceCoordPanel()
@@ -6106,12 +6138,18 @@ void MainWindow::updateDeviceCoordPanelFromCache()
 
 void MainWindow::updateRobotTorqueFromCache(int startAddr)
 {
-    RobotTotalTorqueCard *card = (startAddr == 276)
-        ? m_robotTotalTorqueCard
-        : m_robotCounterweightTorqueCard;
-    const TimeSeriesChannel channel = (startAddr == 276)
-        ? TimeSeriesChannel::ColumnTorquePercent
-        : TimeSeriesChannel::CounterweightTorquePercent;
+    RobotTotalTorqueCard *card = nullptr;
+    TimeSeriesChannel channel = TimeSeriesChannel::ColumnTorquePercent;
+    if (startAddr == 276) {
+        card = m_robotTotalTorqueCard;
+        channel = TimeSeriesChannel::ColumnTorquePercent;
+    } else if (startAddr == 280) {
+        card = m_robotCounterweightTorqueCard;
+        channel = TimeSeriesChannel::CounterweightTorquePercent;
+    } else if (startAddr == 296) {
+        card = m_robotTest6TorqueCard;
+        channel = TimeSeriesChannel::ArmTorquePercent;
+    }
     if (!card) {
         return;
     }
@@ -6341,6 +6379,10 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
         updateCurrentLoadWeight(value);
     }
 
+    if (address == 139) {
+        updateFrontSupportForce(value);
+    }
+
     if (address >= 135 && address <= 138) {
         updateRobotInclinometerFromCache();
     }
@@ -6354,6 +6396,8 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
         updateRobotTorqueFromCache(276);
     } else if (address == 283) {
         updateRobotTorqueFromCache(280);
+    } else if (address == 299) {
+        updateRobotTorqueFromCache(296);
     }
 
     const QStringList targetLabels = {
@@ -6763,13 +6807,15 @@ void MainWindow::readMainControlSyncRegisters()
     MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 134, 1);
 
     // 悬臂倾角：192.168.1.13 的 135/137 REAL（各占 2 个寄存器，CDAB）
-    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 135, 4);
+    // 前支撑力：139 UINT，与倾角连续，一次读 135~139。
+    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 135, 5);
 
     // 当前负载重量：192.168.1.13 的 123 寄存器
     MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 123, 1);
 
-    // 立柱/配重缸扭矩：192.168.1.13 的 276~279 / 280~283 LREAL（DCBA FEHG）
+    // 立柱/后配重缸/前配重缸扭矩：276~279 / 280~283 / 296~299 LREAL（DCBA FEHG）
     MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 276, 8);
+    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 296, 4);
 }
 // 配置所有TechSliderLabel的参数
 void MainWindow::setupSliderLabelConfigs()
