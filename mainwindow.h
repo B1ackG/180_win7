@@ -44,6 +44,7 @@
 #include "timeseriestypes.h"
 #include "buttonmodbusmapping.h"
 #include "displayregistermapping.h"
+#include "mainmodbusconnector.h"
 
 class TimeSeriesManager;
 class TimeSeriesDialog;
@@ -220,6 +221,18 @@ public:
     // ==========================================
     /** @brief 启动报警子系统 */
     void startAlarmSystem();
+    /** @brief 当前主控制器连接端点（本机模拟 / 远程模拟 / 实机） */
+    MainModbusEndpoint currentMainModbusEndpoint() const;
+    /** @brief 当前 AGV 连接端点（本机模拟 / 远程模拟 / 实机） */
+    MainModbusEndpoint currentAgvModbusEndpoint() const;
+    /** @brief 主控制器 Modbus 后端会话是否已建立；管理器为空时返回 false */
+    bool isMainModbusConnected() const;
+    /** @brief AGV Modbus 后端会话是否已建立；管理器为空时返回 false */
+    bool isAgvModbusConnected() const;
+    /** @brief 按当前端点和已加载的轮询/重连配置发起一次主控制器连接；已连接或功能关闭时无操作 */
+    void retryMainModbusConnection();
+    /** @brief 按当前端点发起一次 AGV 连接；已连接或功能关闭时无操作 */
+    void retryAgvModbusConnection();
     /** @brief 配置报警系统 */
     void setupAlarmSystem();
     /** @brief 检查并处理报警条件 */

@@ -46,7 +46,22 @@ public:
      */
     static MainModbusEndpoint selectEndpoint(bool localSimulatorEnabled,
                                              bool remoteSimulatorEnabled,
-                                             const QString &remoteSimulatorHost = QStringLiteral("192.168.1.70"));
+                                             const QString &remoteSimulatorHost = QStringLiteral("192.168.1.70"))
+    {
+        MainModbusEndpoint endpoint;
+        endpoint.host = QStringLiteral("192.168.1.13");
+        endpoint.port = 502;
+
+        if (localSimulatorEnabled) {
+            endpoint.host = QStringLiteral("127.0.0.1");
+            endpoint.port = 5020;
+        } else if (remoteSimulatorEnabled) {
+            endpoint.host = remoteSimulatorHost;
+            endpoint.port = 5020;
+        }
+
+        return endpoint;
+    }
 
     /**
      * @brief 根据运行模式选择 AGV 连接端点。
@@ -56,7 +71,22 @@ public:
                                                 bool remoteSimulatorEnabled,
                                                 const QString &remoteSimulatorHost,
                                                 const QString &agvHost,
-                                                quint16 agvPort);
+                                                quint16 agvPort)
+    {
+        MainModbusEndpoint endpoint;
+        endpoint.host = agvHost.isEmpty() ? QStringLiteral("192.168.1.88") : agvHost;
+        endpoint.port = agvPort == 0 ? static_cast<quint16>(502) : agvPort;
+
+        if (localSimulatorEnabled) {
+            endpoint.host = QStringLiteral("127.0.0.1");
+            endpoint.port = 5021;
+        } else if (remoteSimulatorEnabled) {
+            endpoint.host = remoteSimulatorHost;
+            endpoint.port = 5021;
+        }
+
+        return endpoint;
+    }
 
     /**
      * @brief 连接指定端点并应用默认轮询/重连配置。

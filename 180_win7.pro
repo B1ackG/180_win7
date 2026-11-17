@@ -60,6 +60,7 @@ SOURCES += \
     robottotaltorquecard.cpp \
     servofaultcodes.cpp \
     speedmodeselector.cpp \
+    startupsystemcheck.cpp \
     steeringmodeselector.cpp \
     techarcgauge.cpp \
     techchamfertoolbutton.cpp \
@@ -115,6 +116,7 @@ HEADERS += \
     robottotaltorquecard.h \
     servofaultcodes.h \
     speedmodeselector.h \
+    startupsystemcheck.h \
     steeringmodeselector.h \
     techarcgauge.h \
     techchamfertoolbutton.h \

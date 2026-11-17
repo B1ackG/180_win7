@@ -391,7 +391,15 @@ void MainWindow::loadPollingRuntimeSettings()
 
     settings.beginGroup("Network");
     m_agvHost = settings.value("agv_host", "192.168.1.88").toString();
-    m_agvPort = static_cast<quint16>(settings.value("agv_port", 502).toUInt());
+    bool agvPortOk = false;
+    const int rawAgvPort = settings.value("agv_port", 502).toInt(&agvPortOk);
+    if (!agvPortOk) {
+        m_agvPort = 502;
+    } else if (rawAgvPort <= 0) {
+        m_agvPort = 0;
+    } else {
+        m_agvPort = static_cast<quint16>(qBound(1, rawAgvPort, 65535));
+    }
     m_remoteSimulatorHost = settings.value("remote_simulator_host", QStringLiteral("192.168.1.70")).toString();
     settings.endGroup();
 
@@ -405,7 +413,6 @@ void MainWindow::loadPollingRuntimeSettings()
     m_mainReconnectIntervalMs = qBound(500, m_mainReconnectIntervalMs, 120000);
     m_agvPollIntervalMs = qBound(50, m_agvPollIntervalMs, 60000);
     m_agvReconnectIntervalMs = qBound(500, m_agvReconnectIntervalMs, 120000);
-    m_agvPort = static_cast<quint16>(qBound(1, static_cast<int>(m_agvPort), 65535));
 }
 
 void MainWindow::savePollingRuntimeSettings() const
@@ -563,23 +570,68 @@ void MainWindow::applyFeatureConsoleRuntimeSettings()
     reconnectModbusEndpointsIfChanged();
 }
 
-MainWindow::RuntimeEndpoint MainWindow::resolvedMainEndpoint() const
+MainModbusEndpoint MainWindow::currentMainModbusEndpoint() const
 {
-    const MainModbusEndpoint endpoint = MainModbusConnector::selectEndpoint(
+    return MainModbusConnector::selectEndpoint(
         isFeatureEnabled(QStringLiteral("tcp_transmission"), QStringLiteral("tcp.local_simulator")),
         isFeatureEnabled(QStringLiteral("tcp_transmission"), QStringLiteral("tcp.remote_simulator")),
         m_remoteSimulatorHost);
-    return {endpoint.host, endpoint.port};
 }
 
-MainWindow::RuntimeEndpoint MainWindow::resolvedAgvEndpoint() const
+MainModbusEndpoint MainWindow::currentAgvModbusEndpoint() const
 {
-    const MainModbusEndpoint endpoint = MainModbusConnector::selectAgvEndpoint(
+    return MainModbusConnector::selectAgvEndpoint(
         isFeatureEnabled(QStringLiteral("tcp_transmission"), QStringLiteral("tcp.local_simulator")),
         isFeatureEnabled(QStringLiteral("tcp_transmission"), QStringLiteral("tcp.remote_simulator")),
         m_remoteSimulatorHost,
         m_agvHost,
         m_agvPort);
+}
+
+bool MainWindow::isMainModbusConnected() const
+{
+    return m_modbusManager && m_modbusManager->isConnected();
+}
+
+bool MainWindow::isAgvModbusConnected() const
+{
+    return m_agvModbusManager && m_agvModbusManager->isConnected();
+}
+
+void MainWindow::retryMainModbusConnection()
+{
+    if (!isBigFeatureEnabled(QStringLiteral("modbus_main")) || !m_modbusManager) {
+        return;
+    }
+    if (m_modbusManager->isConnected()) {
+        return;
+    }
+    const MainModbusEndpoint endpoint = currentMainModbusEndpoint();
+    MainModbusConnector::connectAndConfigure(
+        m_modbusManager, endpoint, m_mainModbusPollIntervalMs, m_mainReconnectIntervalMs);
+}
+
+void MainWindow::retryAgvModbusConnection()
+{
+    if (!isBigFeatureEnabled(QStringLiteral("modbus_agv")) || !m_agvModbusManager) {
+        return;
+    }
+    if (m_agvModbusManager->isConnected()) {
+        return;
+    }
+    const MainModbusEndpoint endpoint = currentAgvModbusEndpoint();
+    m_agvModbusManager->connectToDevice(endpoint.host, endpoint.port);
+}
+
+MainWindow::RuntimeEndpoint MainWindow::resolvedMainEndpoint() const
+{
+    const MainModbusEndpoint endpoint = currentMainModbusEndpoint();
+    return {endpoint.host, endpoint.port};
+}
+
+MainWindow::RuntimeEndpoint MainWindow::resolvedAgvEndpoint() const
+{
+    const MainModbusEndpoint endpoint = currentAgvModbusEndpoint();
     return {endpoint.host, endpoint.port};
 }
 
@@ -6237,10 +6289,7 @@ void MainWindow::setupModbusManager()
 
     qCDebug(lcMainWindow) << "Modbus信号连接完成";
 
-    const MainModbusEndpoint endpoint = MainModbusConnector::selectEndpoint(
-        isFeatureEnabled("tcp_transmission", "tcp.local_simulator"),
-        isFeatureEnabled("tcp_transmission", "tcp.remote_simulator"),
-        m_remoteSimulatorHost);
+    const MainModbusEndpoint endpoint = currentMainModbusEndpoint();
     m_connectedMainEndpoint = {endpoint.host, endpoint.port};
     m_hasConnectedMainEndpoint = true;
     if (endpoint.host == "127.0.0.1") {
@@ -7492,12 +7541,7 @@ void MainWindow::setupAGVModbus()
                 }
             });
 
-    const MainModbusEndpoint agvEndpoint = MainModbusConnector::selectAgvEndpoint(
-        isFeatureEnabled("tcp_transmission", "tcp.local_simulator"),
-        isFeatureEnabled("tcp_transmission", "tcp.remote_simulator"),
-        m_remoteSimulatorHost,
-        m_agvHost,
-        m_agvPort);
+    const MainModbusEndpoint agvEndpoint = currentAgvModbusEndpoint();
     m_connectedAgvEndpoint = {agvEndpoint.host, agvEndpoint.port};
     m_hasConnectedAgvEndpoint = true;
 
