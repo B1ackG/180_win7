@@ -8,6 +8,7 @@
 #include <QVector>
 
 #include "buttonmodbusmapping.h"
+#include "displayregistermapping.h"
 #include "mainwindow.h"
 
 class QLineEdit;
@@ -50,10 +51,20 @@ private:
         QLineEdit *minEdit = nullptr;
         QLineEdit *maxEdit = nullptr;
     };
+    struct DisplayRegisterEdits {
+        QComboBox *device = nullptr;
+        QLineEdit *startEdit = nullptr;
+        QComboBox *wordCount = nullptr;
+        QComboBox *encoding = nullptr;
+        QLineEdit *sumStartEdit = nullptr;
+        QLineEdit *secondStartEdit = nullptr;
+        QLineEdit *secondCountEdit = nullptr;
+    };
     struct ArcGaugeEdits {
         QCheckBox *visible = nullptr;
         QLineEdit *minEdit = nullptr;
         QLineEdit *maxEdit = nullptr;
+        DisplayRegisterEdits registers;
     };
     struct SliderEditEdits {
         QCheckBox *visible = nullptr;
@@ -111,6 +122,20 @@ private:
     bool savePermissionPasswordState(QString *error);
     bool loadButtonVisibilityState();
     bool saveButtonVisibilityState(QString *error);
+    bool loadDisplayRegisterState();
+    bool saveDisplayRegisterState(QString *error);
+    DisplayRegisterEdits makeDisplayRegisterEdits(QWidget *parent, const QString &objectName);
+    void addDisplayRegisterRow(QWidget *parent,
+                               QVBoxLayout *hostLayout,
+                               const QString &objectName,
+                               DisplayRegisterEdits &edits);
+    void applyDisplaySpecToEdits(const DisplayRegisterMapping::DisplaySpec &spec,
+                                 DisplayRegisterEdits &edits);
+    DisplayRegisterMapping::DisplaySpec readDisplaySpecFromEdits(
+        const QString &objectName, const DisplayRegisterEdits &edits) const;
+    bool validateDisplayRegisterEdits(const QString &objectName,
+                                      const DisplayRegisterEdits &edits,
+                                      QString *error);
 
     bool validateIntEdit(QLineEdit *edit, int min, int max, int fallback, QString *error);
     bool validateDoubleEdit(QLineEdit *edit, double min, double max, double fallback, QString *error);
@@ -148,6 +173,7 @@ private:
     QCheckBox *m_cbAgvUiStateSync = nullptr;
 
     QMap<QString, ArcGaugeEdits> m_arcGaugeEdits;
+    QMap<QString, DisplayRegisterEdits> m_statusRegisterEdits;
     QMap<QString, LimitEdits> m_limitEdits;
     QMap<QString, SliderEditEdits> m_sliderEditEdits;
     QMap<QString, QCheckBox*> m_deviceControlChildCheckboxes;

@@ -29,6 +29,7 @@ SOURCES += \
     animationmanager.cpp \
     batterywidget.cpp \
     buttonmodbusmapping.cpp \
+    displayregistermapping.cpp \
     devicecoordpanel.cpp \
     enablebuttonworker.cpp \
     featureswitchmanager.cpp \
@@ -84,6 +85,7 @@ HEADERS += \
     animationmanager.h \
     batterywidget.h \
     buttonmodbusmapping.h \
+    displayregistermapping.h \
     devicecoordpanel.h \
     debug.h \
     enablebuttonworker.h \

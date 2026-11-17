@@ -51,6 +51,7 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <QtMath>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <array>
 #include <fcntl.h>
@@ -67,6 +68,91 @@ Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 #include <QAbstractButton>
 
 static QMap<int, quint16> g_registerCache;
+
+namespace {
+struct RegisterSpan {
+    int start = 0;
+    int count = 0;
+};
+
+bool isPermissionSessionObjectName(const QString &name)
+{
+    return name == QStringLiteral("loginButton")
+        || name == QStringLiteral("logoutButton")
+        || name == QStringLiteral("featureButton")
+        || name == QStringLiteral("exitAppButton")
+        || name == QStringLiteral("roleComboBox")
+        || name == QStringLiteral("passwordEdit")
+        || name == QStringLiteral("passwordHint")
+        || name == QStringLiteral("netConfigSection")
+        || name == QStringLiteral("adminTitle");
+}
+
+bool spanCoveredByWindow(int start, int count, int winStart, int winCount)
+{
+    if (count <= 0 || winCount <= 0 || start < 0) {
+        return false;
+    }
+    return start >= winStart && (start + count - 1) <= (winStart + winCount - 1);
+}
+
+QVector<RegisterSpan> mergeRegisterSpans(QVector<RegisterSpan> spans)
+{
+    QVector<RegisterSpan> valid;
+    valid.reserve(spans.size());
+    for (const RegisterSpan &span : spans) {
+        if (span.start >= 0 && span.count > 0) {
+            valid.append(span);
+        }
+    }
+    if (valid.isEmpty()) {
+        return {};
+    }
+    std::sort(valid.begin(), valid.end(), [](const RegisterSpan &a, const RegisterSpan &b) {
+        return a.start < b.start;
+    });
+    QVector<RegisterSpan> merged;
+    RegisterSpan current = valid.first();
+    for (int i = 1; i < valid.size(); ++i) {
+        const RegisterSpan &next = valid.at(i);
+        const int currentEnd = current.start + current.count;
+        if (next.start <= currentEnd) {
+            current.count = qMax(currentEnd, next.start + next.count) - current.start;
+        } else {
+            merged.append(current);
+            current = next;
+        }
+    }
+    merged.append(current);
+
+    QVector<RegisterSpan> chunks;
+    for (const RegisterSpan &span : merged) {
+        int start = span.start;
+        int remaining = span.count;
+        while (remaining > 0) {
+            const int chunk = qMin(remaining, 125);
+            chunks.append({start, chunk});
+            start += chunk;
+            remaining -= chunk;
+        }
+    }
+    return chunks;
+}
+
+void appendSpecSpans(QVector<RegisterSpan> *spans, const DisplayRegisterMapping::DisplaySpec &spec)
+{
+    if (!spans || !spec.isConfigured()) {
+        return;
+    }
+    spans->append({spec.start, spec.wordCount});
+    if (DisplayRegisterMapping::hasSumStart(spec)) {
+        spans->append({spec.sumStart, spec.wordCount});
+    }
+    if (DisplayRegisterMapping::hasSecondRing(spec)) {
+        spans->append({spec.secondStart, spec.secondCount});
+    }
+}
+} // namespace
 
 namespace {
 SteeringMode steeringModeFromRegisterValue(quint16 value)
@@ -457,7 +543,8 @@ void MainWindow::applyFeatureConsoleRuntimeSettings()
     loadRobotTorqueRuntimeSettings();
     applyRobotTorqueRuntimeSettings();
     applyButtonVisibilityRuntimeSettings();
-    applyPasswordHintRuntimeSettings();
+    reloadDisplayRegisterBindings();
+    applyPermissionPageLoginState();
 
     if (m_recorder) {
         const bool localHistory = isFeatureEnabled(
@@ -706,6 +793,9 @@ void MainWindow::applyButtonVisibilityRuntimeSettings()
     }
     const QStringList extraKeys = settings.childKeys();
     for (const QString &name : extraKeys) {
+        if (isPermissionSessionObjectName(name)) {
+            continue;
+        }
         if (QWidget *widget = findChild<QWidget*>(name)) {
             widget->setVisible(settings.value(name, true).toBool());
         }
@@ -713,6 +803,29 @@ void MainWindow::applyButtonVisibilityRuntimeSettings()
 
     settings.endGroup();
     reloadButtonModbusBindings();
+    applyPermissionPageLoginState();
+}
+
+void MainWindow::applyPermissionPageLoginState()
+{
+    const bool loggedIn = m_currentUserRole != UserRole::Operator;
+    const bool isManufacturer = m_currentUserRole == UserRole::Manufacturer;
+    const bool canExitApp = (m_currentUserRole == UserRole::Admin) || isManufacturer;
+
+    const auto setVisibleByName = [this](const QString &name, bool visible) {
+        if (QWidget *widget = findChild<QWidget*>(name)) {
+            widget->setVisible(visible);
+        }
+    };
+
+    setVisibleByName(QStringLiteral("loginButton"), !loggedIn);
+    setVisibleByName(QStringLiteral("logoutButton"), loggedIn);
+    setVisibleByName(QStringLiteral("featureButton"), loggedIn && isManufacturer);
+    setVisibleByName(QStringLiteral("exitAppButton"), loggedIn && canExitApp);
+    setVisibleByName(QStringLiteral("roleComboBox"), !loggedIn);
+    setVisibleByName(QStringLiteral("passwordEdit"), !loggedIn);
+    setVisibleByName(QStringLiteral("netConfigSection"), loggedIn && isManufacturer);
+    applyPasswordHintRuntimeSettings();
 }
 
 void MainWindow::applyPasswordHintRuntimeSettings()
@@ -888,6 +1001,339 @@ QList<MainWindow::ControllableButtonInfo> MainWindow::controllableButtons() cons
         return a.objectName < b.objectName;
     });
     return result;
+}
+
+DisplayRegisterMapping::DisplaySpec MainWindow::displaySpec(const QString &objectName) const
+{
+    const auto it = m_displayRegisterSpecs.find(objectName);
+    if (it != m_displayRegisterSpecs.end()) {
+        return it.value();
+    }
+    return DisplayRegisterMapping::resolvedSpec(objectName);
+}
+
+bool MainWindow::decodeDisplaySpecValue(const DisplayRegisterMapping::DisplaySpec &spec,
+                                        const QMap<int, quint16> &cache,
+                                        double *outValue,
+                                        bool *sumApplied)
+{
+    if (sumApplied) {
+        *sumApplied = false;
+    }
+    if (!outValue || !spec.isConfigured()) {
+        return false;
+    }
+
+    auto hasWords = [&](int start, int count) -> bool {
+        if (start < 0 || count <= 0) {
+            return false;
+        }
+        for (int i = 0; i < count; ++i) {
+            if (!cache.contains(start + i)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    auto word = [&](int start, int offset) -> quint16 {
+        return cache.value(start + offset);
+    };
+
+    using DisplayRegisterMapping::Encoding;
+    switch (spec.encoding) {
+    case Encoding::UInt16: {
+        if (!hasWords(spec.start, 1)) {
+            return false;
+        }
+        *outValue = static_cast<double>(word(spec.start, 0)) * spec.scale;
+        return true;
+    }
+    case Encoding::Int16Div100: {
+        if (!hasWords(spec.start, 1)) {
+            return false;
+        }
+        *outValue = static_cast<double>(static_cast<qint16>(word(spec.start, 0))) / 100.0 * spec.scale;
+        return true;
+    }
+    case Encoding::CdabFloat: {
+        if (!hasWords(spec.start, 2)) {
+            return false;
+        }
+        const float v = registersToFloatCDAB(word(spec.start, 0), word(spec.start, 1));
+        if (!std::isfinite(v)) {
+            return false;
+        }
+        *outValue = static_cast<double>(v) * spec.scale;
+        return true;
+    }
+    case Encoding::DcbaFehgDouble: {
+        if (!hasWords(spec.start, 4)) {
+            return false;
+        }
+        double value = registersToDoubleDCBAFEHG(
+            word(spec.start, 0), word(spec.start, 1), word(spec.start, 2), word(spec.start, 3));
+        if (DisplayRegisterMapping::hasSumStart(spec) && hasWords(spec.sumStart, spec.wordCount > 0 ? spec.wordCount : 4)) {
+            const int sumCount = spec.wordCount >= 4 ? 4 : spec.wordCount;
+            if (sumCount >= 4) {
+                value += registersToDoubleDCBAFEHG(
+                    word(spec.sumStart, 0), word(spec.sumStart, 1),
+                    word(spec.sumStart, 2), word(spec.sumStart, 3));
+                if (sumApplied) {
+                    *sumApplied = true;
+                }
+            }
+        }
+        *outValue = value * spec.scale;
+        return true;
+    }
+    }
+    return false;
+}
+
+void MainWindow::reloadDisplayRegisterBindings()
+{
+    m_displayRegisterSpecs = DisplayRegisterMapping::resolvedAllSpecs();
+
+    auto expandAddresses = [](MainWindow::SliderLabelConfig &config,
+                              const DisplayRegisterMapping::DisplaySpec &spec) {
+        const int count = qBound(1, spec.wordCount, 4);
+        config.modbusAddress1 = spec.start;
+        config.modbusAddress2 = (count > 1) ? spec.start + 1 : -1;
+        config.modbusAddress3 = (count > 2) ? spec.start + 2 : -1;
+        config.modbusAddress4 = (count > 3) ? spec.start + 3 : -1;
+        if (DisplayRegisterMapping::hasSumStart(spec)) {
+            config.isSumMode = true;
+            const int sumCount = qBound(1, spec.wordCount, 4);
+            for (int i = 0; i < 4; ++i) {
+                config.sumAddress[i] = (i < sumCount) ? spec.sumStart + i : -1;
+            }
+        }
+    };
+
+    static const QStringList kJointNames = {
+        QStringLiteral("robot_ArcGauge_J1Angle"),
+        QStringLiteral("robot_ArcGauge_J2Height"),
+        QStringLiteral("robot_ArcGauge_J3Length"),
+        QStringLiteral("robot_ArcGauge_J4Angle"),
+        QStringLiteral("robot_ArcGauge_CounterweightHeight"),
+    };
+    for (const QString &name : kJointNames) {
+        if (!m_sliderLabelConfigs.contains(name)) {
+            continue;
+        }
+        expandAddresses(m_sliderLabelConfigs[name], displaySpec(name));
+    }
+
+    refreshMappedDisplaysForDevice(QStringLiteral("主控"), -1);
+    refreshMappedDisplaysForDevice(QStringLiteral("AGV"), -1);
+    syncAgvMappedDisplayPollRanges();
+}
+
+void MainWindow::pollUncoveredMappedDisplayRegisters()
+{
+    if (!MainDeviceModbusApi::isReady(m_modbusManager)) {
+        return;
+    }
+
+    const QMap<QString, DisplayRegisterMapping::DisplaySpec> specs =
+        m_displayRegisterSpecs.isEmpty()
+            ? DisplayRegisterMapping::resolvedAllSpecs()
+            : m_displayRegisterSpecs;
+    QVector<RegisterSpan> spans;
+    for (auto it = specs.constBegin(); it != specs.constEnd(); ++it) {
+        if (it.value().device != QStringLiteral("主控")) {
+            continue;
+        }
+        appendSpecSpans(&spans, it.value());
+    }
+    const QVector<RegisterSpan> merged = mergeRegisterSpans(spans);
+    for (const RegisterSpan &span : merged) {
+        if (spanCoveredByWindow(span.start, span.count, m_mainDeviceStatusStart, m_mainDeviceStatusCount)
+            || spanCoveredByWindow(span.start, span.count, m_mainControlSyncStart, m_mainControlSyncCount)) {
+            continue;
+        }
+        MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, span.start, span.count);
+    }
+}
+
+void MainWindow::syncAgvMappedDisplayPollRanges()
+{
+    if (!m_agvModbusManager) {
+        return;
+    }
+
+    static const RegisterSpan kBuiltinAgvSpans[] = {
+        {0, 1}, {50, 2}, {100, 1}, {102, 4}, {110, 4}, {114, 4},
+        {151, 2}, {153, 2}, {155, 1}, {156, 1}
+    };
+
+    const QMap<QString, DisplayRegisterMapping::DisplaySpec> specs =
+        m_displayRegisterSpecs.isEmpty()
+            ? DisplayRegisterMapping::resolvedAllSpecs()
+            : m_displayRegisterSpecs;
+    QVector<RegisterSpan> spans;
+    for (auto it = specs.constBegin(); it != specs.constEnd(); ++it) {
+        if (it.value().device != QStringLiteral("AGV")) {
+            continue;
+        }
+        appendSpecSpans(&spans, it.value());
+    }
+
+    QVector<QPair<int, int>> extra;
+    const QVector<RegisterSpan> merged = mergeRegisterSpans(spans);
+    for (const RegisterSpan &span : merged) {
+        bool covered = false;
+        for (const RegisterSpan &builtin : kBuiltinAgvSpans) {
+            if (spanCoveredByWindow(span.start, span.count, builtin.start, builtin.count)) {
+                covered = true;
+                break;
+            }
+        }
+        if (!covered) {
+            extra.append(qMakePair(span.start, span.count));
+        }
+    }
+    m_agvModbusManager->setExtraPollRanges(extra);
+}
+
+void MainWindow::refreshMappedDisplaysForDevice(const QString &device, int address)
+{
+    const QMap<int, quint16> &cache =
+        (device == QStringLiteral("AGV")) ? m_agvRegisterShadow : g_registerCache;
+
+    auto specIfHit = [&](const QString &name, DisplayRegisterMapping::DisplaySpec *out) -> bool {
+        const DisplayRegisterMapping::DisplaySpec spec = displaySpec(name);
+        if (!spec.isConfigured() || spec.device != device) {
+            return false;
+        }
+        if (address >= 0 && !DisplayRegisterMapping::containsAddress(spec, address)) {
+            return false;
+        }
+        if (out) {
+            *out = spec;
+        }
+        return true;
+    };
+
+    const QStringList jointNames = {
+        QStringLiteral("robot_ArcGauge_J1Angle"),
+        QStringLiteral("robot_ArcGauge_J2Height"),
+        QStringLiteral("robot_ArcGauge_J3Length"),
+        QStringLiteral("robot_ArcGauge_J4Angle"),
+        QStringLiteral("robot_ArcGauge_CounterweightHeight"),
+    };
+    bool scheduledJoints = false;
+    for (const QString &name : jointNames) {
+        if (!specIfHit(name, nullptr)) {
+            continue;
+        }
+        if (address >= 0) {
+            m_pendingJointGaugeUpdates.insert(name);
+            scheduledJoints = true;
+        } else {
+            refreshJointGaugeFromCache(name);
+        }
+    }
+    if (scheduledJoints && !m_jointGaugeFlushScheduled) {
+        m_jointGaugeFlushScheduled = true;
+        QTimer::singleShot(0, this, &MainWindow::flushPendingJointGaugeUpdates);
+    }
+
+    static const QStringList kSixAxisNames = {
+        QStringLiteral("robot_ArcGauge_SixAxis1"),
+        QStringLiteral("robot_ArcGauge_SixAxis2"),
+        QStringLiteral("robot_ArcGauge_SixAxis3"),
+        QStringLiteral("robot_ArcGauge_SixAxis4"),
+        QStringLiteral("robot_ArcGauge_SixAxis5"),
+        QStringLiteral("robot_ArcGauge_SixAxis6"),
+    };
+    for (const QString &name : kSixAxisNames) {
+        DisplayRegisterMapping::DisplaySpec spec;
+        if (!specIfHit(name, &spec)) {
+            continue;
+        }
+        double value = 0.0;
+        if (!decodeDisplaySpecValue(spec, cache, &value)) {
+            continue;
+        }
+        updateSliderLabelValue(name, static_cast<float>(value));
+    }
+
+    auto applyCard = [&](const QString &name, const std::function<void(double)> &apply) {
+        DisplayRegisterMapping::DisplaySpec spec;
+        if (!specIfHit(name, &spec)) {
+            return;
+        }
+        double value = 0.0;
+        if (!decodeDisplaySpecValue(spec, cache, &value)) {
+            return;
+        }
+        apply(value);
+    };
+
+    applyCard(QStringLiteral("weightCard"), [this](double value) {
+        if (m_weightCard) {
+            m_weightCard->setValue(value, true);
+        }
+        recordTimeSeriesValue(TimeSeriesChannel::LoadKg, value);
+    });
+    applyCard(QStringLiteral("frontSupportForceCard"), [this](double value) {
+        if (m_frontSupportForceCard) {
+            m_frontSupportForceCard->setValue(value, true);
+        }
+        recordTimeSeriesValue(TimeSeriesChannel::FrontSupportForceKg, value);
+    });
+    applyCard(QStringLiteral("robotTotalPowerCard"), [this](double value) {
+        if (m_robotTotalPowerCard) {
+            m_robotTotalPowerCard->setCurrentPower(value);
+        }
+        recordTimeSeriesValue(TimeSeriesChannel::TotalPowerW, value);
+    });
+    applyCard(QStringLiteral("robotInclinometerX"), [this](double value) {
+        if (m_robotInclinometerXCard) {
+            m_robotInclinometerXCard->setTiltValue(value);
+        }
+        recordTimeSeriesValue(TimeSeriesChannel::ArmTiltXDeg, value);
+    });
+    applyCard(QStringLiteral("robotInclinometerY"), [this](double value) {
+        if (m_robotInclinometerYCard) {
+            m_robotInclinometerYCard->setTiltValue(value);
+        }
+        recordTimeSeriesValue(TimeSeriesChannel::ArmTiltYDeg, value);
+    });
+    applyCard(QStringLiteral("chassisInclinometerX"), [this](double value) {
+        if (m_inclinometerXCard) {
+            m_inclinometerXCard->setTiltValue(value);
+        }
+        m_inclinometerXDegree = value;
+        recordTimeSeriesValue(TimeSeriesChannel::ChassisTiltXDeg, value);
+        refreshInclinometerTiltPresentation();
+    });
+    applyCard(QStringLiteral("chassisInclinometerY"), [this](double value) {
+        if (m_inclinometerYCard) {
+            m_inclinometerYCard->setTiltValue(value);
+        }
+        m_inclinometerYDegree = value;
+        recordTimeSeriesValue(TimeSeriesChannel::ChassisTiltYDeg, value);
+        refreshInclinometerTiltPresentation();
+    });
+    applyCard(QStringLiteral("AGV_speedGauge"), [this](double value) {
+        if (!isFeatureEnabled("modbus_agv", "agv.speed_gauge")) {
+            return;
+        }
+        updateSpeed(value);
+        onAGVUpdateStatusLabel("label_speed", QString("%1 mm/s").arg(static_cast<int>(value)));
+    });
+
+    if (specIfHit(QStringLiteral("robotTotalTorqueCard"), nullptr)) {
+        updateRobotTorqueFromCache(QStringLiteral("robotTotalTorqueCard"));
+    }
+    if (specIfHit(QStringLiteral("robotCounterweightTorqueCard"), nullptr)) {
+        updateRobotTorqueFromCache(QStringLiteral("robotCounterweightTorqueCard"));
+    }
+    if (specIfHit(QStringLiteral("robotArmTorqueCard"), nullptr)) {
+        updateRobotTorqueFromCache(QStringLiteral("robotArmTorqueCard"));
+    }
 }
 
 void MainWindow::reloadButtonModbusBindings()
@@ -6093,21 +6539,27 @@ void MainWindow::pollModbusVariables()
 
 void MainWindow::updateRobotInclinometerFromCache()
 {
-    auto applyPair = [this](int addrA, int addrB, InclinometerCard *card, TimeSeriesChannel channel) {
-        if (!card || !g_registerCache.contains(addrA) || !g_registerCache.contains(addrB)) {
+    auto applyOne = [this](const QString &name, InclinometerCard *card, TimeSeriesChannel channel) {
+        const DisplayRegisterMapping::DisplaySpec spec = displaySpec(name);
+        if (!spec.isConfigured() || spec.device != QStringLiteral("主控")) {
             return;
         }
-        const float degree = registersToFloatCDAB(g_registerCache[addrA], g_registerCache[addrB]);
+        double degree = 0.0;
+        if (!decodeDisplaySpecValue(spec, g_registerCache, &degree)) {
+            return;
+        }
         if (!std::isfinite(degree)) {
             recordTimeSeriesValue(channel, std::numeric_limits<double>::quiet_NaN());
             return;
         }
-        card->setTiltValue(static_cast<qreal>(degree));
-        recordTimeSeriesValue(channel, static_cast<double>(degree));
+        if (card) {
+            card->setTiltValue(static_cast<qreal>(degree));
+        }
+        recordTimeSeriesValue(channel, degree);
     };
 
-    applyPair(135, 136, m_robotInclinometerXCard, TimeSeriesChannel::ArmTiltXDeg);
-    applyPair(137, 138, m_robotInclinometerYCard, TimeSeriesChannel::ArmTiltYDeg);
+    applyOne(QStringLiteral("robotInclinometerX"), m_robotInclinometerXCard, TimeSeriesChannel::ArmTiltXDeg);
+    applyOne(QStringLiteral("robotInclinometerY"), m_robotInclinometerYCard, TimeSeriesChannel::ArmTiltYDeg);
 }
 
 void MainWindow::updateDeviceCoordPanelFromCache()
@@ -6136,33 +6588,30 @@ void MainWindow::updateDeviceCoordPanelFromCache()
     m_deviceCoordPanel->setCoordinates(cx, cy, cz, car);
 }
 
-void MainWindow::updateRobotTorqueFromCache(int startAddr)
+void MainWindow::updateRobotTorqueFromCache(const QString &objectName)
 {
     RobotTotalTorqueCard *card = nullptr;
     TimeSeriesChannel channel = TimeSeriesChannel::ColumnTorquePercent;
-    if (startAddr == 276) {
+    if (objectName == QStringLiteral("robotTotalTorqueCard")) {
         card = m_robotTotalTorqueCard;
         channel = TimeSeriesChannel::ColumnTorquePercent;
-    } else if (startAddr == 280) {
+    } else if (objectName == QStringLiteral("robotCounterweightTorqueCard")) {
         card = m_robotCounterweightTorqueCard;
         channel = TimeSeriesChannel::CounterweightTorquePercent;
-    } else if (startAddr == 296) {
+    } else if (objectName == QStringLiteral("robotArmTorqueCard")) {
         card = m_robotTest6TorqueCard;
         channel = TimeSeriesChannel::ArmTorquePercent;
     }
     if (!card) {
         return;
     }
-    for (int i = 0; i < 4; ++i) {
-        if (!g_registerCache.contains(startAddr + i)) {
-            return;
-        }
+    const DisplayRegisterMapping::DisplaySpec spec = displaySpec(objectName);
+    const QMap<int, quint16> &cache =
+        (spec.device == QStringLiteral("AGV")) ? m_agvRegisterShadow : g_registerCache;
+    double value = 0.0;
+    if (!decodeDisplaySpecValue(spec, cache, &value)) {
+        return;
     }
-    const double value = registersToDoubleDCBAFEHG(
-        g_registerCache[startAddr],
-        g_registerCache[startAddr + 1],
-        g_registerCache[startAddr + 2],
-        g_registerCache[startAddr + 3]);
     // 指数在第 4 个寄存器。半包时前几个字先到、指数仍是 0，会解成 0.0% 或非规格数。
     if (!TimeSeriesMeta::isFiniteNumber(value) || value < -1.0 || value > 10000.0) {
         card->setValue(0.0, false);
@@ -6179,46 +6628,18 @@ void MainWindow::refreshJointGaugeFromCache(const QString &labelName)
         return;
     }
 
-    const SliderLabelConfig &config = m_sliderLabelConfigs[labelName];
-    const int primaryRegs[] = {
-        config.modbusAddress1,
-        config.modbusAddress2,
-        config.modbusAddress3,
-        config.modbusAddress4
-    };
-    for (int reg : primaryRegs) {
-        if (!g_registerCache.contains(reg)) {
-            return;
-        }
-    }
-
-    double value64 = registersToDoubleDCBAFEHG(
-        g_registerCache[config.modbusAddress1],
-        g_registerCache[config.modbusAddress2],
-        g_registerCache[config.modbusAddress3],
-        g_registerCache[config.modbusAddress4]);
-
-    bool sumReady = true;
-    if (config.isSumMode) {
-        sumReady = true;
-        for (int i = 0; i < 4; ++i) {
-            if (!g_registerCache.contains(config.sumAddress[i])) {
-                sumReady = false;
-                break;
-            }
-        }
-        if (sumReady) {
-            value64 += registersToDoubleDCBAFEHG(
-                g_registerCache[config.sumAddress[0]],
-                g_registerCache[config.sumAddress[1]],
-                g_registerCache[config.sumAddress[2]],
-                g_registerCache[config.sumAddress[3]]);
-        }
+    const DisplayRegisterMapping::DisplaySpec spec = displaySpec(labelName);
+    const QMap<int, quint16> &cache =
+        (spec.device == QStringLiteral("AGV")) ? m_agvRegisterShadow : g_registerCache;
+    double value64 = 0.0;
+    bool sumReady = false;
+    if (!decodeDisplaySpecValue(spec, cache, &value64, &sumReady)) {
+        return;
     }
 
     updateSliderLabelValue(labelName, static_cast<float>(value64));
 
-    if (!config.isSumMode || sumReady) {
+    if (!DisplayRegisterMapping::hasSumStart(spec) || sumReady) {
         TimeSeriesChannel channel;
         if (labelName == QStringLiteral("robot_ArcGauge_J1Angle")) {
             channel = TimeSeriesChannel::J1AngleDeg;
@@ -6269,38 +6690,24 @@ void MainWindow::updateSliderLabelValue(const QString& labelName, float value)
     if (m_arcGauges.contains(labelName)) {
         m_arcGauges[labelName]->setValue(static_cast<double>(value));
         
-        // 特殊逻辑：根据不同仪表解析对应的速度寄存器
-        if (labelName == "robot_ArcGauge_J3Length") {
-            // J3 速度 = (48-51) 的 double + (52-55) 的 double, 范围 0~40
-            if (g_registerCache.contains(48) && g_registerCache.contains(51) && 
-                g_registerCache.contains(52) && g_registerCache.contains(55)) {
-                double v1 = registersToDoubleDCBAFEHG(g_registerCache[48], g_registerCache[49], g_registerCache[50], g_registerCache[51]);
-                double v2 = registersToDoubleDCBAFEHG(g_registerCache[52], g_registerCache[53], g_registerCache[54], g_registerCache[55]);
-                m_arcGauges[labelName]->setSecondValue(qAbs(v1 + v2));
-            }
-        } else if (labelName == "robot_ArcGauge_J1Angle") {
-            // J1 速度 = 36-39, 范围 0~2
-            if (g_registerCache.contains(36) && g_registerCache.contains(39)) {
-                double v = registersToDoubleDCBAFEHG(g_registerCache[36], g_registerCache[37], g_registerCache[38], g_registerCache[39]);
-                m_arcGauges[labelName]->setSecondValue(qAbs(v));
-            }
-        } else if (labelName == "robot_ArcGauge_J2Height") {
-            // J2 速度 = 40-43, 范围 0~15
-            if (g_registerCache.contains(40) && g_registerCache.contains(43)) {
-                double v = registersToDoubleDCBAFEHG(g_registerCache[40], g_registerCache[41], g_registerCache[42], g_registerCache[43]);
-                m_arcGauges[labelName]->setSecondValue(qAbs(v));
-            }
-        } else if (labelName == "robot_ArcGauge_J4Angle") {
-            // J4 速度 = 56-59, 范围 0~2
-            if (g_registerCache.contains(56) && g_registerCache.contains(59)) {
-                double v = registersToDoubleDCBAFEHG(g_registerCache[56], g_registerCache[57], g_registerCache[58], g_registerCache[59]);
-                m_arcGauges[labelName]->setSecondValue(qAbs(v));
-            }
-        } else if (labelName == "robot_ArcGauge_CounterweightHeight") {
-            // 配重缸速度 = 44-47, LREAL
-            if (g_registerCache.contains(44) && g_registerCache.contains(47)) {
-                double v = registersToDoubleDCBAFEHG(g_registerCache[44], g_registerCache[45], g_registerCache[46], g_registerCache[47]);
-                m_arcGauges[labelName]->setSecondValue(qAbs(v));
+        const DisplayRegisterMapping::DisplaySpec spec = displaySpec(labelName);
+        const QMap<int, quint16> &cache =
+            (spec.device == QStringLiteral("AGV")) ? m_agvRegisterShadow : g_registerCache;
+        if (DisplayRegisterMapping::hasSecondRing(spec)) {
+            auto hasFour = [&](int start) {
+                return cache.contains(start) && cache.contains(start + 1)
+                    && cache.contains(start + 2) && cache.contains(start + 3);
+            };
+            auto readDouble = [&](int start) {
+                return registersToDoubleDCBAFEHG(
+                    cache.value(start), cache.value(start + 1),
+                    cache.value(start + 2), cache.value(start + 3));
+            };
+            if (spec.secondCount >= 8 && hasFour(spec.secondStart) && hasFour(spec.secondStart + 4)) {
+                m_arcGauges[labelName]->setSecondValue(
+                    qAbs(readDouble(spec.secondStart) + readDouble(spec.secondStart + 4)));
+            } else if (spec.secondCount >= 4 && hasFour(spec.secondStart)) {
+                m_arcGauges[labelName]->setSecondValue(qAbs(readDouble(spec.secondStart)));
             }
         }
     }
@@ -6371,111 +6778,10 @@ void MainWindow::onModbusRegisterValueChanged(int address, quint16 value)
         }
     }
 
-    if (address == 134) {
-        updateRobotTotalPower(value);
-    }
-
-    if (address == 123) {
-        updateCurrentLoadWeight(value);
-    }
-
-    if (address == 139) {
-        updateFrontSupportForce(value);
-    }
-
-    if (address >= 135 && address <= 138) {
-        updateRobotInclinometerFromCache();
-    }
+    refreshMappedDisplaysForDevice(QStringLiteral("主控"), address);
 
     if (address >= 103 && address <= 118) {
         updateDeviceCoordPanelFromCache();
-    }
-
-    // 只在一组 4 字 LREAL 收齐后解码，避免逐字刷新把半包解成 0%。
-    if (address == 279) {
-        updateRobotTorqueFromCache(276);
-    } else if (address == 283) {
-        updateRobotTorqueFromCache(280);
-    } else if (address == 299) {
-        updateRobotTorqueFromCache(296);
-    }
-
-    const QStringList targetLabels = {
-        "robot_ArcGauge_J1Angle", "robot_ArcGauge_J2Height", "robot_ArcGauge_J3Length", "robot_ArcGauge_J4Angle",
-        "robot_ArcGauge_CounterweightHeight"
-    };
-
-    // J1~J4 数值显示应始终跟随主寄存器数据，不受“控件状态同步”开关影响。
-    // 求和轴（J3）的第二段 16~19 也必须触发刷新；同一包回包先写完 cache 再解析，避免逐字撕 double。
-    for (const QString &labelName : targetLabels) {
-        if (!m_sliderLabelConfigs.contains(labelName)) {
-            continue;
-        }
-
-        const SliderLabelConfig &config = m_sliderLabelConfigs[labelName];
-        bool usesAddress = (address == config.modbusAddress1
-                            || address == config.modbusAddress2
-                            || address == config.modbusAddress3
-                            || address == config.modbusAddress4);
-        if (!usesAddress && config.isSumMode) {
-            for (int i = 0; i < 4; ++i) {
-                if (config.sumAddress[i] == address) {
-                    usesAddress = true;
-                    break;
-                }
-            }
-        }
-        if (!usesAddress && labelName == QStringLiteral("robot_ArcGauge_CounterweightHeight")
-            && address >= 44 && address <= 47) {
-            usesAddress = true;
-        }
-        if (!usesAddress) {
-            continue;
-        }
-
-        m_pendingJointGaugeUpdates.insert(labelName);
-        if (!m_jointGaugeFlushScheduled) {
-            m_jointGaugeFlushScheduled = true;
-            QTimer::singleShot(0, this, &MainWindow::flushPendingJointGaugeUpdates);
-        }
-    }
-
-    // SixAxies：192.168.1.13 的 73~84，两个寄存器一组，按 CDAB 转 float。
-    if (address >= 73 && address <= 84) {
-        static const struct {
-            int highAddr;
-            int lowAddr;
-            const char* gaugeName;
-        } sixAxisRegPairs[] = {
-            {73, 74, "robot_ArcGauge_SixAxis1"},
-            {75, 76, "robot_ArcGauge_SixAxis2"},
-            {77, 78, "robot_ArcGauge_SixAxis3"},
-            {79, 80, "robot_ArcGauge_SixAxis4"},
-            {81, 82, "robot_ArcGauge_SixAxis5"},
-            {83, 84, "robot_ArcGauge_SixAxis6"}
-        };
-
-        for (const auto &pair : sixAxisRegPairs) {
-            if (address != pair.highAddr && address != pair.lowAddr) {
-                continue;
-            }
-            if (!g_registerCache.contains(pair.highAddr) || !g_registerCache.contains(pair.lowAddr)) {
-                continue;
-            }
-
-            const quint16 regA = g_registerCache[pair.highAddr];
-            const quint16 regB = g_registerCache[pair.lowAddr];
-            float axisValue = registersToFloatCDAB(regA, regB);
-            const QString gaugeName = QString::fromLatin1(pair.gaugeName);
-
-            // 需求：SixAxis4~6 的显示值放大 1000 倍。
-            if (gaugeName == "robot_ArcGauge_SixAxis4"
-                || gaugeName == "robot_ArcGauge_SixAxis5"
-                || gaugeName == "robot_ArcGauge_SixAxis6") {
-                axisValue *= 1000.0f;
-            }
-            updateSliderLabelValue(gaugeName, axisValue);
-        }
     }
 
     // ============ 仅保留主设备150急停报警源 ============
@@ -6803,19 +7109,8 @@ void MainWindow::readMainControlSyncRegisters()
                                               m_mainControlSyncStart,
                                               m_mainControlSyncCount);
 
-    // 机器人总功率：192.168.1.13 的 134 寄存器
-    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 134, 1);
-
-    // 悬臂倾角：192.168.1.13 的 135/137 REAL（各占 2 个寄存器，CDAB）
-    // 前支撑力：139 UINT，与倾角连续，一次读 135~139。
-    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 135, 5);
-
-    // 当前负载重量：192.168.1.13 的 123 寄存器
-    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 123, 1);
-
-    // 立柱/后配重缸/前配重缸扭矩：276~279 / 280~283 / 296~299 LREAL（DCBA FEHG）
-    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 276, 8);
-    MainDeviceModbusApi::readHoldingRegisters(m_modbusManager, 296, 4);
+    // 显示控件读地址由功能控制台映射；状态组未覆盖的段在这里补读。
+    pollUncoveredMappedDisplayRegisters();
 }
 // 配置所有TechSliderLabel的参数
 void MainWindow::setupSliderLabelConfigs()
@@ -7095,6 +7390,7 @@ void MainWindow::setupAGVModbus()
     connect(m_agvModbusManager, &AGVModbusManager::registerValueChanged,
             this, [this](int address, quint16 value) {
                 m_agvRegisterShadow[address] = value;
+                refreshMappedDisplaysForDevice(QStringLiteral("AGV"), address);
 
                 const ButtonModbusMapping::Binding controlBinding = buttonModbusBinding(QStringLiteral("TBtn_ControlMode"));
                 const ModbusRegisterSpec controlRead = controlBinding.reads.isEmpty()
@@ -7149,14 +7445,6 @@ void MainWindow::setupAGVModbus()
                     const QSignalBlocker blocker(m_editAGV_MoveSpeed);
                     const double clamped = qBound(m_editAGV_MoveSpeed->minimum(), static_cast<double>(value), m_editAGV_MoveSpeed->maximum());
                     m_editAGV_MoveSpeed->setValue(clamped);
-                }
-
-                if (address == 151) {
-                    updateInclinometerValue(true, value);
-                }
-
-                if (address == 152) {
-                    updateInclinometerValue(false, value);
                 }
 
                 if (m_agvUiStateSyncEnabled && address == 154 && m_editAGV_Angle) {
@@ -7235,6 +7523,7 @@ void MainWindow::setupAGVModbus()
     bool connected1 = connect(m_agvModbusManager, &AGVModbusManager::updateProgressBar,
                               this, &MainWindow::onAGVUpdateProgressBar, Qt::QueuedConnection);
     qCDebug(lcMainWindow) << "updateProgressBar信号连接状态:" << (connected1 ? "成功" : "失败");
+    syncAgvMappedDisplayPollRanges();
 }
 
 
@@ -7526,17 +7815,7 @@ void MainWindow::onAGVWordVariableChanged(int address, quint16 value)
         }
     }
 
-    // 特别处理行驶速度（地址104）
-    if (address == 104 && isFeatureEnabled("modbus_agv", "agv.speed_gauge")) {
-        // 行驶速度 (mm/s)
-        qreal speedValue = static_cast<qreal>(value);
-
-        updateSpeed(speedValue);
-
-        // 同时更新原来的label_speed（如果需要保持兼容）
-        // 直接调用onAGVUpdateStatusLabel函数，而不是发射信号
-        onAGVUpdateStatusLabel("label_speed", QString("%1 mm/s").arg(value));
-    }
+    refreshMappedDisplaysForDevice(QStringLiteral("AGV"), address);
 
     if (m_agvUiStateSyncEnabled && address == 153 && m_editAGV_MoveSpeed) {
         const QSignalBlocker blocker(m_editAGV_MoveSpeed);

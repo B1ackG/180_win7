@@ -24,6 +24,7 @@
 #include <QListWidget>
 #include <QDateTime>
 #include <QSet>
+#include <QPair>
 #include <atomic>
 #include "modbus_backend.h"
 
@@ -171,6 +172,8 @@ public:
      * 如何修改: 对大数量读取请分片或增加并发控制以兼容设备限制。
      */
     void readMultipleRegisters(int startAddress, int count);
+    /** @brief 功能控制台映射的 AGV 读地址；内置轮询未覆盖的段会额外读 */
+    void setExtraPollRanges(const QVector<QPair<int, int>> &ranges);
 
     /**
      * @brief 同步读取一段保持寄存器
@@ -310,6 +313,7 @@ public:
     bool readsEnabled() const;
 private:
     bool m_readsEnabled = true;
+    QVector<QPair<int, int>> m_extraPollRanges;
 };
 
 #endif // AGVMODBUSMANAGER_H

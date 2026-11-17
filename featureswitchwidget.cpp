@@ -4,6 +4,7 @@
 #include "techslideredit.h"
 #include "mainwindow.h"
 #include "mappingconfig.h"
+#include "displayregistermapping.h"
 
 #include <QAbstractButton>
 #include <QCheckBox>
@@ -51,9 +52,23 @@ bool hasModbusOperation(const MainWindow::ControllableButtonInfo &info)
     return !info.defaultReads.isEmpty() || !info.defaultWrites.isEmpty();
 }
 
+bool isPermissionSessionControl(const QString &objectName)
+{
+    return objectName == QStringLiteral("loginButton")
+        || objectName == QStringLiteral("logoutButton")
+        || objectName == QStringLiteral("featureButton")
+        || objectName == QStringLiteral("exitAppButton")
+        || objectName == QStringLiteral("roleComboBox")
+        || objectName == QStringLiteral("passwordEdit")
+        || objectName == QStringLiteral("passwordHint")
+        || objectName == QStringLiteral("netConfigSection")
+        || objectName == QStringLiteral("adminTitle");
+}
+
 bool shouldSkipControllable(const MainWindow::ControllableButtonInfo &info)
 {
-    return info.widgetKind == QStringLiteral("环形仪表")
+    return isPermissionSessionControl(info.objectName)
+        || info.widgetKind == QStringLiteral("环形仪表")
         || info.objectName.startsWith(QStringLiteral("robot_ArcGauge_"))
         || info.widgetKind == QStringLiteral("滑块输入")
         || info.objectName.startsWith(QStringLiteral("TechSliderEdit_"))
@@ -193,6 +208,28 @@ QString configFieldLabel(const QString &group, const QString &key)
         {QStringLiteral("ButtonVisibility/TBtn_RemoveWarning"), QStringLiteral("消除报警")},
         {QStringLiteral("ButtonVisibility/steeringModeSelector"), QStringLiteral("转向模式")},
     };
+    if (group == QLatin1String("DisplayRegisterMapping")) {
+        const QStringList names = DisplayRegisterMapping::knownObjectNames();
+        for (const QString &name : names) {
+            const QString prefix = name + QLatin1Char('_');
+            if (key.startsWith(prefix)) {
+                const QString field = key.mid(prefix.size());
+                static const QMap<QString, QString> fieldLabels = {
+                    {QStringLiteral("device"), QStringLiteral("设备")},
+                    {QStringLiteral("start"), QStringLiteral("起始地址")},
+                    {QStringLiteral("count"), QStringLiteral("字数")},
+                    {QStringLiteral("encoding"), QStringLiteral("编码")},
+                    {QStringLiteral("scale"), QStringLiteral("倍率")},
+                    {QStringLiteral("sum_start"), QStringLiteral("求和起始")},
+                    {QStringLiteral("second_start"), QStringLiteral("副值起始")},
+                    {QStringLiteral("second_count"), QStringLiteral("副值字数")},
+                };
+                return DisplayRegisterMapping::displayTitle(name)
+                    + QStringLiteral(" ")
+                    + fieldLabels.value(field, field);
+            }
+        }
+    }
     return labels.value(id, id);
 }
 
@@ -581,6 +618,7 @@ void FeatureSwitchWidget::loadCurrentState()
     }
     loadPollingState();
     loadSliderLimitState();
+    loadDisplayRegisterState();
     loadTechSliderEditState();
     loadPlaneHeightOffsetState();
     loadRobotTorqueState();
@@ -663,7 +701,7 @@ void FeatureSwitchWidget::setupSliderLimitUI(QVBoxLayout *scrollLayout)
     auto *arcGroup = new QGroupBox(QStringLiteral("环形仪表显示与范围"));
     auto *arcLayout = new QVBoxLayout(arcGroup);
     arcLayout->addWidget(makeHintLabel(
-        QStringLiteral("控制首页 / 六轴页环形仪表是否显示，以及数值 Min/Max（与主界面 objectName 对应）。"),
+        QStringLiteral("控制首页 / 六轴页环形仪表是否显示、数值 Min/Max，以及只读寄存器起始地址（立即生效，不改 PLC 轮询窗口）。"),
         arcGroup));
 
     auto *arcToolbar = new QHBoxLayout();
@@ -674,56 +712,41 @@ void FeatureSwitchWidget::setupSliderLimitUI(QVBoxLayout *scrollLayout)
     arcToolbar->addStretch();
     arcLayout->addLayout(arcToolbar);
 
-    const QStringList arcGaugeNames = {
-        QStringLiteral("robot_ArcGauge_J1Angle"),
-        QStringLiteral("robot_ArcGauge_J2Height"),
-        QStringLiteral("robot_ArcGauge_J3Length"),
-        QStringLiteral("robot_ArcGauge_J4Angle"),
-        QStringLiteral("robot_ArcGauge_CounterweightHeight"),
-        QStringLiteral("robot_ArcGauge_SixAxis1"),
-        QStringLiteral("robot_ArcGauge_SixAxis2"),
-        QStringLiteral("robot_ArcGauge_SixAxis3"),
-        QStringLiteral("robot_ArcGauge_SixAxis4"),
-        QStringLiteral("robot_ArcGauge_SixAxis5"),
-        QStringLiteral("robot_ArcGauge_SixAxis6")
-    };
-    const QMap<QString, QString> arcLabels = {
-        {QStringLiteral("robot_ArcGauge_J1Angle"), QStringLiteral("悬臂角度 (J1)")},
-        {QStringLiteral("robot_ArcGauge_J2Height"), QStringLiteral("升降高度 (J2)")},
-        {QStringLiteral("robot_ArcGauge_J3Length"), QStringLiteral("总伸展长度 (J3)")},
-        {QStringLiteral("robot_ArcGauge_J4Angle"), QStringLiteral("末端角度 (J4)")},
-        {QStringLiteral("robot_ArcGauge_CounterweightHeight"), QStringLiteral("配重缸升降")},
-        {QStringLiteral("robot_ArcGauge_SixAxis1"), QStringLiteral("六轴 RX")},
-        {QStringLiteral("robot_ArcGauge_SixAxis2"), QStringLiteral("六轴 RY")},
-        {QStringLiteral("robot_ArcGauge_SixAxis3"), QStringLiteral("六轴 RZ")},
-        {QStringLiteral("robot_ArcGauge_SixAxis4"), QStringLiteral("六轴 X")},
-        {QStringLiteral("robot_ArcGauge_SixAxis5"), QStringLiteral("六轴 Y")},
-        {QStringLiteral("robot_ArcGauge_SixAxis6"), QStringLiteral("六轴 Z")}
-    };
-
-    auto *arcGrid = new QGridLayout();
-    arcGrid->setHorizontalSpacing(8);
-    arcLayout->addLayout(arcGrid);
+    const QStringList arcGaugeNames = DisplayRegisterMapping::arcGaugeObjectNames();
 
     for (int i = 0; i < arcGaugeNames.size(); ++i) {
         const QString &name = arcGaugeNames.at(i);
+        auto *card = new QWidget(arcGroup);
+        auto *cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(0, 2, 0, 2);
+        cardLayout->setSpacing(3);
+
+        auto *rangeRow = new QHBoxLayout();
         auto *visibleCb = new QCheckBox(QStringLiteral("显示"));
         visibleCb->setFixedWidth(52);
-        auto *lbl = new QLabel(arcLabels.value(name, name));
+        auto *lbl = new QLabel(DisplayRegisterMapping::displayTitle(name));
         lbl->setMinimumWidth(110);
         lbl->setToolTip(name);
         QLineEdit *minEdit = makeLimitEdit(arcGroup);
         minEdit->setPlaceholderText(QStringLiteral("Min"));
         QLineEdit *maxEdit = makeLimitEdit(arcGroup);
         maxEdit->setPlaceholderText(QStringLiteral("Max"));
-        const int colBase = (i % 2) * 5;
-        const int row = i / 2;
-        arcGrid->addWidget(visibleCb, row, colBase);
-        arcGrid->addWidget(lbl, row, colBase + 1);
-        arcGrid->addWidget(minEdit, row, colBase + 2);
-        arcGrid->addWidget(new QLabel(QStringLiteral("~")), row, colBase + 3);
-        arcGrid->addWidget(maxEdit, row, colBase + 4);
-        m_arcGaugeEdits[name] = {visibleCb, minEdit, maxEdit};
+        rangeRow->addWidget(visibleCb);
+        rangeRow->addWidget(lbl);
+        rangeRow->addWidget(minEdit);
+        rangeRow->addWidget(new QLabel(QStringLiteral("~")));
+        rangeRow->addWidget(maxEdit);
+        rangeRow->addStretch();
+        cardLayout->addLayout(rangeRow);
+
+        ArcGaugeEdits edits;
+        edits.visible = visibleCb;
+        edits.minEdit = minEdit;
+        edits.maxEdit = maxEdit;
+        edits.registers = makeDisplayRegisterEdits(card, name);
+        addDisplayRegisterRow(card, cardLayout, name, edits.registers);
+        m_arcGaugeEdits[name] = edits;
+        arcLayout->addWidget(card);
     }
 
     connect(arcShowAll, &QPushButton::clicked, this, [this]() {
@@ -742,6 +765,32 @@ void FeatureSwitchWidget::setupSliderLimitUI(QVBoxLayout *scrollLayout)
     });
 
     scrollLayout->addWidget(arcGroup);
+
+    auto *statusGroup = new QGroupBox(QStringLiteral("其它状态控件读寄存器"));
+    auto *statusLayout = new QVBoxLayout(statusGroup);
+    statusLayout->addWidget(makeHintLabel(
+        QStringLiteral("负载、支撑力、功率、扭矩、倾角、行驶速度只配置读地址，不配置写。"),
+        statusGroup));
+    const QStringList statusNames = DisplayRegisterMapping::statusObjectNames();
+    for (const QString &name : statusNames) {
+        auto *card = new QWidget(statusGroup);
+        auto *cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(0, 2, 0, 2);
+        cardLayout->setSpacing(3);
+        auto *titleRow = new QHBoxLayout();
+        auto *lbl = new QLabel(DisplayRegisterMapping::displayTitle(name));
+        lbl->setMinimumWidth(110);
+        lbl->setToolTip(name);
+        titleRow->addWidget(lbl);
+        titleRow->addStretch();
+        cardLayout->addLayout(titleRow);
+        DisplayRegisterEdits edits = makeDisplayRegisterEdits(card, name);
+        addDisplayRegisterRow(card, cardLayout, name, edits);
+        m_statusRegisterEdits[name] = edits;
+        statusLayout->addWidget(card);
+    }
+    scrollLayout->addWidget(statusGroup);
+
     setupTechSliderEditUI(scrollLayout);
 }
 
@@ -1438,6 +1487,238 @@ bool FeatureSwitchWidget::saveSliderLimitState(QString *error)
     return settingsWriteOk(settings, QStringLiteral("config.ini"), error);
 }
 
+FeatureSwitchWidget::DisplayRegisterEdits FeatureSwitchWidget::makeDisplayRegisterEdits(
+    QWidget *parent, const QString &objectName)
+{
+    const DisplayRegisterMapping::DisplaySpec fallback =
+        DisplayRegisterMapping::defaultSpec(objectName);
+    DisplayRegisterEdits edits;
+    edits.device = new QComboBox(parent);
+    edits.device->addItems({QStringLiteral("主控"), QStringLiteral("AGV")});
+    edits.device->setFixedWidth(58);
+
+    auto makeAddrEdit = [this, parent](const QString &placeholder) {
+        auto *edit = new QLineEdit(parent);
+        edit->setPlaceholderText(placeholder);
+        edit->setFixedWidth(72);
+        edit->setValidator(new QIntValidator(0, 65535, edit));
+        edit->installEventFilter(this);
+        return edit;
+    };
+    edits.startEdit = makeAddrEdit(QStringLiteral("起始"));
+    edits.wordCount = new QComboBox(parent);
+    edits.wordCount->addItem(QStringLiteral("1"), 1);
+    edits.wordCount->addItem(QStringLiteral("2"), 2);
+    edits.wordCount->addItem(QStringLiteral("4"), 4);
+    edits.wordCount->setFixedWidth(52);
+    edits.encoding = new QComboBox(parent);
+    using DisplayRegisterMapping::Encoding;
+    edits.encoding->addItem(DisplayRegisterMapping::encodingLabel(Encoding::UInt16),
+                            DisplayRegisterMapping::encodingKey(Encoding::UInt16));
+    edits.encoding->addItem(DisplayRegisterMapping::encodingLabel(Encoding::Int16Div100),
+                            DisplayRegisterMapping::encodingKey(Encoding::Int16Div100));
+    edits.encoding->addItem(DisplayRegisterMapping::encodingLabel(Encoding::CdabFloat),
+                            DisplayRegisterMapping::encodingKey(Encoding::CdabFloat));
+    edits.encoding->addItem(DisplayRegisterMapping::encodingLabel(Encoding::DcbaFehgDouble),
+                            DisplayRegisterMapping::encodingKey(Encoding::DcbaFehgDouble));
+    edits.encoding->setMinimumWidth(150);
+
+    if (DisplayRegisterMapping::hasSumStart(fallback)) {
+        edits.sumStartEdit = makeAddrEdit(QStringLiteral("求和"));
+    }
+    if (DisplayRegisterMapping::hasSecondRing(fallback)) {
+        edits.secondStartEdit = makeAddrEdit(QStringLiteral("副值"));
+        edits.secondCountEdit = new QLineEdit(parent);
+        edits.secondCountEdit->setPlaceholderText(QStringLiteral("副字数"));
+        edits.secondCountEdit->setFixedWidth(56);
+        edits.secondCountEdit->setValidator(new QIntValidator(1, 8, edits.secondCountEdit));
+        edits.secondCountEdit->installEventFilter(this);
+    }
+    wireIntEdit(edits.startEdit, 0, 65535, fallback.start);
+    if (edits.sumStartEdit) {
+        wireIntEdit(edits.sumStartEdit, 0, 65535, qMax(0, fallback.sumStart));
+    }
+    if (edits.secondStartEdit) {
+        wireIntEdit(edits.secondStartEdit, 0, 65535, qMax(0, fallback.secondStart));
+    }
+    if (edits.secondCountEdit) {
+        wireIntEdit(edits.secondCountEdit, 1, 8, qMax(1, fallback.secondCount));
+    }
+    return edits;
+}
+
+void FeatureSwitchWidget::addDisplayRegisterRow(QWidget *parent,
+                                                QVBoxLayout *hostLayout,
+                                                const QString &objectName,
+                                                DisplayRegisterEdits &edits)
+{
+    Q_UNUSED(objectName);
+    auto *row = new QHBoxLayout();
+    row->setSpacing(6);
+    row->addWidget(new QLabel(QStringLiteral("读"), parent));
+    row->addWidget(edits.device);
+    row->addWidget(new QLabel(QStringLiteral("起始"), parent));
+    row->addWidget(edits.startEdit);
+    row->addWidget(new QLabel(QStringLiteral("字数"), parent));
+    row->addWidget(edits.wordCount);
+    row->addWidget(new QLabel(QStringLiteral("编码"), parent));
+    row->addWidget(edits.encoding);
+    if (edits.sumStartEdit) {
+        row->addWidget(new QLabel(QStringLiteral("求和"), parent));
+        row->addWidget(edits.sumStartEdit);
+    }
+    if (edits.secondStartEdit) {
+        row->addWidget(new QLabel(QStringLiteral("副值"), parent));
+        row->addWidget(edits.secondStartEdit);
+        if (edits.secondCountEdit) {
+            row->addWidget(edits.secondCountEdit);
+        }
+    }
+    row->addStretch();
+    hostLayout->addLayout(row);
+}
+
+void FeatureSwitchWidget::applyDisplaySpecToEdits(const DisplayRegisterMapping::DisplaySpec &spec,
+                                                 DisplayRegisterEdits &edits)
+{
+    if (edits.device) {
+        const int idx = edits.device->findText(spec.device);
+        edits.device->setCurrentIndex(idx >= 0 ? idx : 0);
+    }
+    if (edits.startEdit) {
+        edits.startEdit->setText(QString::number(spec.start));
+        rememberValidEditText(edits.startEdit);
+    }
+    if (edits.wordCount) {
+        const int idx = edits.wordCount->findData(spec.wordCount);
+        edits.wordCount->setCurrentIndex(idx >= 0 ? idx : 0);
+    }
+    if (edits.encoding) {
+        const int idx = edits.encoding->findData(DisplayRegisterMapping::encodingKey(spec.encoding));
+        edits.encoding->setCurrentIndex(idx >= 0 ? idx : 0);
+    }
+    if (edits.sumStartEdit) {
+        edits.sumStartEdit->setText(QString::number(qMax(0, spec.sumStart)));
+        rememberValidEditText(edits.sumStartEdit);
+    }
+    if (edits.secondStartEdit) {
+        edits.secondStartEdit->setText(QString::number(qMax(0, spec.secondStart)));
+        rememberValidEditText(edits.secondStartEdit);
+    }
+    if (edits.secondCountEdit) {
+        edits.secondCountEdit->setText(QString::number(qMax(1, spec.secondCount)));
+        rememberValidEditText(edits.secondCountEdit);
+    }
+}
+
+DisplayRegisterMapping::DisplaySpec FeatureSwitchWidget::readDisplaySpecFromEdits(
+    const QString &objectName, const DisplayRegisterEdits &edits) const
+{
+    DisplayRegisterMapping::DisplaySpec spec = DisplayRegisterMapping::defaultSpec(objectName);
+    if (edits.device) {
+        spec.device = edits.device->currentText();
+    }
+    if (edits.startEdit) {
+        spec.start = edits.startEdit->text().trimmed().toInt();
+    }
+    if (edits.wordCount) {
+        spec.wordCount = edits.wordCount->currentData().toInt();
+    }
+    if (edits.encoding) {
+        spec.encoding = DisplayRegisterMapping::encodingFromKey(
+            edits.encoding->currentData().toString(), spec.encoding);
+    }
+    if (edits.sumStartEdit) {
+        spec.sumStart = edits.sumStartEdit->text().trimmed().toInt();
+    }
+    if (edits.secondStartEdit) {
+        spec.secondStart = edits.secondStartEdit->text().trimmed().toInt();
+    }
+    if (edits.secondCountEdit) {
+        spec.secondCount = edits.secondCountEdit->text().trimmed().toInt();
+    }
+    return spec;
+}
+
+bool FeatureSwitchWidget::validateDisplayRegisterEdits(const QString &objectName,
+                                                       const DisplayRegisterEdits &edits,
+                                                       QString *error)
+{
+    const DisplayRegisterMapping::DisplaySpec fallback =
+        DisplayRegisterMapping::defaultSpec(objectName);
+    const QString title = DisplayRegisterMapping::displayTitle(objectName);
+    if (edits.startEdit
+        && !validateIntEdit(edits.startEdit, 0, 65535, fallback.start, error)) {
+        if (error && !error->isEmpty()) {
+            *error = QStringLiteral("%1 起始地址：%2").arg(title, *error);
+        }
+        return false;
+    }
+    if (edits.sumStartEdit
+        && !validateIntEdit(edits.sumStartEdit, 0, 65535, qMax(0, fallback.sumStart), error)) {
+        if (error && !error->isEmpty()) {
+            *error = QStringLiteral("%1 求和起始：%2").arg(title, *error);
+        }
+        return false;
+    }
+    if (edits.secondStartEdit
+        && !validateIntEdit(edits.secondStartEdit, 0, 65535, qMax(0, fallback.secondStart), error)) {
+        if (error && !error->isEmpty()) {
+            *error = QStringLiteral("%1 副值起始：%2").arg(title, *error);
+        }
+        return false;
+    }
+    if (edits.secondCountEdit
+        && !validateIntEdit(edits.secondCountEdit, 1, 8, qMax(1, fallback.secondCount), error)) {
+        if (error && !error->isEmpty()) {
+            *error = QStringLiteral("%1 副值字数：%2").arg(title, *error);
+        }
+        return false;
+    }
+    return true;
+}
+
+bool FeatureSwitchWidget::loadDisplayRegisterState()
+{
+    auto applyOne = [this](const QString &name, DisplayRegisterEdits &edits) {
+        applyDisplaySpecToEdits(DisplayRegisterMapping::resolvedSpec(name), edits);
+    };
+    for (auto it = m_arcGaugeEdits.begin(); it != m_arcGaugeEdits.end(); ++it) {
+        applyOne(it.key(), it->registers);
+    }
+    for (auto it = m_statusRegisterEdits.begin(); it != m_statusRegisterEdits.end(); ++it) {
+        applyOne(it.key(), it.value());
+    }
+    return true;
+}
+
+bool FeatureSwitchWidget::saveDisplayRegisterState(QString *error)
+{
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("DisplayRegisterMapping"));
+    auto saveOne = [&](const QString &name, const DisplayRegisterEdits &edits) -> bool {
+        if (!validateDisplayRegisterEdits(name, edits, error)) {
+            return false;
+        }
+        DisplayRegisterMapping::writeSpec(settings, name, readDisplaySpecFromEdits(name, edits));
+        return true;
+    };
+    for (auto it = m_arcGaugeEdits.begin(); it != m_arcGaugeEdits.end(); ++it) {
+        if (!saveOne(it.key(), it->registers)) {
+            settings.endGroup();
+            return false;
+        }
+    }
+    for (auto it = m_statusRegisterEdits.begin(); it != m_statusRegisterEdits.end(); ++it) {
+        if (!saveOne(it.key(), it.value())) {
+            settings.endGroup();
+            return false;
+        }
+    }
+    settings.endGroup();
+    return settingsWriteOk(settings, QStringLiteral("config.ini"), error);
+}
+
 bool FeatureSwitchWidget::loadTechSliderEditState()
 {
     MainWindow *mainWindow = qobject_cast<MainWindow*>(parent());
@@ -1861,6 +2142,17 @@ bool FeatureSwitchWidget::validateAllInputs(QString *error)
             return false;
         }
     }
+
+    for (auto it = m_arcGaugeEdits.begin(); it != m_arcGaugeEdits.end(); ++it) {
+        if (!validateDisplayRegisterEdits(it.key(), it->registers, error)) {
+            return false;
+        }
+    }
+    for (auto it = m_statusRegisterEdits.begin(); it != m_statusRegisterEdits.end(); ++it) {
+        if (!validateDisplayRegisterEdits(it.key(), it.value(), error)) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -1996,10 +2288,12 @@ bool FeatureSwitchWidget::onApply()
     const QMap<QString, QString> torqueBefore = snapshotIniGroup(ini, QStringLiteral("RobotTorque"));
     const QMap<QString, QString> buttonBefore = snapshotIniGroup(ini, QStringLiteral("ButtonVisibility"));
     const QMap<QString, QString> mappingBefore = snapshotIniGroup(ini, QStringLiteral("ButtonModbusMapping"));
+    const QMap<QString, QString> displayRegBefore = snapshotIniGroup(ini, QStringLiteral("DisplayRegisterMapping"));
     const QMap<QString, QString> permissionBefore = snapshotIniGroup(ini, QStringLiteral("Permission"));
 
     if (!savePollingState(&error)
         || !saveSliderLimitState(&error)
+        || !saveDisplayRegisterState(&error)
         || !saveTechSliderEditState(&error)
         || !savePlaneHeightOffsetState(&error)
         || !saveRobotTorqueState(&error)
@@ -2034,6 +2328,7 @@ bool FeatureSwitchWidget::onApply()
     recordIniChanges(ini, QStringLiteral("RobotTorque"), torqueBefore);
     recordIniChanges(ini, QStringLiteral("ButtonVisibility"), buttonBefore);
     recordIniChanges(ini, QStringLiteral("ButtonModbusMapping"), mappingBefore);
+    recordIniChanges(ini, QStringLiteral("DisplayRegisterMapping"), displayRegBefore);
     recordIniChanges(ini, QStringLiteral("Permission"), permissionBefore);
 
     emit runtimeSettingsChanged();

@@ -85,3 +85,6 @@ tests/tst_timeserieswriter
 tst_timeserieschartwidget
 tst_timeseriesqueryservice
 tst_timeserieswriter
+
+# Added by Assistant staging review
+*.png

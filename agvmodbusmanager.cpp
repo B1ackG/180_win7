@@ -311,6 +311,9 @@ void AGVModbusManager::pollRegisters()
         return;
     }
 
+    const int builtinGroups = 9;
+    const int extraCount = m_extraPollRanges.size();
+    const int totalGroups = builtinGroups + extraCount;
     switch (pollGroup) {
     case 0:
         readMultipleRegisters(0, 1);
@@ -339,11 +342,30 @@ void AGVModbusManager::pollRegisters()
     case 8:
         readMultipleRegisters(151, 2);
         break;
-    default:
+    default: {
+        const int extraIndex = pollGroup - builtinGroups;
+        if (extraIndex >= 0 && extraIndex < extraCount) {
+            const QPair<int, int> range = m_extraPollRanges.at(extraIndex);
+            if (range.second > 0) {
+                readMultipleRegisters(range.first, range.second);
+            }
+        }
         break;
     }
+    }
 
-    pollGroup = (pollGroup + 1) % 9;
+    pollGroup = (pollGroup + 1) % qMax(1, totalGroups);
+}
+
+void AGVModbusManager::setExtraPollRanges(const QVector<QPair<int, int>> &ranges)
+{
+    if (QThread::currentThread() != thread()) {
+        QMetaObject::invokeMethod(this, [this, ranges]() {
+            setExtraPollRanges(ranges);
+        }, Qt::QueuedConnection);
+        return;
+    }
+    m_extraPollRanges = ranges;
 }
 
 

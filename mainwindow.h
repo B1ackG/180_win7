@@ -43,6 +43,7 @@
 #include "enablebuttonworker.h"
 #include "timeseriestypes.h"
 #include "buttonmodbusmapping.h"
+#include "displayregistermapping.h"
 
 class TimeSeriesManager;
 class TimeSeriesDialog;
@@ -479,12 +480,12 @@ public:
     void updateFrontSupportForce(quint16 rawValue);
     /** @brief 更新倾角显示（AGV 151/152，寄存器值÷100） */
     void updateInclinometerValue(bool isXAxis, quint16 rawValue);
-    /** @brief 从寄存器缓存刷新悬臂倾角（主控 135/137，REAL / CDAB） */
+    /** @brief 从寄存器缓存刷新悬臂倾角（读寄存器由 DisplayRegisterMapping 决定） */
     void updateRobotInclinometerFromCache();
     /** @brief 从寄存器缓存刷新位姿面板 */
     void updateDeviceCoordPanelFromCache();
-    /** @brief 从寄存器缓存刷新一组扭矩 LREAL；startAddr 为 276、280 或 296 */
-    void updateRobotTorqueFromCache(int startAddr);
+    /** @brief 从寄存器缓存刷新指定扭矩卡 */
+    void updateRobotTorqueFromCache(const QString &objectName);
     /** @brief 初始化滑块编辑 UI */
     void initSliderEditUI();
 
@@ -662,6 +663,7 @@ private:
     QToolButton *m_controlModeBtn = nullptr;
     QButtonGroup *m_navSubButtonGroup = nullptr;
     QHash<QString, ButtonModbusMapping::Binding> m_buttonModbusBindings;
+    QMap<QString, DisplayRegisterMapping::DisplaySpec> m_displayRegisterSpecs;
     QVector<TechZonePanel*> m_contentZonePanels;
     QThread *m_enableButtonThread;
     EnableButtonWorker *m_enableButtonWorker;
@@ -983,6 +985,9 @@ public:
     void applyRobotTorqueRuntimeSettings();
     void applyButtonVisibilityRuntimeSettings();
     void applyPasswordHintRuntimeSettings();
+    void applyPermissionPageLoginState();
+    void pollUncoveredMappedDisplayRegisters();
+    void syncAgvMappedDisplayPollRanges();
 
     /** @brief 控制台用 Modbus 寄存器四段描述：设备 / 地址 / 位 / 值 */
     using ModbusRegisterSpec = ButtonModbusMapping::RegisterSpec;
@@ -999,6 +1004,13 @@ public:
     /** @brief 主窗口内可配置可见性与寄存器的控件（按 objectName 排序） */
     QList<ControllableButtonInfo> controllableButtons() const;
     void reloadButtonModbusBindings();
+    void reloadDisplayRegisterBindings();
+    DisplayRegisterMapping::DisplaySpec displaySpec(const QString &objectName) const;
+    bool decodeDisplaySpecValue(const DisplayRegisterMapping::DisplaySpec &spec,
+                                const QMap<int, quint16> &cache,
+                                double *outValue,
+                                bool *sumApplied = nullptr);
+    void refreshMappedDisplaysForDevice(const QString &device, int address);
     ButtonModbusMapping::Binding buttonModbusBinding(const QString &objectName) const;
     void executeConfiguredRegisterWrites(const QList<ModbusRegisterSpec> &specs,
                                          int stateIndex,
