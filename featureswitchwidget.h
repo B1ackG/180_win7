@@ -5,9 +5,17 @@
 #include <QCheckBox>
 #include <QMap>
 #include <QString>
+#include <QVector>
+
+#include "buttonmodbusmapping.h"
+#include "mainwindow.h"
 
 class QLineEdit;
+class QComboBox;
 class QVBoxLayout;
+class QHBoxLayout;
+class QGroupBox;
+class QGridLayout;
 class QShowEvent;
 class TechVirtualKeyboard;
 
@@ -62,7 +70,32 @@ private:
     void setupPlaneHeightOffsetUI(QVBoxLayout *scrollLayout);
     void setupRobotTorqueUI(QVBoxLayout *scrollLayout);
     void setupPermissionPasswordUI(QVBoxLayout *scrollLayout);
+    void setupButtonVisibilityUI(QVBoxLayout *scrollLayout);
     void setupDeviceControlChildVisibilityUI(QVBoxLayout *scrollLayout);
+    void refreshButtonVisibilityList();
+
+    struct ModbusRegisterEdits {
+        QComboBox *device = nullptr;
+        QLineEdit *address = nullptr;
+        QLineEdit *bit = nullptr;
+        QLineEdit *value1 = nullptr;
+        QLineEdit *value2 = nullptr;
+        QLineEdit *value3 = nullptr;
+    };
+    struct ModbusButtonEdits {
+        QCheckBox *visible = nullptr;
+        QVector<ModbusRegisterEdits> reads;
+        QVector<ModbusRegisterEdits> writes;
+        bool readForUiSync = false;
+    };
+    ModbusRegisterEdits makeRegisterRowEdits(QWidget *parent, const QString &lineEditStyle);
+    void addModbusRegisterRow(QHBoxLayout *row,
+                              const QString &label,
+                              const ModbusRegisterEdits &edits,
+                              const QString &syncHint = QString());
+    void applyRegisterSpecToEdits(const MainWindow::ModbusRegisterSpec &spec,
+                                  ModbusRegisterEdits &edits);
+    MainWindow::ModbusRegisterSpec readRegisterSpecFromEdits(const ModbusRegisterEdits &edits) const;
 
     bool loadPollingState();
     bool savePollingState(QString *error);
@@ -118,6 +151,14 @@ private:
     QMap<QString, LimitEdits> m_limitEdits;
     QMap<QString, SliderEditEdits> m_sliderEditEdits;
     QMap<QString, QCheckBox*> m_deviceControlChildCheckboxes;
+    QMap<QString, ModbusButtonEdits> m_modbusButtonEdits;
+    QMap<QString, QCheckBox*> m_otherVisibilityCheckboxes;
+    QGroupBox *m_modbusButtonGroup = nullptr;
+    QWidget *m_modbusButtonListHost = nullptr;
+    QVBoxLayout *m_modbusButtonListLayout = nullptr;
+    QGroupBox *m_otherVisibilityGroup = nullptr;
+    QWidget *m_otherVisibilityListHost = nullptr;
+    QGridLayout *m_otherVisibilityGrid = nullptr;
     QLineEdit *m_editPlaneHeightOffset = nullptr;
     QLineEdit *m_editRobotTorqueDanger = nullptr;
     QLineEdit *m_editEngineerPassword = nullptr;

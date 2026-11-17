@@ -87,7 +87,9 @@ void MappingConfig::initDefaultMappings()
         m_controlNameMap["TBtn_AGV_Forward"] = "AGV 前进按钮";
         m_controlNameMap["TBtn_AGV_Backward"] = "AGV 后退按钮";
         m_controlNameMap["techBtn_AGV_OA"] = "AGV OA 按钮";
+        m_controlNameMap["techBtn_AGV_Park"] = "AGV 驻车按钮";
         m_controlNameMap["techBtn_AGV_驻车"] = "AGV 驻车按钮";
+        m_controlNameMap["steeringModeSelector"] = "转向模式";
 
         // 力控相关
         m_controlNameMap["btn_ForceClear"] = "力控清除按钮";

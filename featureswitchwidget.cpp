@@ -3,13 +3,17 @@
 #include "techvirtualkeyboard.h"
 #include "techslideredit.h"
 #include "mainwindow.h"
+#include "mappingconfig.h"
 
+#include <QAbstractButton>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDialog>
 #include <QDoubleValidator>
 #include <QEvent>
 #include <QFrame>
 #include <QGridLayout>
+#include <QLayout>
 #include <QGroupBox>
 #include <QGuiApplication>
 #include <QHBoxLayout>
@@ -33,6 +37,63 @@
 #include <algorithm>
 
 namespace {
+
+using ButtonModbusMapping::composeLegacyRegisterString;
+using ButtonModbusMapping::kMaxTargetsPerDirection;
+using ButtonModbusMapping::loadRegisterSpecs;
+using ButtonModbusMapping::resolvedBinding;
+
+bool hasModbusOperation(const MainWindow::ControllableButtonInfo &info)
+{
+    if (info.objectName == QStringLiteral("steeringModeSelector")) {
+        return true;
+    }
+    return !info.defaultReads.isEmpty() || !info.defaultWrites.isEmpty();
+}
+
+bool shouldSkipControllable(const MainWindow::ControllableButtonInfo &info)
+{
+    return info.widgetKind == QStringLiteral("环形仪表")
+        || info.objectName.startsWith(QStringLiteral("robot_ArcGauge_"))
+        || info.widgetKind == QStringLiteral("滑块输入")
+        || info.objectName.startsWith(QStringLiteral("TechSliderEdit_"))
+        || info.objectName.startsWith(QStringLiteral("SEdit_"));
+}
+
+bool isDeviceControlChildButton(const QString &objectName)
+{
+    return objectName == QStringLiteral("TBtn_RobotControl")
+        || objectName == QStringLiteral("TBtn_HomePage")
+        || objectName == QStringLiteral("TBtn_ChassisControl")
+        || objectName == QStringLiteral("TBtn_SixAxies")
+        || objectName == QStringLiteral("TBtn_SafetyMonitor");
+}
+
+bool isConsoleNoiseControl(MainWindow *mainWindow, const QString &objectName)
+{
+    if (objectName.startsWith(QStringLiteral("qt_"))) {
+        return true;
+    }
+    if (!mainWindow) {
+        return false;
+    }
+    QWidget *widget = mainWindow->findChild<QWidget*>(objectName);
+    if (!widget) {
+        return false;
+    }
+    for (QWidget *p = widget->parentWidget(); p && p != mainWindow; p = p->parentWidget()) {
+        if (qobject_cast<QDialog*>(p) || qobject_cast<QMessageBox*>(p)) {
+            return true;
+        }
+        if (qobject_cast<FeatureSwitchWidget*>(p)) {
+            return true;
+        }
+        if (p->inherits("TechVirtualKeyboard")) {
+            return true;
+        }
+    }
+    return false;
+}
 
 QString lastValidFromProperty(const QLineEdit *edit, const QString &fallback)
 {
@@ -126,6 +187,11 @@ QString configFieldLabel(const QString &group, const QString &key)
         {QStringLiteral("ButtonVisibility/TBtn_ChassisControl"), QStringLiteral("底盘控制入口")},
         {QStringLiteral("ButtonVisibility/TBtn_SixAxies"), QStringLiteral("六自由度入口")},
         {QStringLiteral("ButtonVisibility/TBtn_SafetyMonitor"), QStringLiteral("安全监控入口")},
+        {QStringLiteral("ButtonVisibility/TBtn_ControlMode"), QStringLiteral("示教/遥控控制模式")},
+        {QStringLiteral("ButtonVisibility/techBtn_AGV_OA"), QStringLiteral("AGV 避障")},
+        {QStringLiteral("ButtonVisibility/techBtn_AGV_Park"), QStringLiteral("AGV 驻车")},
+        {QStringLiteral("ButtonVisibility/TBtn_RemoveWarning"), QStringLiteral("消除报警")},
+        {QStringLiteral("ButtonVisibility/steeringModeSelector"), QStringLiteral("转向模式")},
     };
     return labels.value(id, id);
 }
@@ -176,6 +242,10 @@ FeatureSwitchWidget::FeatureSwitchWidget(QWidget *parent) : QWidget(parent)
         "#consoleSubtitle { color: #91dfff; font-size: 12px; }"
         "#consoleBadge { background: rgba(74, 38, 108, 0.88); color: #ffe28f; border: 1px solid rgba(255, 210, 112, 0.70); border-radius: 8px; padding: 2px 10px; font-size: 12px; }"
         "#consoleFooter { background: rgba(5, 18, 34, 0.96); border-top: 1px solid rgba(74, 190, 238, 0.42); }"
+        "QWidget#modbusCard { background-color: #0a1c28; border: 1px solid #1e5570; border-radius: 6px; }"
+        "QLabel#cardTitle { color: #e8fbff; font-weight: bold; font-size: 13px; }"
+        "QLabel#cardMeta { color: #6a9eb0; font-size: 11px; font-weight: normal; }"
+        "QLabel#sectionLabel { color: #4ec8ef; font-size: 11px; font-weight: bold; padding-top: 4px; }"
     );
 
     resize(980, 820);
@@ -199,6 +269,7 @@ void FeatureSwitchWidget::showEvent(QShowEvent *event)
     QWidget::showEvent(event);
 
     refreshTechSliderEditList();
+    refreshButtonVisibilityList();
     loadCurrentState();
 
     if (QWidget *host = parentWidget()) {
@@ -444,7 +515,7 @@ void FeatureSwitchWidget::setupUI()
     setupSliderLimitUI(displayLayout);
     setupPlaneHeightOffsetUI(displayLayout);
     setupRobotTorqueUI(displayLayout);
-    setupDeviceControlChildVisibilityUI(controlLayout);
+    setupButtonVisibilityUI(controlLayout);
 
     baseLayout->addStretch();
     commLayout->addStretch();
@@ -867,6 +938,361 @@ void FeatureSwitchWidget::setupRobotTorqueUI(QVBoxLayout *scrollLayout)
     scrollLayout->addWidget(group);
 }
 
+FeatureSwitchWidget::ModbusRegisterEdits FeatureSwitchWidget::makeRegisterRowEdits(
+    QWidget *parent, const QString &lineEditStyle)
+{
+    ModbusRegisterEdits edits;
+    edits.device = new QComboBox(parent);
+    edits.device->addItems({QStringLiteral("无"), QStringLiteral("主控"), QStringLiteral("AGV")});
+    edits.device->setFixedWidth(58);
+
+    auto makeEdit = [&](const QString &placeholder, int width) {
+        auto *edit = new QLineEdit(parent);
+        edit->setPlaceholderText(placeholder);
+        edit->setFixedWidth(width);
+        edit->setStyleSheet(lineEditStyle);
+        edit->installEventFilter(this);
+        return edit;
+    };
+    edits.address = makeEdit(QStringLiteral("寄存器"), 68);
+    edits.bit = makeEdit(QStringLiteral("位，可空"), 72);
+    edits.value1 = makeEdit(QStringLiteral("值1"), 68);
+    edits.value2 = makeEdit(QStringLiteral("值2"), 68);
+    edits.value3 = makeEdit(QStringLiteral("值3"), 68);
+
+    const auto updateEnabled = [edits]() {
+        const bool enabled = edits.device && edits.device->currentText() != QStringLiteral("无");
+        const auto setEnabledAndClear = [enabled](QLineEdit *edit) {
+            if (!edit) {
+                return;
+            }
+            edit->setEnabled(enabled);
+            if (!enabled) {
+                edit->clear();
+            }
+        };
+        setEnabledAndClear(edits.address);
+        setEnabledAndClear(edits.bit);
+        setEnabledAndClear(edits.value1);
+        setEnabledAndClear(edits.value2);
+        setEnabledAndClear(edits.value3);
+    };
+    connect(edits.device, QOverload<int>::of(&QComboBox::currentIndexChanged), parent,
+            [updateEnabled](int) { updateEnabled(); });
+    updateEnabled();
+    return edits;
+}
+
+void FeatureSwitchWidget::addModbusRegisterRow(QHBoxLayout *row,
+                                               const QString &label,
+                                               const ModbusRegisterEdits &edits,
+                                               const QString &syncHint)
+{
+    QLabel *lbl = new QLabel(label);
+    lbl->setFixedWidth(28);
+    lbl->setStyleSheet(QStringLiteral("color: #aaccff;"));
+    row->addWidget(lbl);
+    row->addWidget(edits.device);
+    row->addWidget(new QLabel(QStringLiteral("寄存器")));
+    row->addWidget(edits.address);
+    row->addWidget(new QLabel(QStringLiteral("位")));
+    row->addWidget(edits.bit);
+    row->addWidget(new QLabel(QStringLiteral("值1")));
+    row->addWidget(edits.value1);
+    row->addWidget(new QLabel(QStringLiteral("值2")));
+    row->addWidget(edits.value2);
+    row->addWidget(new QLabel(QStringLiteral("值3")));
+    row->addWidget(edits.value3);
+    if (!syncHint.isEmpty()) {
+        QLabel *hint = new QLabel(syncHint);
+        hint->setStyleSheet(QStringLiteral("color: #66aa88; font-size: 10px;"));
+        row->addWidget(hint);
+    }
+}
+
+void FeatureSwitchWidget::applyRegisterSpecToEdits(const MainWindow::ModbusRegisterSpec &spec,
+                                                   ModbusRegisterEdits &edits)
+{
+    if (!edits.device || !edits.address || !edits.bit || !edits.value1 || !edits.value2 || !edits.value3) {
+        return;
+    }
+    QSignalBlocker blockerDevice(edits.device);
+    const int deviceIndex = edits.device->findText(spec.device);
+    edits.device->setCurrentIndex(deviceIndex >= 0 ? deviceIndex : 0);
+
+    const bool enabled = spec.device != QStringLiteral("无");
+    edits.address->setEnabled(enabled);
+    edits.bit->setEnabled(enabled);
+    edits.value1->setEnabled(enabled);
+    edits.value2->setEnabled(enabled);
+    edits.value3->setEnabled(enabled);
+
+    edits.address->setText(spec.address);
+    edits.bit->setText(spec.bit);
+    edits.value1->setText(spec.value1);
+    edits.value2->setText(spec.value2);
+    edits.value3->setText(spec.value3);
+    if (!enabled) {
+        edits.address->clear();
+        edits.bit->clear();
+        edits.value1->clear();
+        edits.value2->clear();
+        edits.value3->clear();
+    }
+}
+
+MainWindow::ModbusRegisterSpec FeatureSwitchWidget::readRegisterSpecFromEdits(
+    const ModbusRegisterEdits &edits) const
+{
+    MainWindow::ModbusRegisterSpec spec;
+    if (!edits.device || !edits.address || !edits.bit || !edits.value1 || !edits.value2 || !edits.value3) {
+        return spec;
+    }
+    spec.device = edits.device->currentText().trimmed();
+    spec.address = edits.address->text().trimmed();
+    spec.bit = edits.bit->text().trimmed();
+    spec.value1 = edits.value1->text().trimmed();
+    spec.value2 = edits.value2->text().trimmed();
+    spec.value3 = edits.value3->text().trimmed();
+    return spec;
+}
+
+void FeatureSwitchWidget::setupButtonVisibilityUI(QVBoxLayout *scrollLayout)
+{
+    setupDeviceControlChildVisibilityUI(scrollLayout);
+
+    m_modbusButtonGroup = new QGroupBox(QStringLiteral("Modbus 按键：显示与寄存器"));
+    QVBoxLayout *modbusLayout = new QVBoxLayout(m_modbusButtonGroup);
+    modbusLayout->addWidget(makeHintLabel(
+        QStringLiteral("自动扫描主窗口中带 Modbus 读写的按键。每行：设备 / 寄存器 / 位（可空）/ 值1~3。"
+                       "读行用于界面状态同步；默认值来自程序内置逻辑。"),
+        m_modbusButtonGroup));
+
+    QHBoxLayout *modbusToolbar = new QHBoxLayout();
+    QPushButton *modbusShowAll = new QPushButton(QStringLiteral("全部显示"));
+    QPushButton *modbusHideAll = new QPushButton(QStringLiteral("全部隐藏"));
+    modbusToolbar->addWidget(modbusShowAll);
+    modbusToolbar->addWidget(modbusHideAll);
+    modbusToolbar->addStretch();
+    modbusLayout->addLayout(modbusToolbar);
+
+    QScrollArea *modbusScroll = new QScrollArea();
+    modbusScroll->setWidgetResizable(true);
+    modbusScroll->setMaximumHeight(420);
+    modbusScroll->setFrameShape(QFrame::NoFrame);
+    m_modbusButtonListHost = new QWidget();
+    m_modbusButtonListLayout = new QVBoxLayout(m_modbusButtonListHost);
+    m_modbusButtonListLayout->setSpacing(10);
+    m_modbusButtonListLayout->setContentsMargins(2, 2, 8, 2);
+    modbusScroll->setWidget(m_modbusButtonListHost);
+    modbusLayout->addWidget(modbusScroll);
+
+    connect(modbusShowAll, &QPushButton::clicked, this, [this]() {
+        for (auto it = m_modbusButtonEdits.begin(); it != m_modbusButtonEdits.end(); ++it) {
+            if (it->visible) {
+                it->visible->setChecked(true);
+            }
+        }
+    });
+    connect(modbusHideAll, &QPushButton::clicked, this, [this]() {
+        for (auto it = m_modbusButtonEdits.begin(); it != m_modbusButtonEdits.end(); ++it) {
+            if (it->visible) {
+                it->visible->setChecked(false);
+            }
+        }
+    });
+    scrollLayout->addWidget(m_modbusButtonGroup);
+
+    m_otherVisibilityGroup = new QGroupBox(QStringLiteral("其它控件可见性"));
+    QVBoxLayout *otherLayout = new QVBoxLayout(m_otherVisibilityGroup);
+    otherLayout->addWidget(makeHintLabel(
+        QStringLiteral("无 Modbus 映射的导航 / 模式等控件，仅控制是否显示。"
+                       "环形仪表与滑块输入请到「显示范围」页配置。"),
+        m_otherVisibilityGroup));
+
+    QHBoxLayout *otherToolbar = new QHBoxLayout();
+    QPushButton *otherShowAll = new QPushButton(QStringLiteral("全部显示"));
+    QPushButton *otherHideAll = new QPushButton(QStringLiteral("全部隐藏"));
+    otherToolbar->addWidget(otherShowAll);
+    otherToolbar->addWidget(otherHideAll);
+    otherToolbar->addStretch();
+    otherLayout->addLayout(otherToolbar);
+
+    QScrollArea *otherScroll = new QScrollArea();
+    otherScroll->setWidgetResizable(true);
+    otherScroll->setMaximumHeight(220);
+    otherScroll->setFrameShape(QFrame::NoFrame);
+    m_otherVisibilityListHost = new QWidget();
+    m_otherVisibilityGrid = new QGridLayout(m_otherVisibilityListHost);
+    m_otherVisibilityGrid->setHorizontalSpacing(12);
+    m_otherVisibilityGrid->setVerticalSpacing(4);
+    otherScroll->setWidget(m_otherVisibilityListHost);
+    otherLayout->addWidget(otherScroll);
+
+    connect(otherShowAll, &QPushButton::clicked, this, [this]() {
+        for (QCheckBox *cb : m_otherVisibilityCheckboxes) {
+            cb->setChecked(true);
+        }
+    });
+    connect(otherHideAll, &QPushButton::clicked, this, [this]() {
+        for (QCheckBox *cb : m_otherVisibilityCheckboxes) {
+            cb->setChecked(false);
+        }
+    });
+    scrollLayout->addWidget(m_otherVisibilityGroup);
+    refreshButtonVisibilityList();
+}
+
+void FeatureSwitchWidget::refreshButtonVisibilityList()
+{
+    if (!m_modbusButtonListLayout || !m_otherVisibilityGrid) {
+        return;
+    }
+
+    while (QLayoutItem *item = m_modbusButtonListLayout->takeAt(0)) {
+        if (QWidget *widget = item->widget()) {
+            widget->deleteLater();
+        }
+        delete item;
+    }
+    m_modbusButtonEdits.clear();
+
+    while (QLayoutItem *item = m_otherVisibilityGrid->takeAt(0)) {
+        if (QWidget *widget = item->widget()) {
+            widget->deleteLater();
+        }
+        delete item;
+    }
+    m_otherVisibilityCheckboxes.clear();
+
+    MainWindow *mainWindow = qobject_cast<MainWindow*>(parent());
+    QList<MainWindow::ControllableButtonInfo> buttons;
+    if (mainWindow) {
+        buttons = mainWindow->controllableButtons();
+    }
+
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    MappingConfig *mapping = MappingConfig::instance();
+    int modbusCount = 0;
+    int otherRow = 0;
+
+    for (int i = 0; i < buttons.size(); ++i) {
+        const MainWindow::ControllableButtonInfo &info = buttons.at(i);
+        if (shouldSkipControllable(info) || isDeviceControlChildButton(info.objectName)) {
+            continue;
+        }
+        if (!hasModbusOperation(info) && isConsoleNoiseControl(mainWindow, info.objectName)) {
+            continue;
+        }
+
+        const QString &objectName = info.objectName;
+        QString visibleText = info.displayText;
+        if (visibleText.isEmpty() && mapping) {
+            const QString mapped = mapping->mapControlName(objectName);
+            if (mapped != objectName) {
+                visibleText = mapped;
+            }
+        }
+        const QString kind = info.widgetKind.isEmpty() ? QStringLiteral("控件") : info.widgetKind;
+
+        settings.beginGroup(QStringLiteral("ButtonVisibility"));
+        const bool visibleDefault = settings.value(objectName, true).toBool();
+        settings.endGroup();
+
+        if (hasModbusOperation(info)) {
+            settings.beginGroup(QStringLiteral("ButtonModbusMapping"));
+            QWidget *card = new QWidget(m_modbusButtonListHost);
+            card->setObjectName(QStringLiteral("modbusCard"));
+            QVBoxLayout *cardLayout = new QVBoxLayout(card);
+            cardLayout->setContentsMargins(10, 8, 10, 8);
+            cardLayout->setSpacing(5);
+
+            QHBoxLayout *titleRow = new QHBoxLayout();
+            QCheckBox *visibleCb = new QCheckBox(QStringLiteral("显示"), card);
+            visibleCb->setChecked(visibleDefault);
+
+            auto *titleBlock = new QVBoxLayout();
+            titleBlock->setSpacing(1);
+            QLabel *titleLbl = new QLabel(visibleText.isEmpty() ? kind : visibleText, card);
+            titleLbl->setObjectName(QStringLiteral("cardTitle"));
+            QLabel *metaLbl = new QLabel(QStringLiteral("%1 · %2").arg(kind, objectName), card);
+            metaLbl->setObjectName(QStringLiteral("cardMeta"));
+            metaLbl->setToolTip(objectName);
+            titleBlock->addWidget(titleLbl);
+            titleBlock->addWidget(metaLbl);
+            titleRow->addWidget(visibleCb, 0, Qt::AlignTop);
+            titleRow->addLayout(titleBlock, 1);
+            cardLayout->addLayout(titleRow);
+
+            cardLayout->addWidget(makeHintLabel(
+                QStringLiteral("状态映射：第1态→值1，第2态→值2，第3态→值3；单一状态只填值1。"), card));
+
+            QVector<ModbusRegisterEdits> readEditsList;
+            QVector<ModbusRegisterEdits> writeEditsList;
+            const QString readPrefix = objectName + QStringLiteral("_read");
+            const QString writePrefix = objectName + QStringLiteral("_write");
+            const QList<MainWindow::ModbusRegisterSpec> readSpecs =
+                loadRegisterSpecs(settings, readPrefix, info.defaultReads);
+            const QList<MainWindow::ModbusRegisterSpec> writeSpecs =
+                loadRegisterSpecs(settings, writePrefix, info.defaultWrites);
+
+            auto *readSection = new QLabel(QStringLiteral("读寄存器"), card);
+            readSection->setObjectName(QStringLiteral("sectionLabel"));
+            cardLayout->addWidget(readSection);
+            for (int idx = 0; idx < kMaxTargetsPerDirection; ++idx) {
+                ModbusRegisterEdits edits = makeRegisterRowEdits(card, QString());
+                const QString readSyncHint = (info.readForUiSync && idx == 0)
+                    ? QStringLiteral("同步") : QString();
+                QHBoxLayout *readRow = new QHBoxLayout();
+                addModbusRegisterRow(readRow, QStringLiteral("读%1").arg(idx + 1), edits, readSyncHint);
+                cardLayout->addLayout(readRow);
+                if (idx < readSpecs.size()) {
+                    applyRegisterSpecToEdits(readSpecs.at(idx), edits);
+                }
+                readEditsList.push_back(edits);
+            }
+
+            auto *writeSection = new QLabel(QStringLiteral("写寄存器"), card);
+            writeSection->setObjectName(QStringLiteral("sectionLabel"));
+            cardLayout->addWidget(writeSection);
+            for (int idx = 0; idx < kMaxTargetsPerDirection; ++idx) {
+                ModbusRegisterEdits edits = makeRegisterRowEdits(card, QString());
+                QHBoxLayout *writeRow = new QHBoxLayout();
+                addModbusRegisterRow(writeRow, QStringLiteral("写%1").arg(idx + 1), edits);
+                cardLayout->addLayout(writeRow);
+                if (idx < writeSpecs.size()) {
+                    applyRegisterSpecToEdits(writeSpecs.at(idx), edits);
+                }
+                writeEditsList.push_back(edits);
+            }
+
+            m_modbusButtonListLayout->addWidget(card);
+            m_modbusButtonEdits[objectName] = {visibleCb, readEditsList, writeEditsList, info.readForUiSync};
+            settings.endGroup();
+            ++modbusCount;
+        } else {
+            const QString label = visibleText.isEmpty() ? kind : visibleText;
+            QCheckBox *cb = new QCheckBox(label, m_otherVisibilityListHost);
+            cb->setToolTip(QStringLiteral("%1 · %2").arg(kind, objectName));
+            cb->setChecked(visibleDefault);
+            m_otherVisibilityGrid->addWidget(cb, otherRow / 2, otherRow % 2);
+            m_otherVisibilityCheckboxes[objectName] = cb;
+            ++otherRow;
+        }
+    }
+
+    if (modbusCount == 0) {
+        m_modbusButtonListLayout->addWidget(new QLabel(
+            QStringLiteral("未扫描到有 Modbus 读写的按键（请确认主窗口已初始化）"),
+            m_modbusButtonListHost));
+    }
+    if (otherRow == 0) {
+        m_otherVisibilityGrid->addWidget(new QLabel(
+            QStringLiteral("无其它可配置控件"),
+            m_otherVisibilityListHost), 0, 0);
+    }
+}
+
 void FeatureSwitchWidget::setupDeviceControlChildVisibilityUI(QVBoxLayout *scrollLayout)
 {
     auto *group = new QGroupBox(QStringLiteral("设备控制子按钮"));
@@ -1172,6 +1598,34 @@ bool FeatureSwitchWidget::loadButtonVisibilityState()
     for (auto it = m_deviceControlChildCheckboxes.begin(); it != m_deviceControlChildCheckboxes.end(); ++it) {
         it.value()->setChecked(settings.value(it.key(), true).toBool());
     }
+    for (auto it = m_modbusButtonEdits.begin(); it != m_modbusButtonEdits.end(); ++it) {
+        if (it->visible) {
+            it->visible->setChecked(settings.value(it.key(), true).toBool());
+        }
+    }
+    for (auto it = m_otherVisibilityCheckboxes.begin(); it != m_otherVisibilityCheckboxes.end(); ++it) {
+        it.value()->setChecked(settings.value(it.key(), true).toBool());
+    }
+    settings.endGroup();
+
+    settings.beginGroup(QStringLiteral("ButtonModbusMapping"));
+    for (auto it = m_modbusButtonEdits.begin(); it != m_modbusButtonEdits.end(); ++it) {
+        const ButtonModbusMapping::Binding binding = resolvedBinding(it.key());
+        for (int idx = 0; idx < it->reads.size(); ++idx) {
+            if (idx < binding.reads.size()) {
+                applyRegisterSpecToEdits(binding.reads.at(idx), it->reads[idx]);
+            } else {
+                applyRegisterSpecToEdits(MainWindow::ModbusRegisterSpec{}, it->reads[idx]);
+            }
+        }
+        for (int idx = 0; idx < it->writes.size(); ++idx) {
+            if (idx < binding.writes.size()) {
+                applyRegisterSpecToEdits(binding.writes.at(idx), it->writes[idx]);
+            } else {
+                applyRegisterSpecToEdits(MainWindow::ModbusRegisterSpec{}, it->writes[idx]);
+            }
+        }
+    }
     settings.endGroup();
     return true;
 }
@@ -1187,6 +1641,67 @@ bool FeatureSwitchWidget::saveButtonVisibilityState(QString *error)
     }
     for (auto it = m_deviceControlChildCheckboxes.begin(); it != m_deviceControlChildCheckboxes.end(); ++it) {
         settings.setValue(it.key(), it.value()->isChecked());
+    }
+    for (auto it = m_modbusButtonEdits.begin(); it != m_modbusButtonEdits.end(); ++it) {
+        if (it->visible) {
+            settings.setValue(it.key(), it->visible->isChecked());
+        }
+    }
+    for (auto it = m_otherVisibilityCheckboxes.begin(); it != m_otherVisibilityCheckboxes.end(); ++it) {
+        settings.setValue(it.key(), it.value()->isChecked());
+    }
+    settings.endGroup();
+
+    settings.beginGroup(QStringLiteral("ButtonModbusMapping"));
+    for (auto it = m_modbusButtonEdits.begin(); it != m_modbusButtonEdits.end(); ++it) {
+        const QString &name = it.key();
+        const QString readPrefixBase = name + QStringLiteral("_read");
+        for (int idx = 0; idx < it->reads.size(); ++idx) {
+            const MainWindow::ModbusRegisterSpec readSpec = readRegisterSpecFromEdits(it->reads.at(idx));
+            const QString readPrefix = QStringLiteral("%1_%2").arg(readPrefixBase).arg(idx + 1);
+            settings.setValue(readPrefix + QStringLiteral("_device"), readSpec.device);
+            settings.setValue(readPrefix + QStringLiteral("_addr"), readSpec.address);
+            settings.setValue(readPrefix + QStringLiteral("_bit"), readSpec.bit);
+            settings.setValue(readPrefix + QStringLiteral("_value1"), readSpec.value1);
+            settings.setValue(readPrefix + QStringLiteral("_value2"), readSpec.value2);
+            settings.setValue(readPrefix + QStringLiteral("_value3"), readSpec.value3);
+            settings.setValue(readPrefix + QStringLiteral("_value"), readSpec.value1);
+            settings.setValue(readPrefix, composeLegacyRegisterString(readSpec));
+            if (idx == 0) {
+                settings.setValue(readPrefixBase + QStringLiteral("_device"), readSpec.device);
+                settings.setValue(readPrefixBase + QStringLiteral("_addr"), readSpec.address);
+                settings.setValue(readPrefixBase + QStringLiteral("_bit"), readSpec.bit);
+                settings.setValue(readPrefixBase + QStringLiteral("_value1"), readSpec.value1);
+                settings.setValue(readPrefixBase + QStringLiteral("_value2"), readSpec.value2);
+                settings.setValue(readPrefixBase + QStringLiteral("_value3"), readSpec.value3);
+                settings.setValue(readPrefixBase + QStringLiteral("_value"), readSpec.value1);
+                settings.setValue(readPrefixBase, composeLegacyRegisterString(readSpec));
+            }
+        }
+
+        const QString writePrefixBase = name + QStringLiteral("_write");
+        for (int idx = 0; idx < it->writes.size(); ++idx) {
+            const MainWindow::ModbusRegisterSpec writeSpec = readRegisterSpecFromEdits(it->writes.at(idx));
+            const QString writePrefix = QStringLiteral("%1_%2").arg(writePrefixBase).arg(idx + 1);
+            settings.setValue(writePrefix + QStringLiteral("_device"), writeSpec.device);
+            settings.setValue(writePrefix + QStringLiteral("_addr"), writeSpec.address);
+            settings.setValue(writePrefix + QStringLiteral("_bit"), writeSpec.bit);
+            settings.setValue(writePrefix + QStringLiteral("_value1"), writeSpec.value1);
+            settings.setValue(writePrefix + QStringLiteral("_value2"), writeSpec.value2);
+            settings.setValue(writePrefix + QStringLiteral("_value3"), writeSpec.value3);
+            settings.setValue(writePrefix + QStringLiteral("_value"), writeSpec.value1);
+            settings.setValue(writePrefix, composeLegacyRegisterString(writeSpec));
+            if (idx == 0) {
+                settings.setValue(writePrefixBase + QStringLiteral("_device"), writeSpec.device);
+                settings.setValue(writePrefixBase + QStringLiteral("_addr"), writeSpec.address);
+                settings.setValue(writePrefixBase + QStringLiteral("_bit"), writeSpec.bit);
+                settings.setValue(writePrefixBase + QStringLiteral("_value1"), writeSpec.value1);
+                settings.setValue(writePrefixBase + QStringLiteral("_value2"), writeSpec.value2);
+                settings.setValue(writePrefixBase + QStringLiteral("_value3"), writeSpec.value3);
+                settings.setValue(writePrefixBase + QStringLiteral("_value"), writeSpec.value1);
+                settings.setValue(writePrefixBase, composeLegacyRegisterString(writeSpec));
+            }
+        }
     }
     settings.endGroup();
     return settingsWriteOk(settings, QStringLiteral("config.ini"), error);
@@ -1480,6 +1995,7 @@ bool FeatureSwitchWidget::onApply()
     const QMap<QString, QString> planeBefore = snapshotIniGroup(ini, QStringLiteral("PlaneHeight"));
     const QMap<QString, QString> torqueBefore = snapshotIniGroup(ini, QStringLiteral("RobotTorque"));
     const QMap<QString, QString> buttonBefore = snapshotIniGroup(ini, QStringLiteral("ButtonVisibility"));
+    const QMap<QString, QString> mappingBefore = snapshotIniGroup(ini, QStringLiteral("ButtonModbusMapping"));
     const QMap<QString, QString> permissionBefore = snapshotIniGroup(ini, QStringLiteral("Permission"));
 
     if (!savePollingState(&error)
@@ -1517,6 +2033,7 @@ bool FeatureSwitchWidget::onApply()
     recordIniChanges(ini, QStringLiteral("PlaneHeight"), planeBefore);
     recordIniChanges(ini, QStringLiteral("RobotTorque"), torqueBefore);
     recordIniChanges(ini, QStringLiteral("ButtonVisibility"), buttonBefore);
+    recordIniChanges(ini, QStringLiteral("ButtonModbusMapping"), mappingBefore);
     recordIniChanges(ini, QStringLiteral("Permission"), permissionBefore);
 
     emit runtimeSettingsChanged();
@@ -1538,6 +2055,7 @@ void FeatureSwitchWidget::onReload()
 {
     FeatureSwitchManager::instance()->reload();
     refreshTechSliderEditList();
+    refreshButtonVisibilityList();
     loadCurrentState();
 }
 

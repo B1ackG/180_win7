@@ -42,6 +42,7 @@
 #include "steeringmodeselector.h"
 #include "enablebuttonworker.h"
 #include "timeseriestypes.h"
+#include "buttonmodbusmapping.h"
 
 class TimeSeriesManager;
 class TimeSeriesDialog;
@@ -656,6 +657,7 @@ private:
     TechChamferToolButton *m_controlModeMenuButton = nullptr;
     QToolButton *m_controlModeBtn = nullptr;
     QButtonGroup *m_navSubButtonGroup = nullptr;
+    QHash<QString, ButtonModbusMapping::Binding> m_buttonModbusBindings;
     QVector<TechZonePanel*> m_contentZonePanels;
     QThread *m_enableButtonThread;
     EnableButtonWorker *m_enableButtonWorker;
@@ -975,6 +977,26 @@ public:
     void applyRobotTorqueRuntimeSettings();
     void applyButtonVisibilityRuntimeSettings();
     void applyPasswordHintRuntimeSettings();
+
+    /** @brief 控制台用 Modbus 寄存器四段描述：设备 / 地址 / 位 / 值 */
+    using ModbusRegisterSpec = ButtonModbusMapping::RegisterSpec;
+
+    struct ControllableButtonInfo {
+        QString objectName;
+        QString displayText;
+        QString widgetKind;
+        QList<ModbusRegisterSpec> defaultReads;
+        QList<ModbusRegisterSpec> defaultWrites;
+        bool readForUiSync = false;
+    };
+
+    /** @brief 主窗口内可配置可见性与寄存器的控件（按 objectName 排序） */
+    QList<ControllableButtonInfo> controllableButtons() const;
+    void reloadButtonModbusBindings();
+    ButtonModbusMapping::Binding buttonModbusBinding(const QString &objectName) const;
+    void executeConfiguredRegisterWrites(const QList<ModbusRegisterSpec> &specs,
+                                         int stateIndex,
+                                         const QString &logTag);
 
 private:
     /** @brief 连接导航与页面切换相关信号 */
