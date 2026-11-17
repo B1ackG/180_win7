@@ -991,6 +991,9 @@ private:
     void repositionCollapsibleControlPanels();
     void positionCollapsiblePanel(QWidget *panel, QToolButton *anchorButton);
 
+    /** @brief 打开权限页并同步导航选中状态 */
+    void showPermissionView();
+
     /** @brief 连接历史记录与权限相关信号 */
     void setupRecordAndPermissionConnections();
 

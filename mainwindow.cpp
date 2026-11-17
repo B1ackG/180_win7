@@ -1163,6 +1163,22 @@ void MainWindow::positionCollapsiblePanel(QWidget *panel, QToolButton *anchorBut
     panel->move(x, y);
 }
 
+void MainWindow::showPermissionView()
+{
+    if (!ui || !ui->StackedWidget || !ui->page_Permission) {
+        return;
+    }
+    hideCollapsibleControlPanels();
+    dismissSixAxisInitToast();
+    suppressOffPageRobotLimitToasts();
+    ui->StackedWidget->setCurrentWidget(ui->page_Permission);
+    if (ui->TBtn_PermissionPage) {
+        ui->TBtn_PermissionPage->setChecked(true);
+    }
+    updateNavButtonStyles(nullptr);
+    syncRobotSoftLimitToasts();
+}
+
 void MainWindow::setupRecordAndPermissionConnections()
 {
     if (!isBigFeatureEnabled("operation_records") && !isBigFeatureEnabled("permission_system")) {
@@ -1171,10 +1187,7 @@ void MainWindow::setupRecordAndPermissionConnections()
     }
 
     connect(ui->TBtn_PermissionPage, &QPushButton::clicked, this, [this]() {
-        if (ui->page_Permission) {
-            ui->StackedWidget->setCurrentWidget(ui->page_Permission);
-        }
-        ui->TBtn_PermissionPage->setChecked(true);
+        showPermissionView();
     });
 
     connect(ui->TBtn_HistoryRecord, &QPushButton::clicked, this, [this]() {
@@ -1186,12 +1199,10 @@ void MainWindow::setupRecordAndPermissionConnections()
             showTodayHistory();
             showNotification("已进入操作记录页面");
         } else {
-            if (ui->TBtn_HomePage) {
-                ui->TBtn_HomePage->setChecked(true);
-            }
-            const QString tip = "权限不足：查看历史记录需要管理员权限";
-            showNotification(tip);
+            const QString tip = QStringLiteral("权限不足：查看历史记录需要管理员权限");
+            showToast(tip, ToastKind::Warning);
             updateStatusTip(tip);
+            showPermissionView();
         }
     });
 
@@ -2215,12 +2226,10 @@ void MainWindow::ensureTimeSeriesPage()
 void MainWindow::showTimeSeriesDialog()
 {
     if (m_currentUserRole < UserRole::Admin) {
-        if (ui->TBtn_HomePage) {
-            ui->TBtn_HomePage->setChecked(true);
-        }
         const QString tip = QStringLiteral("权限不足：查看数据曲线需要管理员权限");
-        showNotification(tip);
+        showToast(tip, ToastKind::Warning);
         updateStatusTip(tip);
+        showPermissionView();
         return;
     }
 
