@@ -88,3 +88,4 @@ tst_timeserieswriter
 
 # Added by Assistant staging review
 *.png
+!Picture/*.png
