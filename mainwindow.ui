@@ -378,43 +378,6 @@ TechZonePanel {
        <number>90</number>
       </property>
       <item>
-       <widget class="TechChamferToolButton" name="TBtn_PageNavMenu">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>194</width>
-          <height>44</height>
-         </size>
-        </property>
-        <property name="font">
-         <font>
-          <pointsize>12</pointsize>
-          <bold>true</bold>
-         </font>
-        </property>
-        <property name="text">
-         <string>系统管理</string>
-        </property>
-        <property name="iconSize">
-         <size>
-          <width>24</width>
-          <height>24</height>
-         </size>
-        </property>
-        <property name="checkable">
-         <bool>true</bool>
-        </property>
-        <property name="toolButtonStyle">
-         <enum>Qt::ToolButtonTextBesideIcon</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
        <widget class="TechChamferToolButton" name="TBtn_DeviceControlMenu">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -436,6 +399,43 @@ TechZonePanel {
         </property>
         <property name="text">
          <string>设备控制</string>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>24</width>
+          <height>24</height>
+         </size>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="toolButtonStyle">
+         <enum>Qt::ToolButtonTextBesideIcon</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="TechChamferToolButton" name="TBtn_PageNavMenu">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>194</width>
+          <height>44</height>
+         </size>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>12</pointsize>
+          <bold>true</bold>
+         </font>
+        </property>
+        <property name="text">
+         <string>系统管理</string>
         </property>
         <property name="iconSize">
          <size>
@@ -674,7 +674,7 @@ TechZonePanel {
          <item>
           <widget class="QStackedWidget" name="stackedWidget_RobotStatus">
            <property name="currentIndex">
-            <number>3</number>
+            <number>2</number>
            </property>
            <widget class="QWidget" name="page_sixaxies">
             <layout class="QGridLayout" name="gridLayout_3">
@@ -934,7 +934,7 @@ TechZonePanel {
             <widget class="QWidget" name="widget_5" native="true">
              <property name="geometry">
               <rect>
-               <x>510</x>
+               <x>440</x>
                <y>0</y>
                <width>171</width>
                <height>50</height>

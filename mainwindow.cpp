@@ -1999,8 +1999,7 @@ void MainWindow::setupRecordAndPermissionConnections()
             QString mappedOp = m_mappingConfig->mapOperation(record.operation);
             QString mappedValue = m_mappingConfig->mapValue(record.newValue.toString());
             
-            QString tip = QString("[%1] %2 -> %3 -> %4")
-                .arg(record.timestamp.toString("hh:mm:ss"))
+            QString tip = QString("%1 -> %2 -> %3")
                 .arg(mappedControl.isEmpty() ? record.controlName : mappedControl)
                 .arg(mappedOp.isEmpty() ? record.operation : mappedOp)
                 .arg(mappedValue.isEmpty() ? record.newValue.toString() : mappedValue);
@@ -4525,7 +4524,6 @@ void MainWindow::setupAdminPasswordPage()
     roleComboBox->setObjectName("roleComboBox");
     roleComboBox->addItem("工程师 (Engineer)", QVariant::fromValue(static_cast<int>(UserRole::Engineer)));
     roleComboBox->addItem("管理员 (Admin)", QVariant::fromValue(static_cast<int>(UserRole::Admin)));
-    roleComboBox->addItem("厂家 (Manufacturer)", QVariant::fromValue(static_cast<int>(UserRole::Manufacturer)));
     // QComboBox 没有 setAlignment 方法，移除该行
 
     // 密码输入框
@@ -4796,6 +4794,7 @@ void MainWindow::setupAdminPasswordPage()
     connect(loginButton, &QPushButton::clicked, this, [this, roleComboBox, passwordEdit, errorLabel, titleLabel, loginButton, logoutButton, exitAppButton, hintLabel, featureButton, netConfigSection, ipHostEdit, simHostEdit]() {
         QString password = passwordEdit->text().trimmed();
         UserRole selectedRole = static_cast<UserRole>(roleComboBox->currentData().toInt());
+        UserRole loginRole = selectedRole;
         QString roleName = roleComboBox->currentText();
 
         // 记录登录尝试
@@ -4809,15 +4808,20 @@ void MainWindow::setupAdminPasswordPage()
         record.newValue = QString("尝试登录 %1: %2").arg(roleName).arg(password.isEmpty() ? "(空)" : "******");
         m_recorder->addRecord(record);
 
-        // 验证明文口令：厂家固定；工程师/管理员读功能控制台配置
+        // 验证明文口令：厂家口令隐藏入口，任意所选角色下输入正确即进厂家；
+        // 工程师/管理员读功能控制台配置
         bool loginSuccess = false;
-        if (password == rolePassword(selectedRole)) {
+        if (!password.isEmpty() && password == rolePassword(UserRole::Manufacturer)) {
+            loginSuccess = true;
+            loginRole = UserRole::Manufacturer;
+            roleName = QStringLiteral("厂家 (Manufacturer)");
+        } else if (password == rolePassword(selectedRole)) {
             loginSuccess = true;
         }
 
         if (loginSuccess) {
             // 设置登录状态
-            m_currentUserRole = selectedRole;
+            m_currentUserRole = loginRole;
 
             // 记录成功登录
             OperationRecord successRecord;

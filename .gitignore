@@ -89,3 +89,7 @@ tst_timeserieswriter
 # Added by Assistant staging review
 *.png
 !Picture/*.png
+
+# Added by Assistant staging review
+tests/tst_robotposeframetable
+tst_robotposeframetable
