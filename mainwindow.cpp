@@ -6666,7 +6666,8 @@ void MainWindow::updateRobotTorqueFromCache(const QString &objectName)
         return;
     }
     // 指数在第 4 个寄存器。半包时前几个字先到、指数仍是 0，会解成 0.0% 或非规格数。
-    if (!TimeSeriesMeta::isFiniteNumber(value) || value < -1.0 || value > 10000.0) {
+    // 扭矩为有符号量（反向为负），只拦截明显超量程的异常值，负值原样送入卡片。
+    if (!TimeSeriesMeta::isFiniteNumber(value) || qAbs(value) > 10000.0) {
         card->setValue(0.0, false);
         recordTimeSeriesValue(channel, std::numeric_limits<double>::quiet_NaN());
         return;

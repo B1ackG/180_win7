@@ -31,6 +31,7 @@ protected:
 
 private:
     void appendSample(double percent);
+    void recomputeDisplayRange();
 
     QString m_title;
     QString m_unit;
@@ -41,6 +42,7 @@ private:
     QVector<double> m_samples;
     int m_maxSamples = 50;
     double m_maxDisplayPercent = 200.0;
+    double m_minDisplayPercent = 0.0;
 };
 
 #endif // ROBOTTOTALTORQUECARD_H

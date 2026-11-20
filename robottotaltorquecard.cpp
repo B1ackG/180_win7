@@ -5,6 +5,8 @@
 #include <QPainterPath>
 #include <QtMath>
 
+#include <cmath>
+
 namespace {
 constexpr int kOuterRadius = 14;
 constexpr int kInnerRadius = 12;
@@ -40,14 +42,15 @@ void RobotTotalTorqueCard::setUnit(const QString &unit)
 
 void RobotTotalTorqueCard::setValue(double percent, bool valid)
 {
-    const double clamped = qMax(0.0, percent);
+    // 扭矩有方向：负值表示反向，不做 0 截断，原样显示
+    const double normalized = std::isfinite(percent) ? percent : 0.0;
     const bool unchanged = (m_valid == valid)
-        && qFuzzyCompare(m_percent + 1.0, clamped + 1.0);
+        && qFuzzyCompare(m_percent + 1.0, normalized + 1.0);
 
-    m_percent = clamped;
+    m_percent = normalized;
     m_valid = valid;
     if (valid) {
-        appendSample(clamped);
+        appendSample(normalized);
     }
     if (!unchanged || valid) {
         update();
@@ -61,11 +64,7 @@ void RobotTotalTorqueCard::setDangerThreshold(double percent)
         return;
     }
     m_dangerThreshold = clamped;
-    double localMax = qMax(100.0, m_dangerThreshold);
-    for (double v : m_samples) {
-        localMax = qMax(localMax, v);
-    }
-    m_maxDisplayPercent = qMax(100.0, localMax * 1.2);
+    recomputeDisplayRange();
     update();
 }
 
@@ -81,7 +80,8 @@ void RobotTotalTorqueCard::setDecimals(int decimals)
 
 bool RobotTotalTorqueCard::isDanger() const
 {
-    return m_valid && m_percent >= m_dangerThreshold;
+    // 超限按绝对值判断，反向满载同样算超限
+    return m_valid && qAbs(m_percent) >= m_dangerThreshold;
 }
 
 void RobotTotalTorqueCard::appendSample(double percent)
@@ -91,11 +91,24 @@ void RobotTotalTorqueCard::appendSample(double percent)
         m_samples.pop_front();
     }
 
-    double localMax = qMax(100.0, m_dangerThreshold);
+    recomputeDisplayRange();
+}
+
+void RobotTotalTorqueCard::recomputeDisplayRange()
+{
+    double high = qMax(100.0, m_dangerThreshold);
+    double low = 0.0;
     for (double v : m_samples) {
-        localMax = qMax(localMax, v);
+        high = qMax(high, v);
+        low = qMin(low, v);
     }
-    m_maxDisplayPercent = qMax(100.0, localMax * 1.2);
+
+    // 始终包含 0 基线；负向至少要留出 1% 的可视高度，避免微小负值把曲线压平
+    m_maxDisplayPercent = qMax(100.0, high * 1.2);
+    m_minDisplayPercent = (low < 0.0) ? qMin(-1.0, low * 1.2) : 0.0;
+    if (m_maxDisplayPercent - m_minDisplayPercent < 1.0) {
+        m_maxDisplayPercent = m_minDisplayPercent + 1.0;
+    }
 }
 
 QSize RobotTotalTorqueCard::sizeHint() const
@@ -190,16 +203,23 @@ void RobotTotalTorqueCard::paintEvent(QPaintEvent *event)
     const QString numberText = m_valid
         ? QString::number(m_percent, 'f', m_decimals)
         : QStringLiteral("--");
+    // 负值比正值多一个符号位，按可用宽度自动缩字号，避免和“实时/超限”徽标叠字
     QFont valueFont(QStringLiteral("Noto Sans CJK SC"), 22, QFont::Bold);
-    painter.setFont(valueFont);
-    const QFontMetricsF valueMetrics(valueFont);
-    const qreal numberWidth = valueMetrics.horizontalAdvance(numberText);
+    QFontMetricsF valueMetrics(valueFont);
+    qreal numberWidth = valueMetrics.horizontalAdvance(numberText);
 
     QFont unitFont(QStringLiteral("Noto Sans CJK SC"), 11, QFont::Bold);
     const QFontMetricsF unitMetrics(unitFont);
     const qreal unitWidth = unitMetrics.horizontalAdvance(m_unit);
     const qreal valueRight = r.right() - 14.0;
     const qreal valueBaseline = r.top() + 28.0;
+    const qreal valueLeftLimit = liveBadge.right() + 8.0;
+    const qreal valueSpace = valueRight - unitWidth - 4.0 - valueLeftLimit;
+    while (numberWidth > valueSpace && valueFont.pointSize() > 13) {
+        valueFont.setPointSize(valueFont.pointSize() - 1);
+        valueMetrics = QFontMetricsF(valueFont);
+        numberWidth = valueMetrics.horizontalAdvance(numberText);
+    }
 
     painter.setFont(unitFont);
     painter.setPen(danger ? QColor(255, 120, 110, 230) : QColor(QStringLiteral("#7EC8E8")));
@@ -232,17 +252,13 @@ void RobotTotalTorqueCard::paintEvent(QPaintEvent *event)
         return;
     }
 
-    double peak = 0.0;
+    // 峰谷按窗口内实际样本统计，纯负值窗口不会把 0 当成峰值
+    double peakHigh = m_samples.isEmpty() ? 0.0 : m_samples.first();
+    double peakLow = peakHigh;
     for (double sample : m_samples) {
-        peak = qMax(peak, sample);
+        peakHigh = qMax(peakHigh, sample);
+        peakLow = qMin(peakLow, sample);
     }
-
-    QFont scaleFont(QStringLiteral("Noto Sans CJK SC"), 9, QFont::Normal);
-    painter.setFont(scaleFont);
-    painter.setPen(danger ? QColor(QStringLiteral("#FFB0A8")) : QColor(QStringLiteral("#6FB8D8")));
-    painter.drawText(QRectF(chartRect.right() - 72.0, chartCell.top() + 2.0, 68.0, 14.0),
-                     Qt::AlignRight | Qt::AlignVCenter,
-                     QStringLiteral("峰值 %1%").arg(qRound(peak)));
 
     QPen gridPen(danger ? QColor(190, 90, 80, 90) : QColor(90, 154, 190, 90), 1.0, Qt::DashLine);
     painter.setPen(gridPen);
@@ -257,31 +273,51 @@ void RobotTotalTorqueCard::paintEvent(QPaintEvent *event)
         return;
     }
 
-    const double displayMax = qMax(1.0, m_maxDisplayPercent);
-    const qreal dangerRatio = qBound(0.0, m_dangerThreshold / displayMax, 1.0);
-    const qreal dangerY = chartRect.bottom() - chartRect.height() * dangerRatio;
+    // 纵向映射以 0 为基线：正值向上、负值向下
+    const double displayMin = qMin(0.0, m_minDisplayPercent);
+    const double displayMax = qMax(displayMin + 1.0, m_maxDisplayPercent);
+    const double displaySpan = displayMax - displayMin;
+    auto yForValue = [&](double value) {
+        const double ratio = qBound(0.0, (value - displayMin) / displaySpan, 1.0);
+        return chartRect.bottom() - chartRect.height() * ratio;
+    };
+    const qreal zeroY = yForValue(0.0);
+
+    // 超限线按绝对值画，正反向各一条（落在可视范围内的才画）
     painter.setPen(QPen(kDangerRed, 1.2, Qt::DashLine));
-    painter.drawLine(QPointF(chartRect.left(), dangerY), QPointF(chartRect.right(), dangerY));
+    if (m_dangerThreshold <= displayMax) {
+        const qreal dangerY = yForValue(m_dangerThreshold);
+        painter.drawLine(QPointF(chartRect.left(), dangerY), QPointF(chartRect.right(), dangerY));
+    }
+    if (-m_dangerThreshold >= displayMin) {
+        const qreal reverseDangerY = yForValue(-m_dangerThreshold);
+        painter.drawLine(QPointF(chartRect.left(), reverseDangerY),
+                         QPointF(chartRect.right(), reverseDangerY));
+    }
+
+    if (displayMin < 0.0) {
+        painter.setPen(QPen(danger ? QColor(255, 150, 140, 175) : QColor(126, 200, 232, 175), 1.0));
+        painter.drawLine(QPointF(chartRect.left(), zeroY), QPointF(chartRect.right(), zeroY));
+    }
 
     QVector<QPointF> points;
     points.reserve(m_samples.size());
     const int span = qMax(1, m_samples.size() - 1);
     for (int i = 0; i < m_samples.size(); ++i) {
         const qreal x = chartRect.left() + chartRect.width() * i / span;
-        const qreal ratio = qBound(0.0, m_samples[i] / displayMax, 1.0);
-        const qreal y = chartRect.bottom() - chartRect.height() * ratio;
-        points.push_back(QPointF(x, y));
+        points.push_back(QPointF(x, yForValue(m_samples[i])));
     }
     if (points.size() == 1) {
         points.push_back(QPointF(chartRect.right(), points.first().y()));
     }
 
+    // 面积填充到 0 基线，负值区域自然落在基线下方
     QPainterPath areaPath;
-    areaPath.moveTo(chartRect.left(), chartRect.bottom());
+    areaPath.moveTo(points.first().x(), zeroY);
     for (const QPointF &p : points) {
         areaPath.lineTo(p);
     }
-    areaPath.lineTo(chartRect.right(), chartRect.bottom());
+    areaPath.lineTo(points.last().x(), zeroY);
     areaPath.closeSubpath();
 
     QLinearGradient areaGrad(chartRect.topLeft(), chartRect.bottomLeft());
@@ -306,6 +342,27 @@ void RobotTotalTorqueCard::paintEvent(QPaintEvent *event)
     QPen linePen(lineColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
     painter.setPen(linePen);
     painter.drawPath(linePath);
+
+    // 峰谷提示：右上角小胶囊，先铺底再压字，保证可读
+    // 出现负值时只提示谷值（反向最深处），全为正时仍提示峰值
+    QFont scaleFont(QStringLiteral("Noto Sans CJK SC"), 8, QFont::Normal);
+    painter.setFont(scaleFont);
+    const QFontMetricsF scaleMetrics(scaleFont);
+    const QString peakText = (peakLow < 0.0)
+        ? QStringLiteral("谷值 %1%").arg(qRound(peakLow))
+        : QStringLiteral("峰值 %1%").arg(qRound(peakHigh));
+    const qreal peakTextWidth = scaleMetrics.horizontalAdvance(peakText);
+    const QRectF peakChip(chartCell.right() - 6.0 - peakTextWidth - 10.0,
+                          chartCell.top() + 2.0,
+                          peakTextWidth + 10.0,
+                          13.0);
+    if (peakChip.left() > chartCell.left() + 4.0) {
+        painter.setPen(QPen(danger ? QColor(255, 140, 120, 90) : QColor(110, 200, 235, 80), 1.0));
+        painter.setBrush(danger ? QColor(64, 16, 16, 190) : QColor(4, 18, 32, 190));
+        painter.drawRoundedRect(peakChip, 4.0, 4.0);
+        painter.setPen(danger ? QColor(QStringLiteral("#FFB0A8")) : QColor(QStringLiteral("#7EC8E8")));
+        painter.drawText(peakChip, Qt::AlignCenter, peakText);
+    }
 
     const QPointF tip = points.last();
     QRadialGradient tipGlow(tip, 8.0);
