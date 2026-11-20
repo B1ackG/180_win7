@@ -7,8 +7,11 @@
 #include "displayregistermapping.h"
 
 #include <QAbstractButton>
+#include <QAbstractItemView>
+#include <QAbstractScrollArea>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDialog>
 #include <QDoubleValidator>
 #include <QEvent>
@@ -24,6 +27,7 @@
 #include <QMap>
 #include <QMessageBox>
 #include <QPair>
+#include <QPalette>
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollArea>
@@ -35,6 +39,7 @@
 #include <QTabWidget>
 #include <QVector>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 #include <algorithm>
 
 namespace {
@@ -155,6 +160,7 @@ QMap<QString, QPair<double, double>> builtinArcGaugeRanges()
         {QStringLiteral("robot_ArcGauge_J3Length"), qMakePair(3765.0, 6805.0)},
         {QStringLiteral("robot_ArcGauge_J4Angle"), qMakePair(-90.0, 90.0)},
         {QStringLiteral("robot_ArcGauge_CounterweightHeight"), qMakePair(0.0, 2000.0)},
+        {QStringLiteral("robot_ArcGauge_SupportCylinder"), qMakePair(0.0, 2000.0)},
         {QStringLiteral("robot_ArcGauge_SixAxis1"), qMakePair(-15.0, 15.0)},
         {QStringLiteral("robot_ArcGauge_SixAxis2"), qMakePair(-15.0, 15.0)},
         {QStringLiteral("robot_ArcGauge_SixAxis3"), qMakePair(-17.0, 17.0)},
@@ -244,6 +250,58 @@ QString displayConfigValue(const QString &value)
     return value;
 }
 
+/**
+ * @brief 给下拉框弹层单独上色。
+ *
+ * QComboBox 的弹层是 QComboBoxPrivateContainer，一个独立的弹出窗口：
+ * 父控件（功能控制台）上的样式表靠不住，Windows 下弹层仍按系统主题画成浅色面板，
+ * 而列表项文字色又跟了深色主题，结果就是「浅底 + 白字」几乎看不见。
+ * 这里直接对弹层容器、列表视图、视口三层都设置调色板和样式，不依赖父级继承。
+ */
+void styleComboPopup(QComboBox *combo)
+{
+    if (!combo) {
+        return;
+    }
+    QAbstractItemView *view = combo->view();   // 该调用会顺带创建弹层容器
+    if (!view) {
+        return;
+    }
+
+    const QColor panelColor(0x0e, 0x2c, 0x44);
+    const QColor textColor(0xea, 0xf9, 0xff);
+
+    QPalette pal = view->palette();
+    pal.setColor(QPalette::Base, panelColor);
+    pal.setColor(QPalette::Window, panelColor);
+    pal.setColor(QPalette::Text, textColor);
+    pal.setColor(QPalette::WindowText, textColor);
+    pal.setColor(QPalette::Highlight, QColor(0x00, 0x7e, 0xba));
+    pal.setColor(QPalette::HighlightedText, QColor(Qt::white));
+
+    view->setPalette(pal);
+    view->setStyleSheet(QStringLiteral(
+        "QAbstractItemView { background-color: #0e2c44; color: #eaf9ff; border: 1px solid #6fe7ff;"
+        " outline: none; selection-background-color: #007eba; selection-color: #ffffff; }"
+        "QAbstractItemView::item { min-height: 26px; padding: 2px 8px; }"
+        "QAbstractItemView::item:hover { background-color: #12557a; color: #ffffff; }"));
+
+    // 视口单独兜底：某些风格下弹层视口是透明的，系统浅色面板会透上来
+    if (QWidget *viewport = view->viewport()) {
+        viewport->setAutoFillBackground(true);
+        viewport->setPalette(pal);
+    }
+
+    QWidget *container = view->parentWidget();
+    if (container && container != combo) {
+        container->setPalette(pal);
+        container->setAutoFillBackground(true);
+        container->setAttribute(Qt::WA_StyledBackground, true);
+        container->setStyleSheet(QStringLiteral(
+            "QFrame { background-color: #0e2c44; border: 1px solid #6fe7ff; }"));
+    }
+}
+
 } // namespace
 
 FeatureSwitchWidget::FeatureSwitchWidget(QWidget *parent) : QWidget(parent)
@@ -255,6 +313,11 @@ FeatureSwitchWidget::FeatureSwitchWidget(QWidget *parent) : QWidget(parent)
     const QList<QLineEdit*> edits = findChildren<QLineEdit*>();
     for (QLineEdit *edit : edits) {
         edit->installEventFilter(this);
+    }
+    const QList<QComboBox*> combos = findChildren<QComboBox*>();
+    for (QComboBox *combo : combos) {
+        combo->installEventFilter(this);
+        styleComboPopup(combo);
     }
 
     setWindowTitle("功能开关管理 (厂家权限)");
@@ -269,6 +332,11 @@ FeatureSwitchWidget::FeatureSwitchWidget(QWidget *parent) : QWidget(parent)
         "QPushButton:hover { background: rgba(25, 92, 132, 0.94); border: 1px solid #6fe7ff; }"
         "QLineEdit { background: rgba(3, 15, 28, 0.90); color: #f0fbff; border: 1px solid rgba(74, 190, 238, 0.52); border-radius: 6px; padding: 4px 6px; }"
         "QLineEdit:focus { border: 1px solid #9ff4ff; }"
+        // 只负责收起状态的外观；弹层是独立窗口，改由 styleComboPopup() 直接上色
+        "QComboBox { background: rgba(3, 15, 28, 0.92); color: #eaf9ff; border: 1px solid rgba(74, 190, 238, 0.55); border-radius: 6px; padding: 2px 2px 2px 6px; min-height: 20px; }"
+        "QComboBox:hover { border: 1px solid #6fe7ff; }"
+        "QComboBox:focus, QComboBox:on { border: 1px solid #9ff4ff; }"
+        "QComboBox::drop-down { border: none; width: 18px; }"
         "QScrollArea { border: none; background-color: transparent; }"
         "QTabWidget::pane { border: 1px solid rgba(74, 190, 238, 0.42); border-radius: 8px; }"
         "QTabBar::tab { background: rgba(8, 28, 48, 0.92); color: #a8eaff; padding: 8px 16px; margin-right: 2px; border: 1px solid rgba(74, 190, 238, 0.35); border-bottom: none; border-top-left-radius: 6px; border-top-right-radius: 6px; }"
@@ -290,6 +358,23 @@ FeatureSwitchWidget::FeatureSwitchWidget(QWidget *parent) : QWidget(parent)
 
 bool FeatureSwitchWidget::eventFilter(QObject *watched, QEvent *event)
 {
+    // 下拉框：滚轮只用来滚动页面，绝不允许改动选中项（如「显示范围」里的编码/字数/设备）
+    if (QComboBox *combo = qobject_cast<QComboBox*>(watched)) {
+        if (event->type() == QEvent::Wheel) {
+            auto *wheelEvent = static_cast<QWheelEvent*>(event);
+            QWidget *ancestor = combo->parentWidget();
+            while (ancestor && !qobject_cast<QAbstractScrollArea*>(ancestor)) {
+                ancestor = ancestor->parentWidget();
+            }
+            if (auto *scrollArea = qobject_cast<QAbstractScrollArea*>(ancestor)) {
+                // 转交给最近的滚动区域，保证控制台内容仍可正常滚动
+                QCoreApplication::sendEvent(scrollArea->viewport(), wheelEvent);
+            }
+            return true;
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
     if (event->type() == QEvent::MouseButtonPress) {
         QLineEdit *lineEdit = qobject_cast<QLineEdit*>(watched);
         if (lineEdit && lineEdit->isEnabled() && m_virtualKeyboard) {
@@ -994,6 +1079,8 @@ FeatureSwitchWidget::ModbusRegisterEdits FeatureSwitchWidget::makeRegisterRowEdi
     edits.device = new QComboBox(parent);
     edits.device->addItems({QStringLiteral("无"), QStringLiteral("主控"), QStringLiteral("AGV")});
     edits.device->setFixedWidth(58);
+    edits.device->installEventFilter(this);
+    styleComboPopup(edits.device);
 
     auto makeEdit = [&](const QString &placeholder, int width) {
         auto *edit = new QLineEdit(parent);
@@ -1496,6 +1583,8 @@ FeatureSwitchWidget::DisplayRegisterEdits FeatureSwitchWidget::makeDisplayRegist
     edits.device = new QComboBox(parent);
     edits.device->addItems({QStringLiteral("主控"), QStringLiteral("AGV")});
     edits.device->setFixedWidth(58);
+    edits.device->installEventFilter(this);
+    styleComboPopup(edits.device);
 
     auto makeAddrEdit = [this, parent](const QString &placeholder) {
         auto *edit = new QLineEdit(parent);
@@ -1511,6 +1600,8 @@ FeatureSwitchWidget::DisplayRegisterEdits FeatureSwitchWidget::makeDisplayRegist
     edits.wordCount->addItem(QStringLiteral("2"), 2);
     edits.wordCount->addItem(QStringLiteral("4"), 4);
     edits.wordCount->setFixedWidth(52);
+    edits.wordCount->installEventFilter(this);
+    styleComboPopup(edits.wordCount);
     edits.encoding = new QComboBox(parent);
     using DisplayRegisterMapping::Encoding;
     edits.encoding->addItem(DisplayRegisterMapping::encodingLabel(Encoding::UInt16),
@@ -1522,6 +1613,8 @@ FeatureSwitchWidget::DisplayRegisterEdits FeatureSwitchWidget::makeDisplayRegist
     edits.encoding->addItem(DisplayRegisterMapping::encodingLabel(Encoding::DcbaFehgDouble),
                             DisplayRegisterMapping::encodingKey(Encoding::DcbaFehgDouble));
     edits.encoding->setMinimumWidth(150);
+    edits.encoding->installEventFilter(this);
+    styleComboPopup(edits.encoding);
 
     if (DisplayRegisterMapping::hasSumStart(fallback)) {
         edits.sumStartEdit = makeAddrEdit(QStringLiteral("求和"));

@@ -783,6 +783,7 @@ void MainWindow::applyButtonVisibilityRuntimeSettings()
         QStringLiteral("robot_ArcGauge_J3Length"),
         QStringLiteral("robot_ArcGauge_J4Angle"),
         QStringLiteral("robot_ArcGauge_CounterweightHeight"),
+        QStringLiteral("robot_ArcGauge_SupportCylinder"),
         QStringLiteral("robot_ArcGauge_SixAxis1"),
         QStringLiteral("robot_ArcGauge_SixAxis2"),
         QStringLiteral("robot_ArcGauge_SixAxis3"),
@@ -1168,6 +1169,7 @@ void MainWindow::reloadDisplayRegisterBindings()
         QStringLiteral("robot_ArcGauge_J3Length"),
         QStringLiteral("robot_ArcGauge_J4Angle"),
         QStringLiteral("robot_ArcGauge_CounterweightHeight"),
+        QStringLiteral("robot_ArcGauge_SupportCylinder"),
     };
     for (const QString &name : kJointNames) {
         if (!m_sliderLabelConfigs.contains(name)) {
@@ -1273,6 +1275,7 @@ void MainWindow::refreshMappedDisplaysForDevice(const QString &device, int addre
         QStringLiteral("robot_ArcGauge_J3Length"),
         QStringLiteral("robot_ArcGauge_J4Angle"),
         QStringLiteral("robot_ArcGauge_CounterweightHeight"),
+        QStringLiteral("robot_ArcGauge_SupportCylinder"),
     };
     bool scheduledJoints = false;
     for (const QString &name : jointNames) {
@@ -1334,6 +1337,11 @@ void MainWindow::refreshMappedDisplaysForDevice(const QString &device, int addre
             m_frontSupportForceCard->setValue(value, true);
         }
         recordTimeSeriesValue(TimeSeriesChannel::FrontSupportForceKg, value);
+    });
+    applyCard(QStringLiteral("behindTensionForceCard"), [this](double value) {
+        if (m_behindTensionForceCard) {
+            m_behindTensionForceCard->setValue(value, true);
+        }
     });
     applyCard(QStringLiteral("robotTotalPowerCard"), [this](double value) {
         if (m_robotTotalPowerCard) {
@@ -2571,6 +2579,7 @@ void MainWindow::initSpeedGaugeUI()
         {ui->widget_test3, "robot_ArcGauge_J3Length", "总伸展长度", QString(), "mm", 0, 1600, 0},
         {ui->widget_test4, "robot_ArcGauge_J4Angle", "末端角度", QString(), "°", -180, 180, 1},
         {ui->widget_test5, "robot_ArcGauge_CounterweightHeight", "配重缸升降", QString(), "mm", 0, 2000, 0},
+        {ui->widget_test6, "robot_ArcGauge_SupportCylinder", "支撑缸升降", QStringLiteral("前支撑缸"), "mm", 0, 2000, 0},
         {ui->widget_SixAxies_1, "robot_ArcGauge_SixAxis1", "RX当前角度", QString(), "°", -15, 15, 2},
         {ui->widget_SixAxies_2, "robot_ArcGauge_SixAxis2", "RY当前角度", QString(), "°", -15, 15, 2},
         {ui->widget_SixAxies_3, "robot_ArcGauge_SixAxis3", "RZ当前角度", QString(), "°", -17, 17, 2},
@@ -2624,6 +2633,10 @@ void MainWindow::initSpeedGaugeUI()
             } else if (cfg.name == "robot_ArcGauge_CounterweightHeight") {
                 arcGauge->setSecondMaximum(15.0); // 配重缸速度范围 0~15 mm/s（与 J2 同类）
                 arcGauge->setSecondSuffix("mm/s");
+            } else if (cfg.name == "robot_ArcGauge_SupportCylinder") {
+                arcGauge->setSecondMaximum(15.0); // 支撑缸（前支撑缸）速度范围 0~15 mm/s
+                arcGauge->setSecondSuffix("mm/s");
+                arcGauge->setSecondValue(0.0);
             }
 
             arcGauge->setLabelText(cfg.label);
@@ -2849,16 +2862,32 @@ void MainWindow::initFrontSupportForceCard()
 {
     QWidget *host = findChild<QWidget*>(QStringLiteral("quickWidget_Front_supportforce"));
     if (!host) {
-        qCWarning(lcMainWindow) << "未找到 quickWidget_Front_supportforce，跳过前支撑力卡片初始化";
+        qCWarning(lcMainWindow) << "未找到 quickWidget_Front_supportforce，跳过前支撑缸支撑力卡片初始化";
         return;
     }
 
     m_frontSupportForceCard = new MetricValueCard(host);
-    m_frontSupportForceCard->setTitle(QStringLiteral("前支撑力"));
+    m_frontSupportForceCard->setTitle(QStringLiteral("前支撑缸支撑力"));
     m_frontSupportForceCard->setUnit(QStringLiteral("KG"));
     m_frontSupportForceCard->setDecimals(0);
     m_frontSupportForceCard->setValue(0.0, false);
     fillMetricHost(host, m_frontSupportForceCard);
+}
+
+void MainWindow::initBehindTensionForceCard()
+{
+    QWidget *host = findChild<QWidget*>(QStringLiteral("quickWidget_Behind_Tensionforce"));
+    if (!host) {
+        qCWarning(lcMainWindow) << "未找到 quickWidget_Behind_Tensionforce，跳过后配重缸拉力卡片初始化";
+        return;
+    }
+
+    m_behindTensionForceCard = new MetricValueCard(host);
+    m_behindTensionForceCard->setTitle(QStringLiteral("后配重缸拉力"));
+    m_behindTensionForceCard->setUnit(QStringLiteral("KG"));
+    m_behindTensionForceCard->setDecimals(0);
+    m_behindTensionForceCard->setValue(0.0, false);
+    fillMetricHost(host, m_behindTensionForceCard);
 }
 
 void MainWindow::initPlaneHeightCard()
@@ -7270,13 +7299,15 @@ void MainWindow::setupSliderLabelConfigs()
     addArcGaugeRangeOnly(QStringLiteral("robot_ArcGauge_SixAxis4"), QStringLiteral("X当前行程:"), QStringLiteral("mm"), -110.0, 110.0, 2);
     addArcGaugeRangeOnly(QStringLiteral("robot_ArcGauge_SixAxis5"), QStringLiteral("Y当前行程:"), QStringLiteral("mm"), -110.0, 110.0, 2);
     addArcGaugeRangeOnly(QStringLiteral("robot_ArcGauge_SixAxis6"), QStringLiteral("Z当前行程:"), QStringLiteral("mm"), -90.0, 90.0, 2);
+    addArcGaugeRangeOnly(QStringLiteral("robot_ArcGauge_SupportCylinder"), QStringLiteral("支撑缸升降"), QStringLiteral("mm"), 0.0, 2000.0, 0);
 
     // TechArcGauge 第二行标签（secondLabelText），与 initSpeedGaugeUI 中 cfg.name 对应
     m_sliderLabelConfigs["robot_ArcGauge_J1Angle"].secondLabelText = QStringLiteral("立柱旋转");
     m_sliderLabelConfigs["robot_ArcGauge_J2Height"].secondLabelText = QStringLiteral("立柱升降");
     m_sliderLabelConfigs["robot_ArcGauge_J3Length"].secondLabelText = QStringLiteral("伸缩平衡臂");
     m_sliderLabelConfigs["robot_ArcGauge_J4Angle"].secondLabelText = QStringLiteral("末端组件");
-    m_sliderLabelConfigs["robot_ArcGauge_CounterweightHeight"].secondLabelText = QStringLiteral("配重缸");
+    m_sliderLabelConfigs["robot_ArcGauge_CounterweightHeight"].secondLabelText = QStringLiteral("后配重缸");
+    m_sliderLabelConfigs["robot_ArcGauge_SupportCylinder"].secondLabelText = QStringLiteral("前支撑缸");
     m_sliderLabelConfigs["robot_ArcGauge_SixAxis1"].secondLabelText = QStringLiteral("绕X轴旋转");
     m_sliderLabelConfigs["robot_ArcGauge_SixAxis2"].secondLabelText = QStringLiteral("绕Y轴旋转");
     m_sliderLabelConfigs["robot_ArcGauge_SixAxis3"].secondLabelText = QStringLiteral("绕Z轴旋转");
@@ -9351,30 +9382,27 @@ void MainWindow::setupTcpTransmissionUI()
         return;
     }
 
-    // 在状态栏添加连接状态指示器
     if (ui->statusBar) {
-        // 创建中间的状态容器，用于放置时间、权限、运行模式
+        // 状态栏只保留时间、权限、示教器/遥控器
         QWidget *centerWidget = new QWidget(ui->statusBar);
         QHBoxLayout *centerLayout = new QHBoxLayout(centerWidget);
-        centerLayout->setContentsMargins(0, 15, 0, 0); // 增加上边距，使文字整体下移
-        centerLayout->setSpacing(15); // 紧凑排布
-        centerLayout->setAlignment(Qt::AlignCenter); // 居中对齐
+        centerLayout->setContentsMargins(0, 15, 0, 0);
+        centerLayout->setSpacing(15);
+        centerLayout->setAlignment(Qt::AlignCenter);
 
-        // 时间日期标签
         QLabel *timeLabel = new QLabel(centerWidget);
         timeLabel->setObjectName("statusBarTimeLabel");
         timeLabel->setStyleSheet("color: #ffffff; font-family: 'Consolas'; font-size: 11px;");
-        timeLabel->setFixedHeight(12); // 固定高度，与右侧 MAIN 指示灯 12px 一致
+        timeLabel->setFixedHeight(12);
         centerLayout->addWidget(timeLabel);
 
-        // 权限等级指示灯
         QWidget *roleWidget = new QWidget(centerWidget);
         QHBoxLayout *roleLayout = new QHBoxLayout(roleWidget);
         roleLayout->setContentsMargins(0,0,0,0);
         roleLayout->setSpacing(2);
         QLabel *roleLed = new QLabel("●", roleWidget);
         roleLed->setObjectName("statusBarRoleLed");
-        roleLed->setStyleSheet("color: #aaaaaa; font-size: 12px;"); // 稍小一点的指示灯
+        roleLed->setStyleSheet("color: #aaaaaa; font-size: 12px;");
         roleLed->setFixedHeight(12);
         QLabel *roleText = new QLabel("操作员", roleWidget);
         roleText->setObjectName("statusBarRoleText");
@@ -9384,27 +9412,6 @@ void MainWindow::setupTcpTransmissionUI()
         roleLayout->addWidget(roleText);
         centerLayout->addWidget(roleWidget);
 
-        // 系统运行模式 (点动/步进)
-        const QString startupRunModeText = m_stepModeUnknown ? "步进未选择" : (m_stepModeEnabled ? "步进模式" : "点动模式");
-        const QString startupRunModeColor = m_stepModeUnknown ? "#aaaaaa" : (m_stepModeEnabled ? "#00ff00" : "#00ccff");
-        QLabel *runModeLabel = new QLabel(startupRunModeText, centerWidget);
-        runModeLabel->setObjectName("statusBarRunModeLabel");
-        runModeLabel->setStyleSheet(QString("color: %1; font-weight: bold; font-size: 11px;")
-                        .arg(startupRunModeColor));
-        runModeLabel->setFixedHeight(12);
-        centerLayout->addWidget(runModeLabel);
-
-        // 运动模式 (关节/坐标)
-        const QString startupMoveModeText = m_moveModeUnknown ? "运动未选择" : (m_isJointMode ? "关节模式" : "坐标模式");
-        const QString startupMoveModeColor = m_moveModeUnknown ? "#aaaaaa" : (m_isJointMode ? "#55ff55" : "#ffaa00");
-        QLabel *moveModeLabel = new QLabel(startupMoveModeText, centerWidget);
-        moveModeLabel->setObjectName("statusBarMoveModeLabel");
-        moveModeLabel->setStyleSheet(QString("color: %1; font-weight: bold; font-size: 11px;")
-                         .arg(startupMoveModeColor));
-        moveModeLabel->setFixedHeight(12);
-        centerLayout->addWidget(moveModeLabel);
-        
-        // 控制模式 (示教器/遥控器)
         QLabel *controlModeLabel = new QLabel(m_controlMode == WIRED_MODE ? "示教器控制" : "遥控器控制", centerWidget);
         controlModeLabel->setObjectName("statusBarControlModeLabel");
         controlModeLabel->setStyleSheet(QString("color: %1; font-weight: bold; font-size: 11px;")
@@ -9412,72 +9419,13 @@ void MainWindow::setupTcpTransmissionUI()
         controlModeLabel->setFixedHeight(12);
         centerLayout->addWidget(controlModeLabel);
 
-        QLabel *oaLabel = new QLabel(m_agvOaEnabled ? "避障开" : "避障关", centerWidget);
-        oaLabel->setObjectName("statusBarOaLabel");
-        oaLabel->setStyleSheet(QString("color: %1; font-weight: bold; font-size: 11px;")
-                       .arg(m_agvOaEnabled ? "#00C8FF" : "#7F8C8D"));
-        oaLabel->setFixedHeight(12);
-        centerLayout->addWidget(oaLabel);
-
-        QLabel *parkLabel = new QLabel(m_agvParkingEnabled ? "驻车开" : "驻车关", centerWidget);
-        parkLabel->setObjectName("statusBarParkLabel");
-        parkLabel->setStyleSheet(QString("color: %1; font-weight: bold; font-size: 11px;")
-                         .arg(m_agvParkingEnabled ? "#00C8FF" : "#7F8C8D"));
-        parkLabel->setFixedHeight(12);
-        centerLayout->addWidget(parkLabel);
-
-        QLabel *steeringLabel = new QLabel(QString("转向:%1").arg(currentSteeringModeText()), centerWidget);
-        steeringLabel->setObjectName("statusBarSteeringLabel");
-        steeringLabel->setStyleSheet("color: #55ff55; font-weight: bold; font-size: 11px;");
-        steeringLabel->setFixedHeight(12);
-        centerLayout->addWidget(steeringLabel);
-
         centerWidget->setLayout(centerLayout);
-        ui->statusBar->addPermanentWidget(centerWidget, 1); // 占据中间大部分空间
+        ui->statusBar->addPermanentWidget(centerWidget, 1);
 
-        // 2. TCP, AGV 和 MAIN 状态指示器竖直排布并在右侧对齐
-        QWidget *statusGroupWidget = new QWidget(ui->statusBar);
-        QVBoxLayout *statusGroupLayout = new QVBoxLayout(statusGroupWidget);
-        statusGroupLayout->setContentsMargins(0, 0, 10, 0);
-        statusGroupLayout->setSpacing(0);
-        statusGroupLayout->setAlignment(Qt::AlignRight); // 向右对齐
-
-        auto createIndicator = [statusGroupWidget](const QString& objName, const QString& text) {
-            QLabel *label = new QLabel(text, statusGroupWidget);
-            label->setObjectName(objName);
-            label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            label->setStyleSheet("color: #ff5555; font-weight: bold; font-size: 10px; font-family: 'Consolas';");
-            label->setFixedHeight(12);
-            return label;
-        };
-
-        QLabel *tcpStatusIndicator = createIndicator("tcpStatusIndicator", "TCP: ●");
-        tcpStatusIndicator->setToolTip("TCP连接状态");
-        
-        QLabel *agvModbusStatusIndicator = createIndicator("agvModbusStatusIndicator", "AGV: ●");
-        agvModbusStatusIndicator->setToolTip("AGV Modbus连接状态");
-
-        QLabel *mainModbusStatusIndicator = createIndicator("mainModbusStatusIndicator", "MAIN: ●");
-        mainModbusStatusIndicator->setToolTip("主设备 Modbus连接状态");
-
-        statusGroupLayout->addWidget(tcpStatusIndicator);
-        statusGroupLayout->addWidget(agvModbusStatusIndicator);
-        statusGroupLayout->addWidget(mainModbusStatusIndicator);
-        
-        statusGroupWidget->setLayout(statusGroupLayout);
-        ui->statusBar->addPermanentWidget(statusGroupWidget);
-
-        // 启动时间更新定时器
         QTimer *timer = new QTimer(this);
         connect(timer, &QTimer::timeout, this, &MainWindow::updateStatusBarTime);
         timer->start(1000);
-        updateStatusBarTime(); // 立即执行一次
-
-        // 初始化一次颜色
-        if (m_modbusManager && m_modbusManager->isConnected()) {
-            mainModbusStatusIndicator->setStyleSheet("color: #55ff55; font-weight: bold; font-size: 10px; font-family: 'Consolas';");
-            mainModbusStatusIndicator->setToolTip("主设备 Modbus连接正常");
-        }
+        updateStatusBarTime();
     }
 }
 

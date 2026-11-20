@@ -236,7 +236,7 @@ TechZonePanel {
 }
 #widget_SixAxies_1, #widget_SixAxies_2, #widget_SixAxies_3,
 #widget_SixAxies_4, #widget_SixAxies_5, #widget_SixAxies_6,
-#widget_test1, #widget_test2, #widget_test3, #widget_test4, #widget_test5 {
+#widget_test1, #widget_test2, #widget_test3, #widget_test4, #widget_test5, #widget_test6 {
   border: 2px dashed rgba(160, 210, 255, 0.90);
   background: rgba(60, 100, 140, 0.25);
   min-width: 193px;
@@ -674,7 +674,7 @@ TechZonePanel {
          <item>
           <widget class="QStackedWidget" name="stackedWidget_RobotStatus">
            <property name="currentIndex">
-            <number>3</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="page_sixaxies">
             <layout class="QGridLayout" name="gridLayout_3">
@@ -874,6 +874,22 @@ TechZonePanel {
              </item>
              <item row="1" column="2">
               <widget class="QWidget" name="widget_test5" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>1</horstretch>
+                 <verstretch>1</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>197</width>
+                 <height>197</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="3">
+              <widget class="QWidget" name="widget_test6" native="true">
                <property name="sizePolicy">
                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
                  <horstretch>1</horstretch>

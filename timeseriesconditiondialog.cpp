@@ -57,7 +57,7 @@ QString conditionColumnTitle(TimeSeriesChannel channel)
     case TimeSeriesChannel::LoadKg:
         return QStringLiteral("负载");
     case TimeSeriesChannel::FrontSupportForceKg:
-        return QStringLiteral("前支撑力");
+        return QStringLiteral("前支撑缸");
     case TimeSeriesChannel::ColumnTorquePercent:
         return QStringLiteral("立柱扭矩");
     case TimeSeriesChannel::CounterweightTorquePercent:

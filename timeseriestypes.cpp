@@ -32,7 +32,7 @@ const ChannelInfo kChannels[] = {
     {TimeSeriesChannel::ChassisTiltXDeg, "chassis_tilt_x_deg", "底盘X轴倾角", "°", TimeSeriesSource::Agv, 1},
     {TimeSeriesChannel::ChassisTiltYDeg, "chassis_tilt_y_deg", "底盘Y轴倾角", "°", TimeSeriesSource::Agv, 1},
     {TimeSeriesChannel::ArmTorquePercent, "arm_torque_percent", "前配重缸升降扭矩", "%", TimeSeriesSource::Main, 1},
-    {TimeSeriesChannel::FrontSupportForceKg, "front_support_force_kg", "前支撑力", "KG", TimeSeriesSource::Main, 0},
+    {TimeSeriesChannel::FrontSupportForceKg, "front_support_force_kg", "前支撑缸支撑力", "KG", TimeSeriesSource::Main, 0},
 };
 
 static_assert(sizeof(kChannels) / sizeof(kChannels[0])

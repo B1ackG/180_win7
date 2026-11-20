@@ -98,3 +98,15 @@ tst_robotposeframetable
 *.md
 .workbuddy/preview/torque_preview
 torque_preview
+
+# Added by Assistant staging review
+*.jpg
+*.trashinfo
+.workbuddy/preview/border_check
+.workbuddy/preview/combo_popup_preview
+.workbuddy/preview/mapping_check
+.workbuddy/preview/support_gauge_preview
+border_check
+combo_popup_preview
+mapping_check
+support_gauge_preview

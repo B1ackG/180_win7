@@ -422,6 +422,7 @@ void MainWindow::initUI()
     initInclinometerCards();
     initWeightCard();
     initFrontSupportForceCard();
+    initBehindTensionForceCard();
     initPlaneHeightCard();
     initDeviceCoordPanel();
 

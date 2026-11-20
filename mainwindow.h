@@ -465,8 +465,10 @@ public:
     void initInclinometerCards();
     /** @brief 初始化当前负载卡片（寄存器 123） */
     void initWeightCard();
-    /** @brief 初始化前支撑力卡片（寄存器 139 UINT） */
+    /** @brief 初始化前支撑缸支撑力卡片（寄存器 139 UINT） */
     void initFrontSupportForceCard();
+    /** @brief 初始化后配重缸拉力卡片（寄存器 141 UINT） */
+    void initBehindTensionForceCard();
     /** @brief 初始化装配面高度卡片（J2 高度减偏移） */
     void initPlaneHeightCard();
     void refreshPlaneHeightCard();
@@ -489,7 +491,7 @@ public:
     void updateRobotTotalTorquePercent(double percent, bool valid = true);
     /** @brief 更新当前负载显示（寄存器 123，单位 KG） */
     void updateCurrentLoadWeight(quint16 rawValue);
-    /** @brief 更新前支撑力显示（寄存器 139 UINT，单位 KG） */
+    /** @brief 更新前支撑缸支撑力显示（寄存器 139 UINT，单位 KG） */
     void updateFrontSupportForce(quint16 rawValue);
     /** @brief 更新倾角显示（AGV 151/152，寄存器值÷100） */
     void updateInclinometerValue(bool isXAxis, quint16 rawValue);
@@ -879,6 +881,7 @@ private:
     InclinometerCard *m_robotInclinometerYCard = nullptr;
     MetricValueCard *m_weightCard = nullptr;
     MetricValueCard *m_frontSupportForceCard = nullptr;
+    MetricValueCard *m_behindTensionForceCard = nullptr;
     MetricValueCard *m_planeHeightCard = nullptr;
     double m_planeHeightOffsetMm = 1900.0;
     bool m_hasLastJ2Height = false;
