@@ -111,7 +111,7 @@ const QMap<QString, Binding> &knownBindings()
             {},
             specList({
                 makeSpec(QStringLiteral("主控"), QStringLiteral("290"), QString(), QStringLiteral("1")),
-                makeSpec(QStringLiteral("主控"), QStringLiteral("403"), QString(), QStringLiteral("0"))
+                makeSpec(QStringLiteral("AGV"), QStringLiteral("290"), QString(), QStringLiteral("1"))
             }),
             false}},
         {QStringLiteral("steeringModeSelector"), {
@@ -204,6 +204,43 @@ void appendUnique(QList<RegisterSpec> &target, const RegisterSpec &spec)
 bool hasPrefixKeys(const QSettings &settings, const QString &prefix)
 {
     return settings.contains(prefix + QStringLiteral("_device")) || settings.contains(prefix);
+}
+
+bool specsMatch(const RegisterSpec &a, const RegisterSpec &b)
+{
+    return a.device == b.device
+        && a.address == b.address
+        && normalizeBitText(a.bit) == normalizeBitText(b.bit)
+        && a.value1 == b.value1
+        && a.value2 == b.value2
+        && a.value3 == b.value3;
+}
+
+bool listsMatch(const QList<RegisterSpec> &a, const QList<RegisterSpec> &b)
+{
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (int i = 0; i < a.size(); ++i) {
+        if (!specsMatch(a.at(i), b.at(i))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void migrateLegacyConsoleDefaults(const QString &objectName, Binding &binding)
+{
+    if (objectName != QStringLiteral("TBtn_RemoveWarning")) {
+        return;
+    }
+    const QList<RegisterSpec> oldWrites = specList({
+        makeSpec(QStringLiteral("主控"), QStringLiteral("290"), QString(), QStringLiteral("1")),
+        makeSpec(QStringLiteral("主控"), QStringLiteral("403"), QString(), QStringLiteral("0"))
+    });
+    if (listsMatch(binding.writes, oldWrites)) {
+        binding.writes = defaultBinding(objectName).writes;
+    }
 }
 
 } // namespace
@@ -399,6 +436,7 @@ Binding resolvedBinding(const QString &objectName)
     loaded.reads = loadRegisterSpecs(settings, objectName + QStringLiteral("_read"), defaults.reads);
     loaded.writes = loadRegisterSpecs(settings, objectName + QStringLiteral("_write"), defaults.writes);
     settings.endGroup();
+    migrateLegacyConsoleDefaults(objectName, loaded);
     return loaded;
 }
 

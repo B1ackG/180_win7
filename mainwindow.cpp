@@ -10367,7 +10367,7 @@ void MainWindow::on_TBtn_RemoveWarning_clicked()
     const QList<ModbusRegisterSpec> writes = buttonModbusBinding(QStringLiteral("TBtn_RemoveWarning")).writes;
     if (writes.isEmpty()) {
         writeToMainDevice(290, 1);
-        writeToMainDevice(403, 0);
+        writeToAGVDevice(290, 1);
     } else {
         executeConfiguredRegisterWrites(writes, 1, QStringLiteral("清除报警"));
     }
