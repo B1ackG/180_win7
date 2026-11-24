@@ -674,7 +674,7 @@ TechZonePanel {
          <item>
           <widget class="QStackedWidget" name="stackedWidget_RobotStatus">
            <property name="currentIndex">
-            <number>0</number>
+            <number>3</number>
            </property>
            <widget class="QWidget" name="page_sixaxies">
             <layout class="QGridLayout" name="gridLayout_3">

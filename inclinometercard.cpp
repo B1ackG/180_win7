@@ -119,7 +119,7 @@ void InclinometerCard::paintEvent(QPaintEvent *event)
     painter.drawRoundedRect(QRectF(bounds.left() + 12.0, bounds.top() + 14.0, 3.0, 12.0), 1.5, 1.5);
 
     // Title
-    QFont titleFont(QStringLiteral("Noto Sans CJK SC"), 11, QFont::Bold);
+    QFont titleFont(QStringLiteral("Noto Sans CJK SC"), 9, QFont::Bold);
     painter.setFont(titleFont);
     painter.setPen(QColor(QStringLiteral("#A8EAFF")));
     painter.drawText(QRectF(bounds.left() + 20.0, bounds.top() + 10.0, bounds.width() - 54.0, 20.0),
@@ -132,7 +132,7 @@ void InclinometerCard::paintEvent(QPaintEvent *event)
     painter.setBrush(QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 40));
     painter.drawRoundedRect(badgeRect, 5.0, 5.0);
 
-    QFont badgeFont(QStringLiteral("Noto Sans CJK SC"), 10, QFont::Bold);
+    QFont badgeFont(QStringLiteral("Noto Sans CJK SC"), 8, QFont::Bold);
     painter.setFont(badgeFont);
     painter.setPen(m_accentColor);
     painter.drawText(badgeRect, Qt::AlignCenter, axisLetter());
@@ -153,12 +153,12 @@ void InclinometerCard::paintEvent(QPaintEvent *event)
 
     // Value + unit
     const QString numberText = QString::number(m_tiltValue, 'f', 2);
-    QFont valueFont(QStringLiteral("Noto Sans CJK SC"), 22, QFont::Bold);
+    QFont valueFont(QStringLiteral("Noto Sans CJK SC"), 16, QFont::Bold);
     painter.setFont(valueFont);
     const QFontMetricsF valueMetrics(valueFont);
     const qreal numberWidth = valueMetrics.horizontalAdvance(numberText);
 
-    QFont unitFont(QStringLiteral("Noto Sans CJK SC"), 12, QFont::Bold);
+    QFont unitFont(QStringLiteral("Noto Sans CJK SC"), 9, QFont::Bold);
     painter.setFont(unitFont);
     const QFontMetricsF unitMetrics(unitFont);
     const qreal unitWidth = unitMetrics.horizontalAdvance(QStringLiteral("°"));

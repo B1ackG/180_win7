@@ -95,7 +95,7 @@ void MetricValueCard::paintEvent(QPaintEvent *event)
     painter.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 210));
     painter.drawRoundedRect(QRectF(bounds.left() + 12.0, bounds.top() + 14.0, 3.0, 12.0), 1.5, 1.5);
 
-    QFont titleFont(QStringLiteral("Noto Sans CJK SC"), 11, QFont::Bold);
+    QFont titleFont(QStringLiteral("Noto Sans CJK SC"), 9, QFont::Bold);
     painter.setFont(titleFont);
     painter.setPen(QColor(QStringLiteral("#A8EAFF")));
     painter.drawText(QRectF(bounds.left() + 20.0, bounds.top() + 10.0, bounds.width() - 30.0, 20.0),
@@ -118,12 +118,12 @@ void MetricValueCard::paintEvent(QPaintEvent *event)
     const QString numberText = m_valid
         ? QString::number(m_value, 'f', m_decimals)
         : QStringLiteral("--");
-    QFont valueFont(QStringLiteral("Noto Sans CJK SC"), 22, QFont::Bold);
+    QFont valueFont(QStringLiteral("Noto Sans CJK SC"), 16, QFont::Bold);
     painter.setFont(valueFont);
     const QFontMetricsF valueMetrics(valueFont);
     const qreal numberWidth = valueMetrics.horizontalAdvance(numberText);
 
-    QFont unitFont(QStringLiteral("Noto Sans CJK SC"), 12, QFont::Bold);
+    QFont unitFont(QStringLiteral("Noto Sans CJK SC"), 9, QFont::Bold);
     const QFontMetricsF unitMetrics(unitFont);
     const qreal unitWidth = m_valid ? unitMetrics.horizontalAdvance(m_unit) : 0.0;
     const qreal gap = m_valid ? 3.0 : 0.0;
