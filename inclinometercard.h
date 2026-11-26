@@ -11,6 +11,8 @@ class InclinometerCard : public QWidget
     Q_PROPERTY(QString axisLabel READ axisLabel WRITE setAxisLabel NOTIFY axisLabelChanged)
 
 public:
+    enum class AlertLevel : quint8 { Normal, Warning, Alarm };
+
     explicit InclinometerCard(QWidget *parent = nullptr);
 
     qreal tiltValue() const { return m_tiltValue; }
@@ -21,6 +23,9 @@ public:
 
     QColor accentColor() const { return m_accentColor; }
     void setAccentColor(const QColor &color);
+
+    AlertLevel alertLevel() const { return m_alertLevel; }
+    void setAlertLevel(AlertLevel level);
 
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
@@ -39,6 +44,7 @@ private:
     qreal m_tiltValue = 0.0;
     QString m_axisLabel = QStringLiteral("底盘X轴倾角");
     QColor m_accentColor = QColor(QStringLiteral("#5CE1FF"));
+    AlertLevel m_alertLevel = AlertLevel::Normal;
 };
 
 #endif // INCLINOMETERCARD_H

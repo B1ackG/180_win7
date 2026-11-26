@@ -239,6 +239,15 @@ const QString kRobotWeightLockToastText =
     QStringLiteral("当前为应急解锁，请控制六自由度平台 Z 轴下移解除报警");
 const QString kSixAxisInitToastText = QStringLiteral("六自由度需要初始化");
 const QString kInclinometerTiltRiskText = QStringLiteral("倾覆风险提示！设备倾角过大。");
+const QString kRobotInclinometerTiltToastText = QStringLiteral("倾覆风险提示！悬臂倾角过大。");
+constexpr qreal kRobotInclinometerAlarmMinDeg = 0.01;
+constexpr qreal kRobotInclinometerAlarmMaxDeg = 90.0;
+constexpr qreal kRobotInclinometerAlarmDefaultDeg = 5.0;
+const QString kFrontSupportForceToastText = QStringLiteral("前支撑缸支撑力过大");
+const QString kBehindTensionForceToastText = QStringLiteral("后配重缸拉力过大");
+constexpr double kForceAlarmMinKg = 1.0;
+constexpr double kForceAlarmMaxKg = 65535.0;
+constexpr double kForceAlarmDefaultKg = 10000.0;
 const QString kRobotWeightOverloadText = QStringLiteral("负载超限，注意倾覆风险！");
 constexpr quint16 kLegArmInterlock151Mask = 0x01F8;
 constexpr int kMainHeightLockChassisLimitReg = 5006;
@@ -321,6 +330,17 @@ bool isInclinometerTiltRiskWarningDegree(qreal degree, qreal alarmDeg, qreal loc
 bool isInclinometerTiltLockDegree(qreal degree, qreal lockDeg)
 {
     return qAbs(degree) > lockDeg;
+}
+
+InclinometerCard::AlertLevel inclinometerAlertLevel(qreal degree, qreal alarmDeg, qreal lockDeg)
+{
+    if (isInclinometerTiltLockDegree(degree, lockDeg)) {
+        return InclinometerCard::AlertLevel::Alarm;
+    }
+    if (isInclinometerTiltRiskWarningDegree(degree, alarmDeg, lockDeg)) {
+        return InclinometerCard::AlertLevel::Warning;
+    }
+    return InclinometerCard::AlertLevel::Normal;
 }
 
 }
@@ -549,6 +569,10 @@ void MainWindow::applyFeatureConsoleRuntimeSettings()
     applyPlaneHeightOffsetRuntimeSettings();
     loadRobotTorqueRuntimeSettings();
     applyRobotTorqueRuntimeSettings();
+    loadRobotInclinometerRuntimeSettings();
+    applyRobotInclinometerRuntimeSettings();
+    loadForceAlarmRuntimeSettings();
+    applyForceAlarmRuntimeSettings();
     applyButtonVisibilityRuntimeSettings();
     reloadDisplayRegisterBindings();
     applyPermissionPageLoginState();
@@ -770,6 +794,42 @@ void MainWindow::applyRobotTorqueRuntimeSettings()
     if (m_robotTest6TorqueCard) {
         m_robotTest6TorqueCard->setDangerThreshold(m_robotTorqueDangerPercent);
     }
+}
+
+void MainWindow::loadRobotInclinometerRuntimeSettings()
+{
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("RobotInclinometer"));
+    m_robotInclinometerAlarmThresholdDeg = qBound(
+        kRobotInclinometerAlarmMinDeg,
+        settings.value(QStringLiteral("alarm_deg"), kRobotInclinometerAlarmDefaultDeg).toDouble(),
+        kRobotInclinometerAlarmMaxDeg);
+    settings.endGroup();
+}
+
+void MainWindow::applyRobotInclinometerRuntimeSettings()
+{
+    refreshRobotInclinometerTiltPresentation();
+}
+
+void MainWindow::loadForceAlarmRuntimeSettings()
+{
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("ForceAlarm"));
+    m_frontSupportForceAlarmKg = qBound(
+        kForceAlarmMinKg,
+        settings.value(QStringLiteral("front_support_kg"), kForceAlarmDefaultKg).toDouble(),
+        kForceAlarmMaxKg);
+    m_behindTensionForceAlarmKg = qBound(
+        kForceAlarmMinKg,
+        settings.value(QStringLiteral("behind_tension_kg"), kForceAlarmDefaultKg).toDouble(),
+        kForceAlarmMaxKg);
+    settings.endGroup();
+}
+
+void MainWindow::applyForceAlarmRuntimeSettings()
+{
+    refreshForceCardPresentation();
 }
 
 void MainWindow::applyButtonVisibilityRuntimeSettings()
@@ -1336,12 +1396,18 @@ void MainWindow::refreshMappedDisplaysForDevice(const QString &device, int addre
         if (m_frontSupportForceCard) {
             m_frontSupportForceCard->setValue(value, true);
         }
+        m_frontSupportForceKg = value;
+        m_frontSupportForceValid = true;
         recordTimeSeriesValue(TimeSeriesChannel::FrontSupportForceKg, value);
+        refreshForceCardPresentation();
     });
     applyCard(QStringLiteral("behindTensionForceCard"), [this](double value) {
         if (m_behindTensionForceCard) {
             m_behindTensionForceCard->setValue(value, true);
         }
+        m_behindTensionForceKg = value;
+        m_behindTensionForceValid = true;
+        refreshForceCardPresentation();
     });
     applyCard(QStringLiteral("robotTotalPowerCard"), [this](double value) {
         if (m_robotTotalPowerCard) {
@@ -1353,13 +1419,25 @@ void MainWindow::refreshMappedDisplaysForDevice(const QString &device, int addre
         if (m_robotInclinometerXCard) {
             m_robotInclinometerXCard->setTiltValue(value);
         }
-        recordTimeSeriesValue(TimeSeriesChannel::ArmTiltXDeg, value);
+        if (std::isfinite(value)) {
+            m_robotInclinometerXDegree = value;
+            recordTimeSeriesValue(TimeSeriesChannel::ArmTiltXDeg, value);
+            refreshRobotInclinometerTiltPresentation();
+        } else {
+            recordTimeSeriesValue(TimeSeriesChannel::ArmTiltXDeg, std::numeric_limits<double>::quiet_NaN());
+        }
     });
     applyCard(QStringLiteral("robotInclinometerY"), [this](double value) {
         if (m_robotInclinometerYCard) {
             m_robotInclinometerYCard->setTiltValue(value);
         }
-        recordTimeSeriesValue(TimeSeriesChannel::ArmTiltYDeg, value);
+        if (std::isfinite(value)) {
+            m_robotInclinometerYDegree = value;
+            recordTimeSeriesValue(TimeSeriesChannel::ArmTiltYDeg, value);
+            refreshRobotInclinometerTiltPresentation();
+        } else {
+            recordTimeSeriesValue(TimeSeriesChannel::ArmTiltYDeg, std::numeric_limits<double>::quiet_NaN());
+        }
     });
     applyCard(QStringLiteral("chassisInclinometerX"), [this](double value) {
         if (m_inclinometerXCard) {
@@ -2948,7 +3026,10 @@ void MainWindow::updateFrontSupportForce(quint16 rawValue)
     }
     const double kg = static_cast<double>(rawValue);
     m_frontSupportForceCard->setValue(kg, true);
+    m_frontSupportForceKg = kg;
+    m_frontSupportForceValid = true;
     recordTimeSeriesValue(TimeSeriesChannel::FrontSupportForceKg, kg);
+    refreshForceCardPresentation();
 }
 
 void MainWindow::initDeviceCoordPanel()
@@ -6637,11 +6718,17 @@ void MainWindow::updateRobotInclinometerFromCache()
         if (card) {
             card->setTiltValue(static_cast<qreal>(degree));
         }
+        if (name == QLatin1String("robotInclinometerX")) {
+            m_robotInclinometerXDegree = degree;
+        } else if (name == QLatin1String("robotInclinometerY")) {
+            m_robotInclinometerYDegree = degree;
+        }
         recordTimeSeriesValue(channel, degree);
     };
 
     applyOne(QStringLiteral("robotInclinometerX"), m_robotInclinometerXCard, TimeSeriesChannel::ArmTiltXDeg);
     applyOne(QStringLiteral("robotInclinometerY"), m_robotInclinometerYCard, TimeSeriesChannel::ArmTiltYDeg);
+    refreshRobotInclinometerTiltPresentation();
 }
 
 void MainWindow::updateDeviceCoordPanelFromCache()
@@ -11255,6 +11342,8 @@ void MainWindow::restoreConditionPopupsAfterEmergency()
         showRobotWeightOverloadDialog();
     }
     refreshInclinometerTiltPresentation();
+    refreshRobotInclinometerTiltPresentation();
+    refreshForceCardPresentation();
 }
 
 void MainWindow::showRobotWeightOverloadDialog()
@@ -11377,6 +11466,14 @@ void MainWindow::refreshInclinometerTiltPresentation()
 
     const qreal alarmDeg = m_inclinometerAlarmThresholdDeg;
     const qreal lockDeg = m_inclinometerLockThresholdDeg;
+    if (m_inclinometerXCard) {
+        m_inclinometerXCard->setAlertLevel(
+            inclinometerAlertLevel(m_inclinometerXDegree, alarmDeg, lockDeg));
+    }
+    if (m_inclinometerYCard) {
+        m_inclinometerYCard->setAlertLevel(
+            inclinometerAlertLevel(m_inclinometerYDegree, alarmDeg, lockDeg));
+    }
     const bool inLockZone = isInclinometerTiltLockDegree(m_inclinometerXDegree, lockDeg)
                          || isInclinometerTiltLockDegree(m_inclinometerYDegree, lockDeg);
     const bool inWarnZone = !inLockZone
@@ -11424,6 +11521,115 @@ void MainWindow::refreshInclinometerTiltPresentation()
     if (inWarnZone) {
         showInclinometerTiltRiskToast();
     }
+}
+
+void MainWindow::showRobotInclinometerTiltToast()
+{
+    showPersistentToast(kRobotInclinometerTiltToastText);
+}
+
+void MainWindow::hideRobotInclinometerTiltToast()
+{
+    dismissToastByMessage(kRobotInclinometerTiltToastText);
+}
+
+void MainWindow::refreshRobotInclinometerTiltPresentation()
+{
+    const qreal alarmDeg = m_robotInclinometerAlarmThresholdDeg;
+    const auto armLevel = [](qreal degree, qreal threshold) {
+        return qAbs(degree) > threshold
+            ? InclinometerCard::AlertLevel::Alarm
+            : InclinometerCard::AlertLevel::Normal;
+    };
+    if (m_robotInclinometerXCard) {
+        m_robotInclinometerXCard->setAlertLevel(armLevel(m_robotInclinometerXDegree, alarmDeg));
+    }
+    if (m_robotInclinometerYCard) {
+        m_robotInclinometerYCard->setAlertLevel(armLevel(m_robotInclinometerYDegree, alarmDeg));
+    }
+
+    const bool inZone = qAbs(m_robotInclinometerXDegree) > alarmDeg
+                     || qAbs(m_robotInclinometerYDegree) > alarmDeg;
+
+    if (inZone != m_robotInclinometerTiltInZone) {
+        m_robotInclinometerTiltInZone = inZone;
+        if (inZone) {
+            if (m_recorder) {
+                OperationRecord record;
+                record.timestamp = QDateTime::currentDateTime();
+                record.pageName = QStringLiteral("报警系统");
+                record.controlName = QStringLiteral("悬臂倾覆风险提示");
+                record.controlType = QStringLiteral("提示窗口");
+                record.operation = QStringLiteral("报警触发");
+                record.oldValue = QString();
+                record.newValue = kRobotInclinometerTiltToastText;
+                m_recorder->addRecord(record);
+            }
+            showRobotInclinometerTiltToast();
+        } else {
+            hideRobotInclinometerTiltToast();
+        }
+        return;
+    }
+
+    if (inZone) {
+        showRobotInclinometerTiltToast();
+    }
+}
+
+void MainWindow::refreshForceCardPresentation()
+{
+    const auto applyOne = [this](MetricValueCard *card,
+                                 double value,
+                                 bool valid,
+                                 double threshold,
+                                 bool &inZone,
+                                 const QString &toastText,
+                                 const QString &recordName) {
+        const bool over = valid && value > threshold;
+        if (card) {
+            card->setAlertLevel(over ? MetricValueCard::AlertLevel::Alarm
+                                     : MetricValueCard::AlertLevel::Normal);
+        }
+        if (over != inZone) {
+            inZone = over;
+            if (over) {
+                if (m_recorder) {
+                    OperationRecord record;
+                    record.timestamp = QDateTime::currentDateTime();
+                    record.pageName = QStringLiteral("报警系统");
+                    record.controlName = recordName;
+                    record.controlType = QStringLiteral("提示窗口");
+                    record.operation = QStringLiteral("报警触发");
+                    record.oldValue = QString();
+                    record.newValue = toastText;
+                    m_recorder->addRecord(record);
+                }
+                showPersistentToast(toastText);
+            } else {
+                dismissToastByMessage(toastText);
+            }
+            return;
+        }
+        if (over) {
+            showPersistentToast(toastText);
+        }
+    };
+
+    applyOne(m_frontSupportForceCard,
+             m_frontSupportForceKg,
+             m_frontSupportForceValid,
+             m_frontSupportForceAlarmKg,
+             m_frontSupportForceInZone,
+             kFrontSupportForceToastText,
+             QStringLiteral("前支撑缸支撑力"));
+    applyOne(m_behindTensionForceCard,
+             m_behindTensionForceKg,
+             m_behindTensionForceValid,
+             m_behindTensionForceAlarmKg,
+             m_behindTensionForceInZone,
+             kBehindTensionForceToastText,
+             QStringLiteral("后配重缸拉力"));
 }
 
 void MainWindow::showLegArmInterlockToast()

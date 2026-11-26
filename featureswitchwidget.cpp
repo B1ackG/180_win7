@@ -202,6 +202,9 @@ QString configFieldLabel(const QString &group, const QString &key)
         {QStringLiteral("Polling/agv_reconnect_ms"), QStringLiteral("底盘重连间隔")},
         {QStringLiteral("PlaneHeight/offset_mm"), QStringLiteral("平面高度偏移")},
         {QStringLiteral("RobotTorque/danger_percent"), QStringLiteral("总扭矩危险阈值")},
+        {QStringLiteral("RobotInclinometer/alarm_deg"), QStringLiteral("悬臂倾角报警阈值")},
+        {QStringLiteral("ForceAlarm/front_support_kg"), QStringLiteral("前支撑缸支撑力阈值")},
+        {QStringLiteral("ForceAlarm/behind_tension_kg"), QStringLiteral("后配重缸拉力阈值")},
         {QStringLiteral("Permission/engineer_password"), QStringLiteral("工程师密码")},
         {QStringLiteral("Permission/admin_password"), QStringLiteral("管理员密码")},
         {QStringLiteral("ButtonVisibility/TBtn_RobotControl"), QStringLiteral("机械臂控制入口")},
@@ -637,6 +640,8 @@ void FeatureSwitchWidget::setupUI()
     setupSliderLimitUI(displayLayout);
     setupPlaneHeightOffsetUI(displayLayout);
     setupRobotTorqueUI(displayLayout);
+    setupRobotInclinometerUI(displayLayout);
+    setupForceAlarmUI(displayLayout);
     setupButtonVisibilityUI(controlLayout);
 
     baseLayout->addStretch();
@@ -707,6 +712,8 @@ void FeatureSwitchWidget::loadCurrentState()
     loadTechSliderEditState();
     loadPlaneHeightOffsetState();
     loadRobotTorqueState();
+    loadRobotInclinometerState();
+    loadForceAlarmState();
     loadPermissionPasswordState();
     loadButtonVisibilityState();
 }
@@ -1069,6 +1076,54 @@ void FeatureSwitchWidget::setupRobotTorqueUI(QVBoxLayout *scrollLayout)
     h->addStretch();
     layout->addLayout(h);
     wireDoubleEdit(m_editRobotTorqueDanger, 1.0, 999.0, 140.0);
+    scrollLayout->addWidget(group);
+}
+
+void FeatureSwitchWidget::setupRobotInclinometerUI(QVBoxLayout *scrollLayout)
+{
+    auto *group = new QGroupBox(QStringLiteral("悬臂倾角报警阈值"));
+    auto *layout = new QVBoxLayout(group);
+    layout->addWidget(makeHintLabel(
+        QStringLiteral("首页悬臂 X/Y 倾角共用该阈值。任一轴绝对值超过该值时弹出持续提示。默认 5.0。"),
+        group));
+
+    auto *h = new QHBoxLayout();
+    h->addWidget(new QLabel(QStringLiteral("报警阈值")));
+    m_editRobotInclinometerAlarm = new QLineEdit();
+    m_editRobotInclinometerAlarm->setFixedWidth(120);
+    m_editRobotInclinometerAlarm->setValidator(new QDoubleValidator(0.01, 90.0, 2, this));
+    m_editRobotInclinometerAlarm->installEventFilter(this);
+    h->addWidget(m_editRobotInclinometerAlarm);
+    h->addWidget(new QLabel(QStringLiteral("°")));
+    h->addStretch();
+    layout->addLayout(h);
+    wireDoubleEdit(m_editRobotInclinometerAlarm, 0.01, 90.0, 5.0);
+    scrollLayout->addWidget(group);
+}
+
+void FeatureSwitchWidget::setupForceAlarmUI(QVBoxLayout *scrollLayout)
+{
+    auto *group = new QGroupBox(QStringLiteral("支撑力 / 拉力报警阈值"));
+    auto *layout = new QVBoxLayout(group);
+    layout->addWidget(makeHintLabel(
+        QStringLiteral("首页前支撑缸支撑力、后配重缸拉力各自独立阈值。超过该值时对应卡片变红并弹出持续提示。默认 10000。"),
+        group));
+
+    auto addRow = [this, layout](const QString &label, QLineEdit *&edit) {
+        auto *h = new QHBoxLayout();
+        h->addWidget(new QLabel(label));
+        edit = new QLineEdit();
+        edit->setFixedWidth(120);
+        edit->setValidator(new QIntValidator(1, 65535, this));
+        edit->installEventFilter(this);
+        h->addWidget(edit);
+        h->addWidget(new QLabel(QStringLiteral("KG")));
+        h->addStretch();
+        layout->addLayout(h);
+        wireIntEdit(edit, 1, 65535, 10000);
+    };
+    addRow(QStringLiteral("前支撑缸支撑力"), m_editFrontSupportForceAlarm);
+    addRow(QStringLiteral("后配重缸拉力"), m_editBehindTensionForceAlarm);
     scrollLayout->addWidget(group);
 }
 
@@ -1933,6 +1988,66 @@ bool FeatureSwitchWidget::saveRobotTorqueState(QString *error)
     return settingsWriteOk(settings, QStringLiteral("config.ini"), error);
 }
 
+bool FeatureSwitchWidget::loadRobotInclinometerState()
+{
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("RobotInclinometer"));
+    const double alarm = settings.value(QStringLiteral("alarm_deg"), 5.0).toDouble();
+    settings.endGroup();
+    if (m_editRobotInclinometerAlarm) {
+        m_editRobotInclinometerAlarm->setText(QString::number(alarm, 'f', 2));
+        rememberValidEditText(m_editRobotInclinometerAlarm);
+    }
+    return true;
+}
+
+bool FeatureSwitchWidget::saveRobotInclinometerState(QString *error)
+{
+    if (!validateDoubleEdit(m_editRobotInclinometerAlarm, 0.01, 90.0, 5.0, error)) {
+        return false;
+    }
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("RobotInclinometer"));
+    settings.setValue(QStringLiteral("alarm_deg"),
+                      m_editRobotInclinometerAlarm->text().trimmed().toDouble());
+    settings.endGroup();
+    return settingsWriteOk(settings, QStringLiteral("config.ini"), error);
+}
+
+bool FeatureSwitchWidget::loadForceAlarmState()
+{
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("ForceAlarm"));
+    const int frontKg = settings.value(QStringLiteral("front_support_kg"), 10000).toInt();
+    const int behindKg = settings.value(QStringLiteral("behind_tension_kg"), 10000).toInt();
+    settings.endGroup();
+    if (m_editFrontSupportForceAlarm) {
+        m_editFrontSupportForceAlarm->setText(QString::number(frontKg));
+        rememberValidEditText(m_editFrontSupportForceAlarm);
+    }
+    if (m_editBehindTensionForceAlarm) {
+        m_editBehindTensionForceAlarm->setText(QString::number(behindKg));
+        rememberValidEditText(m_editBehindTensionForceAlarm);
+    }
+    return true;
+}
+
+bool FeatureSwitchWidget::saveForceAlarmState(QString *error)
+{
+    if (!validateIntEdit(m_editFrontSupportForceAlarm, 1, 65535, 10000, error)
+        || !validateIntEdit(m_editBehindTensionForceAlarm, 1, 65535, 10000, error)) {
+        return false;
+    }
+    QSettings settings(QStringLiteral("config.ini"), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("ForceAlarm"));
+    settings.setValue(QStringLiteral("front_support_kg"),
+                      m_editFrontSupportForceAlarm->text().trimmed().toInt());
+    settings.setValue(QStringLiteral("behind_tension_kg"),
+                      m_editBehindTensionForceAlarm->text().trimmed().toInt());
+    settings.endGroup();
+    return settingsWriteOk(settings, QStringLiteral("config.ini"), error);
+}
+
 bool FeatureSwitchWidget::loadPermissionPasswordState()
 {
     if (m_editEngineerPassword) {
@@ -2184,7 +2299,10 @@ bool FeatureSwitchWidget::validateAllInputs(QString *error)
         || !validateIntEdit(m_editAgvPoll, 50, 60000, 200, error)
         || !validateIntEdit(m_editAgvReconnect, 500, 120000, 5000, error)
         || !validateDoubleEdit(m_editPlaneHeightOffset, -100000.0, 100000.0, 1900.0, error)
-        || !validateDoubleEdit(m_editRobotTorqueDanger, 1.0, 999.0, 140.0, error)) {
+        || !validateDoubleEdit(m_editRobotTorqueDanger, 1.0, 999.0, 140.0, error)
+        || !validateDoubleEdit(m_editRobotInclinometerAlarm, 0.01, 90.0, 5.0, error)
+        || !validateIntEdit(m_editFrontSupportForceAlarm, 1, 65535, 10000, error)
+        || !validateIntEdit(m_editBehindTensionForceAlarm, 1, 65535, 10000, error)) {
         return false;
     }
 
@@ -2379,6 +2497,8 @@ bool FeatureSwitchWidget::onApply()
     const QMap<QString, QString> techSliderBefore = snapshotIniGroup(ini, QStringLiteral("TechSliderEditLimits"));
     const QMap<QString, QString> planeBefore = snapshotIniGroup(ini, QStringLiteral("PlaneHeight"));
     const QMap<QString, QString> torqueBefore = snapshotIniGroup(ini, QStringLiteral("RobotTorque"));
+    const QMap<QString, QString> inclinometerBefore = snapshotIniGroup(ini, QStringLiteral("RobotInclinometer"));
+    const QMap<QString, QString> forceBefore = snapshotIniGroup(ini, QStringLiteral("ForceAlarm"));
     const QMap<QString, QString> buttonBefore = snapshotIniGroup(ini, QStringLiteral("ButtonVisibility"));
     const QMap<QString, QString> mappingBefore = snapshotIniGroup(ini, QStringLiteral("ButtonModbusMapping"));
     const QMap<QString, QString> displayRegBefore = snapshotIniGroup(ini, QStringLiteral("DisplayRegisterMapping"));
@@ -2390,6 +2510,8 @@ bool FeatureSwitchWidget::onApply()
         || !saveTechSliderEditState(&error)
         || !savePlaneHeightOffsetState(&error)
         || !saveRobotTorqueState(&error)
+        || !saveRobotInclinometerState(&error)
+        || !saveForceAlarmState(&error)
         || !savePermissionPasswordState(&error)
         || !saveButtonVisibilityState(&error)) {
         showConsoleError(error.isEmpty() ? QStringLiteral("无法写入 config.ini") : error);
@@ -2419,6 +2541,8 @@ bool FeatureSwitchWidget::onApply()
     recordIniChanges(ini, QStringLiteral("TechSliderEditLimits"), techSliderBefore);
     recordIniChanges(ini, QStringLiteral("PlaneHeight"), planeBefore);
     recordIniChanges(ini, QStringLiteral("RobotTorque"), torqueBefore);
+    recordIniChanges(ini, QStringLiteral("RobotInclinometer"), inclinometerBefore);
+    recordIniChanges(ini, QStringLiteral("ForceAlarm"), forceBefore);
     recordIniChanges(ini, QStringLiteral("ButtonVisibility"), buttonBefore);
     recordIniChanges(ini, QStringLiteral("ButtonModbusMapping"), mappingBefore);
     recordIniChanges(ini, QStringLiteral("DisplayRegisterMapping"), displayRegBefore);

@@ -80,6 +80,8 @@ private:
     void refreshTechSliderEditList();
     void setupPlaneHeightOffsetUI(QVBoxLayout *scrollLayout);
     void setupRobotTorqueUI(QVBoxLayout *scrollLayout);
+    void setupRobotInclinometerUI(QVBoxLayout *scrollLayout);
+    void setupForceAlarmUI(QVBoxLayout *scrollLayout);
     void setupPermissionPasswordUI(QVBoxLayout *scrollLayout);
     void setupButtonVisibilityUI(QVBoxLayout *scrollLayout);
     void setupDeviceControlChildVisibilityUI(QVBoxLayout *scrollLayout);
@@ -118,6 +120,10 @@ private:
     bool savePlaneHeightOffsetState(QString *error);
     bool loadRobotTorqueState();
     bool saveRobotTorqueState(QString *error);
+    bool loadRobotInclinometerState();
+    bool saveRobotInclinometerState(QString *error);
+    bool loadForceAlarmState();
+    bool saveForceAlarmState(QString *error);
     bool loadPermissionPasswordState();
     bool savePermissionPasswordState(QString *error);
     bool loadButtonVisibilityState();
@@ -187,6 +193,9 @@ private:
     QGridLayout *m_otherVisibilityGrid = nullptr;
     QLineEdit *m_editPlaneHeightOffset = nullptr;
     QLineEdit *m_editRobotTorqueDanger = nullptr;
+    QLineEdit *m_editRobotInclinometerAlarm = nullptr;
+    QLineEdit *m_editFrontSupportForceAlarm = nullptr;
+    QLineEdit *m_editBehindTensionForceAlarm = nullptr;
     QLineEdit *m_editEngineerPassword = nullptr;
     QLineEdit *m_editAdminPassword = nullptr;
     QWidget *m_sliderEditListHost = nullptr;

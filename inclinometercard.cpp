@@ -47,6 +47,15 @@ void InclinometerCard::setAccentColor(const QColor &color)
     update();
 }
 
+void InclinometerCard::setAlertLevel(AlertLevel level)
+{
+    if (m_alertLevel == level) {
+        return;
+    }
+    m_alertLevel = level;
+    update();
+}
+
 void InclinometerCard::syncAccentFromLabel()
 {
     if (m_axisLabel.startsWith(QLatin1Char('Y'), Qt::CaseInsensitive)
@@ -93,21 +102,68 @@ void InclinometerCard::paintEvent(QPaintEvent *event)
         return;
     }
 
-    // Panel shell — aligned with DeviceCoordPanel
+    QColor accent = m_accentColor;
+    QColor panelTop = QColor(8, 34, 58, 226);
+    QColor panelBottom = QColor(4, 18, 34, 218);
+    QColor outerPen = QColor(74, 190, 238, 132);
+    QColor innerPen = QColor(122, 224, 255, 74);
+    QColor hairline = QColor(111, 231, 255, 120);
+    QColor titleColor = QColor(QStringLiteral("#A8EAFF"));
+    QColor valueColor = QColor(QStringLiteral("#F2FBFF"));
+    QColor cellTop = QColor(18, 58, 92, 120);
+    QColor cellBottom = QColor(10, 36, 60, 90);
+    QColor cellPen = QColor(90, 180, 220, 70);
+    QColor levelPen = QColor(90, 180, 220, 80);
+    QColor levelFill = QColor(8, 28, 48, 160);
+    QColor tickColor = QColor(111, 231, 255, 140);
+
+    if (m_alertLevel == AlertLevel::Warning) {
+        accent = QColor(QStringLiteral("#FFD966"));
+        panelTop = QColor(58, 42, 8, 226);
+        panelBottom = QColor(34, 24, 4, 218);
+        outerPen = QColor(255, 217, 102, 180);
+        innerPen = QColor(255, 220, 130, 100);
+        hairline = QColor(255, 220, 130, 150);
+        titleColor = QColor(QStringLiteral("#FFE9B0"));
+        valueColor = QColor(QStringLiteral("#FFF6D8"));
+        cellTop = QColor(92, 68, 18, 140);
+        cellBottom = QColor(60, 42, 10, 110);
+        cellPen = QColor(255, 210, 100, 100);
+        levelPen = QColor(255, 210, 100, 100);
+        levelFill = QColor(48, 32, 8, 160);
+        tickColor = QColor(255, 220, 130, 170);
+    } else if (m_alertLevel == AlertLevel::Alarm) {
+        accent = QColor(QStringLiteral("#FF6666"));
+        panelTop = QColor(58, 10, 10, 226);
+        panelBottom = QColor(34, 6, 6, 218);
+        outerPen = QColor(255, 102, 102, 180);
+        innerPen = QColor(255, 140, 120, 90);
+        hairline = QColor(255, 140, 120, 140);
+        titleColor = QColor(QStringLiteral("#FFD0D0"));
+        valueColor = QColor(QStringLiteral("#FFE8E8"));
+        cellTop = QColor(92, 22, 18, 140);
+        cellBottom = QColor(60, 12, 10, 110);
+        cellPen = QColor(255, 120, 110, 90);
+        levelPen = QColor(255, 120, 110, 90);
+        levelFill = QColor(48, 8, 8, 160);
+        tickColor = QColor(255, 140, 120, 160);
+    }
+
+    // Panel shell — aligned with DeviceCoordPanel / torque danger
     QLinearGradient panelGradient(bounds.topLeft(), bounds.bottomLeft());
-    panelGradient.setColorAt(0.0, QColor(8, 34, 58, 226));
-    panelGradient.setColorAt(1.0, QColor(4, 18, 34, 218));
-    painter.setPen(QPen(QColor(74, 190, 238, 132), 1.0));
+    panelGradient.setColorAt(0.0, panelTop);
+    panelGradient.setColorAt(1.0, panelBottom);
+    painter.setPen(QPen(outerPen, 1.0));
     painter.setBrush(panelGradient);
     painter.drawRoundedRect(bounds, kOuterRadius, kOuterRadius);
 
     const QRectF inner = bounds.adjusted(2.0, 2.0, -2.0, -2.0);
-    painter.setPen(QPen(QColor(122, 224, 255, 74), 1.0));
+    painter.setPen(QPen(innerPen, 1.0));
     painter.setBrush(Qt::NoBrush);
     painter.drawRoundedRect(inner, kInnerRadius, kInnerRadius);
 
     painter.setOpacity(0.55);
-    painter.setPen(QPen(QColor(111, 231, 255, 120), 1.0));
+    painter.setPen(QPen(hairline, 1.0));
     const qreal lineY = bounds.top() + 8.0;
     painter.drawLine(QPointF(bounds.left() + 10.0, lineY),
                      QPointF(bounds.right() - 10.0, lineY));
@@ -115,26 +171,26 @@ void InclinometerCard::paintEvent(QPaintEvent *event)
 
     // Title accent bar
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 210));
+    painter.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 210));
     painter.drawRoundedRect(QRectF(bounds.left() + 12.0, bounds.top() + 14.0, 3.0, 12.0), 1.5, 1.5);
 
     // Title
     QFont titleFont(QStringLiteral("Noto Sans CJK SC"), 9, QFont::Bold);
     painter.setFont(titleFont);
-    painter.setPen(QColor(QStringLiteral("#A8EAFF")));
+    painter.setPen(titleColor);
     painter.drawText(QRectF(bounds.left() + 20.0, bounds.top() + 10.0, bounds.width() - 54.0, 20.0),
                      Qt::AlignLeft | Qt::AlignVCenter,
                      m_axisLabel);
 
     // Axis badge
     const QRectF badgeRect(bounds.right() - 30.0, bounds.top() + 12.0, 18.0, 18.0);
-    painter.setPen(QPen(QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 170), 1.0));
-    painter.setBrush(QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 40));
+    painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 170), 1.0));
+    painter.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 40));
     painter.drawRoundedRect(badgeRect, 5.0, 5.0);
 
     QFont badgeFont(QStringLiteral("Noto Sans CJK SC"), 8, QFont::Bold);
     painter.setFont(badgeFont);
-    painter.setPen(m_accentColor);
+    painter.setPen(accent);
     painter.drawText(badgeRect, Qt::AlignCenter, axisLetter());
 
     // Value cell
@@ -144,9 +200,9 @@ void InclinometerCard::paintEvent(QPaintEvent *event)
                            bounds.height() - 58.0);
     if (valueCell.height() > 12.0) {
         QLinearGradient cellGrad(valueCell.topLeft(), valueCell.bottomLeft());
-        cellGrad.setColorAt(0.0, QColor(18, 58, 92, 120));
-        cellGrad.setColorAt(1.0, QColor(10, 36, 60, 90));
-        painter.setPen(QPen(QColor(90, 180, 220, 70), 1.0));
+        cellGrad.setColorAt(0.0, cellTop);
+        cellGrad.setColorAt(1.0, cellBottom);
+        painter.setPen(QPen(cellPen, 1.0));
         painter.setBrush(cellGrad);
         painter.drawRoundedRect(valueCell, 8.0, 8.0);
     }
@@ -167,11 +223,11 @@ void InclinometerCard::paintEvent(QPaintEvent *event)
     const qreal valueStartX = valueCell.center().x() - totalWidth * 0.5;
 
     painter.setFont(valueFont);
-    painter.setPen(QColor(QStringLiteral("#F2FBFF")));
+    painter.setPen(valueColor);
     painter.drawText(QPointF(valueStartX, valueBaselineY), numberText);
 
     painter.setFont(unitFont);
-    painter.setPen(QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 220));
+    painter.setPen(QColor(accent.red(), accent.green(), accent.blue(), 220));
     painter.drawText(QPointF(valueStartX + numberWidth + 2.0,
                              valueBaselineY - (valueMetrics.ascent() - unitMetrics.ascent()) * 0.35),
                      QStringLiteral("°"));
@@ -182,13 +238,13 @@ void InclinometerCard::paintEvent(QPaintEvent *event)
                            bounds.width() - 28.0,
                            8.0);
     if (levelRect.width() > 20.0) {
-        painter.setPen(QPen(QColor(90, 180, 220, 80), 1.0));
-        painter.setBrush(QColor(8, 28, 48, 160));
+        painter.setPen(QPen(levelPen, 1.0));
+        painter.setBrush(levelFill);
         painter.drawRoundedRect(levelRect, 4.0, 4.0);
 
         // Center tick
         const qreal midX = levelRect.center().x();
-        painter.setPen(QPen(QColor(111, 231, 255, 140), 1.0));
+        painter.setPen(QPen(tickColor, 1.0));
         painter.drawLine(QPointF(midX, levelRect.top() + 1.0),
                          QPointF(midX, levelRect.bottom() - 1.0));
 
@@ -198,13 +254,13 @@ void InclinometerCard::paintEvent(QPaintEvent *event)
         const QPointF bubbleCenter(midX + ratio * travel, levelRect.center().y());
 
         QRadialGradient bubbleGrad(bubbleCenter, bubbleRadius * 1.6);
-        bubbleGrad.setColorAt(0.0, QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 240));
-        bubbleGrad.setColorAt(1.0, QColor(m_accentColor.red(), m_accentColor.green(), m_accentColor.blue(), 40));
+        bubbleGrad.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 240));
+        bubbleGrad.setColorAt(1.0, QColor(accent.red(), accent.green(), accent.blue(), 40));
         painter.setPen(Qt::NoPen);
         painter.setBrush(bubbleGrad);
         painter.drawEllipse(bubbleCenter, bubbleRadius * 1.5, bubbleRadius * 1.5);
 
-        painter.setBrush(m_accentColor);
+        painter.setBrush(accent);
         painter.drawEllipse(bubbleCenter, bubbleRadius, bubbleRadius);
     }
 }
