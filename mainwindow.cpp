@@ -5613,7 +5613,7 @@ QString MainWindow::getAxisHistoryName(int axisIndex) const
     case 1: return QStringLiteral("悬臂组件(J1)");
     case 2: return QStringLiteral("升降组件(J2)");
     case 3: return QStringLiteral("伸缩臂(J3)");
-    case 4: return QStringLiteral("调姿组件");
+    case 4: return QStringLiteral("调姿组件回转");
     default: return QStringLiteral("未知轴");
     }
 }
@@ -6044,7 +6044,7 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
                 evenAction = "伸长";
                 break;
             case 3:
-                componentName = "调姿组件";
+                componentName = "调姿组件回转";
                 unit = "°";
                 oddAction = "负向旋转";
                 evenAction = "正向旋转";
@@ -6266,22 +6266,22 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
         record.operation = pressed ? "pressed" : "released";
         record.oldValue = "";
 
-        if (keyNumber == 1) {  // ○1 调姿组件负方向旋转
+        if (keyNumber == 1) {  // ○1 调姿组件回转负方向旋转
             if (pressed) {
-                record.newValue = QString("调姿组件当前角度为%1°，当前以%2°/s速度负方向旋转")
+                record.newValue = QString("调姿组件回转当前角度为%1°，当前以%2°/s速度负方向旋转")
                                       .arg(currentAngle, 0, 'f', 1)
                                       .arg(rotationSpeed, 0, 'f', 1);
             } else {
-                record.newValue = QString("调姿组件当前角度为%1°，旋转完成")
+                record.newValue = QString("调姿组件回转当前角度为%1°，旋转完成")
                                       .arg(currentAngle, 0, 'f', 1);
             }
-        } else if (keyNumber == 2) {  // ○2 调姿组件正方向旋转
+        } else if (keyNumber == 2) {  // ○2 调姿组件回转正方向旋转
             if (pressed) {
-                record.newValue = QString("调姿组件当前角度为%1°，当前以%2°/s速度正方向旋转")
+                record.newValue = QString("调姿组件回转当前角度为%1°，当前以%2°/s速度正方向旋转")
                                       .arg(currentAngle, 0, 'f', 1)
                                       .arg(rotationSpeed, 0, 'f', 1);
             } else {
-                record.newValue = QString("调姿组件当前角度为%1°，旋转完成")
+                record.newValue = QString("调姿组件回转当前角度为%1°，旋转完成")
                                       .arg(currentAngle, 0, 'f', 1);
             }
         }
@@ -7449,7 +7449,7 @@ void MainWindow::setupSliderLabelConfigs()
     m_sliderLabelConfigs["robot_ArcGauge_J1Angle"].secondLabelText = QStringLiteral("立柱旋转");
     m_sliderLabelConfigs["robot_ArcGauge_J2Height"].secondLabelText = QStringLiteral("立柱升降");
     m_sliderLabelConfigs["robot_ArcGauge_J3Length"].secondLabelText = QStringLiteral("伸缩平衡臂");
-    m_sliderLabelConfigs["robot_ArcGauge_J4Angle"].secondLabelText = QStringLiteral("调姿组件");
+    m_sliderLabelConfigs["robot_ArcGauge_J4Angle"].secondLabelText = QStringLiteral("调姿组件回转");
     m_sliderLabelConfigs["robot_ArcGauge_CounterweightHeight"].secondLabelText = QStringLiteral("后配重缸");
     m_sliderLabelConfigs["robot_ArcGauge_SupportCylinder"].secondLabelText = QStringLiteral("前支撑缸");
     m_sliderLabelConfigs["robot_ArcGauge_SixAxis1"].secondLabelText = QStringLiteral("绕X轴旋转");
@@ -9927,7 +9927,7 @@ void MainWindow::onEnableButtonPressedStepMode()
     if (m_editJ4MoveStep && !m_editJ4MoveStep->text().isEmpty()) {
         double currentAngle = getSliderLabelValue("label_Value4"); // J4当前角度
         QString stepValue = m_editJ4MoveStep->text();
-        recordStepMoveAction("调姿组件", currentAngle, stepValue, true);
+        recordStepMoveAction("调姿组件回转", currentAngle, stepValue, true);
     }
 
     ui->statusBar->showMessage("步进模式：使能按钮按下（等待外部按键触发）", 2000);
@@ -9979,7 +9979,7 @@ void MainWindow::onEnableButtonReleasedStepMode()
 
     if (m_editJ4MoveStep && !m_editJ4MoveStep->text().isEmpty()) {
         double currentAngle = getSliderLabelValue("label_Value4"); // J4当前角度
-        recordStepMoveEnd("调姿组件", currentAngle);
+        recordStepMoveEnd("调姿组件回转", currentAngle);
     }
 
     ui->statusBar->showMessage("步进模式：使能按钮释放", 2000);
@@ -10007,7 +10007,7 @@ QString MainWindow::selectedStepTargetName() const
     case 500: return "悬臂组件(J1)";
     case 501: return "升降组件(J2)";
     case 502: return "伸缩臂(J3)";
-    case 503: return "调姿组件";
+    case 503: return "调姿组件回转";
     case 504: return "底盘(AGV)";
     default: return "悬臂组件(J1)";
     }
@@ -10446,7 +10446,7 @@ void MainWindow::recordStepMoveAction(const QString &jointName, double currentVa
     } else if (jointName.contains("J3")) {
         msg = QString("伸缩臂当前长度为%1mm，开始步进%2mm").arg(currentValue, 0, 'f', 1).arg(stepValue);
     } else if (jointName.contains("J4") || jointName.contains("调姿") || jointName.contains("六自由度") || jointName.contains("柔顺")) {
-        msg = QString("调姿组件当前角度为%1°，开始步进%2°").arg(currentValue, 0, 'f', 1).arg(stepValue);
+        msg = QString("调姿组件回转当前角度为%1°，开始步进%2°").arg(currentValue, 0, 'f', 1).arg(stepValue);
     } else {
         msg = QString("%1当前%2为%3，步进%4°")
                   .arg(jointName)
@@ -10479,7 +10479,7 @@ void MainWindow::recordStepMoveEnd(const QString &jointName, double currentValue
     } else if (jointName.contains("J3")) {
         msg = QString("伸缩臂当前长度为%1mm，步进结束").arg(currentValue, 0, 'f', 1);
     } else if (jointName.contains("J4") || jointName.contains("调姿") || jointName.contains("六自由度") || jointName.contains("柔顺")) {
-        msg = QString("调姿组件当前角度为%1°，步进结束").arg(currentValue, 0, 'f', 1);
+        msg = QString("调姿组件回转当前角度为%1°，步进结束").arg(currentValue, 0, 'f', 1);
     } else {
         msg = QString("%1当前%2为%3，步进结束")
                   .arg(jointName)

@@ -65,9 +65,10 @@ void MappingConfig::initDefaultMappings()
         m_controlNameMap["StepMove_悬臂组件(J1)"] = "悬臂组件";
         m_controlNameMap["StepMove_升降组件(J2)"] = "升降组件";
         m_controlNameMap["StepMove_伸缩臂(J3)"] = "伸缩臂";
-        m_controlNameMap["StepMove_柔顺组件(J4)"] = "调姿组件";
-        m_controlNameMap["StepMove_六自由度"] = "调姿组件";
-        m_controlNameMap["StepMove_调姿组件"] = "调姿组件";
+        m_controlNameMap["StepMove_柔顺组件(J4)"] = "调姿组件回转";
+        m_controlNameMap["StepMove_六自由度"] = "调姿组件回转";
+        m_controlNameMap["StepMove_调姿组件"] = "调姿组件回转";
+        m_controlNameMap["StepMove_调姿组件回转"] = "调姿组件回转";
 
         // 主导航与切换按钮
         m_controlNameMap["Btn_SwitchHorizontalSupport"] = "切换到水平支撑";
