@@ -64,7 +64,9 @@ void MappingConfig::initDefaultMappings()
         // StepMove 控件名称映射
         m_controlNameMap["StepMove_悬臂组件(J1)"] = "悬臂组件";
         m_controlNameMap["StepMove_升降组件(J2)"] = "升降组件";
-        m_controlNameMap["StepMove_伸缩臂(J3)"] = "伸缩臂";
+        m_controlNameMap["StepMove_伸缩臂(J3)"] = "平衡臂伸缩";
+        m_controlNameMap["StepMove_伸缩平衡臂"] = "平衡臂伸缩";
+        m_controlNameMap["StepMove_平衡臂伸缩"] = "平衡臂伸缩";
         m_controlNameMap["StepMove_柔顺组件(J4)"] = "调姿组件回转";
         m_controlNameMap["StepMove_六自由度"] = "调姿组件回转";
         m_controlNameMap["StepMove_调姿组件"] = "调姿组件回转";

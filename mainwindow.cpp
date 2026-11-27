@@ -5612,7 +5612,7 @@ QString MainWindow::getAxisHistoryName(int axisIndex) const
     switch (axisIndex) {
     case 1: return QStringLiteral("悬臂组件(J1)");
     case 2: return QStringLiteral("升降组件(J2)");
-    case 3: return QStringLiteral("伸缩臂(J3)");
+    case 3: return QStringLiteral("平衡臂伸缩");
     case 4: return QStringLiteral("调姿组件回转");
     default: return QStringLiteral("未知轴");
     }
@@ -6038,7 +6038,7 @@ void MainWindow::handleMatrixKeyAction(int keyNumber, bool pressed)
                 evenAction = "上升";
                 break;
             case 2:
-                componentName = "悬臂长度";
+                componentName = "平衡臂伸缩";
                 unit = "mm";
                 oddAction = "缩短";
                 evenAction = "伸长";
@@ -7448,7 +7448,7 @@ void MainWindow::setupSliderLabelConfigs()
     // TechArcGauge 第二行标签（secondLabelText），与 initSpeedGaugeUI 中 cfg.name 对应
     m_sliderLabelConfigs["robot_ArcGauge_J1Angle"].secondLabelText = QStringLiteral("立柱旋转");
     m_sliderLabelConfigs["robot_ArcGauge_J2Height"].secondLabelText = QStringLiteral("立柱升降");
-    m_sliderLabelConfigs["robot_ArcGauge_J3Length"].secondLabelText = QStringLiteral("伸缩平衡臂");
+    m_sliderLabelConfigs["robot_ArcGauge_J3Length"].secondLabelText = QStringLiteral("平衡臂伸缩");
     m_sliderLabelConfigs["robot_ArcGauge_J4Angle"].secondLabelText = QStringLiteral("调姿组件回转");
     m_sliderLabelConfigs["robot_ArcGauge_CounterweightHeight"].secondLabelText = QStringLiteral("后配重缸");
     m_sliderLabelConfigs["robot_ArcGauge_SupportCylinder"].secondLabelText = QStringLiteral("前支撑缸");
@@ -9921,7 +9921,7 @@ void MainWindow::onEnableButtonPressedStepMode()
     if (m_editJ3MoveStep && !m_editJ3MoveStep->text().isEmpty()) {
         double currentLength = getSliderLabelValue("label_Value3"); // J3当前长度
         QString stepValue = m_editJ3MoveStep->text();
-        recordStepMoveAction("伸缩臂(J3)", currentLength, stepValue, true);
+        recordStepMoveAction("平衡臂伸缩", currentLength, stepValue, true);
     }
 
     if (m_editJ4MoveStep && !m_editJ4MoveStep->text().isEmpty()) {
@@ -9974,7 +9974,7 @@ void MainWindow::onEnableButtonReleasedStepMode()
 
     if (m_editJ3MoveStep && !m_editJ3MoveStep->text().isEmpty()) {
         double currentLength = getSliderLabelValue("label_Value3"); // J3当前长度
-        recordStepMoveEnd("伸缩臂(J3)", currentLength);
+        recordStepMoveEnd("平衡臂伸缩", currentLength);
     }
 
     if (m_editJ4MoveStep && !m_editJ4MoveStep->text().isEmpty()) {
@@ -10006,7 +10006,7 @@ QString MainWindow::selectedStepTargetName() const
     switch (reg) {
     case 500: return "悬臂组件(J1)";
     case 501: return "升降组件(J2)";
-    case 502: return "伸缩臂(J3)";
+    case 502: return "平衡臂伸缩";
     case 503: return "调姿组件回转";
     case 504: return "底盘(AGV)";
     default: return "悬臂组件(J1)";
@@ -10443,8 +10443,8 @@ void MainWindow::recordStepMoveAction(const QString &jointName, double currentVa
         msg = QString("悬臂组件当前角度为%1°，开始步进%2°").arg(currentValue, 0, 'f', 1).arg(stepValue);
     } else if (jointName.contains("J2")) {
         msg = QString("升降组件当前高度为%1mm，开始步进%2mm").arg(currentValue, 0, 'f', 1).arg(stepValue);
-    } else if (jointName.contains("J3")) {
-        msg = QString("伸缩臂当前长度为%1mm，开始步进%2mm").arg(currentValue, 0, 'f', 1).arg(stepValue);
+    } else if (jointName.contains("J3") || jointName.contains("平衡臂") || jointName.contains("伸缩臂") || jointName.contains("伸缩平衡")) {
+        msg = QString("平衡臂伸缩当前长度为%1mm，开始步进%2mm").arg(currentValue, 0, 'f', 1).arg(stepValue);
     } else if (jointName.contains("J4") || jointName.contains("调姿") || jointName.contains("六自由度") || jointName.contains("柔顺")) {
         msg = QString("调姿组件回转当前角度为%1°，开始步进%2°").arg(currentValue, 0, 'f', 1).arg(stepValue);
     } else {
@@ -10476,8 +10476,8 @@ void MainWindow::recordStepMoveEnd(const QString &jointName, double currentValue
         msg = QString("悬臂组件当前角度为%1°，步进结束").arg(currentValue, 0, 'f', 1);
     } else if (jointName.contains("J2")) {
         msg = QString("升降组件当前高度为%1mm，步进结束").arg(currentValue, 0, 'f', 1);
-    } else if (jointName.contains("J3")) {
-        msg = QString("伸缩臂当前长度为%1mm，步进结束").arg(currentValue, 0, 'f', 1);
+    } else if (jointName.contains("J3") || jointName.contains("平衡臂") || jointName.contains("伸缩臂") || jointName.contains("伸缩平衡")) {
+        msg = QString("平衡臂伸缩当前长度为%1mm，步进结束").arg(currentValue, 0, 'f', 1);
     } else if (jointName.contains("J4") || jointName.contains("调姿") || jointName.contains("六自由度") || jointName.contains("柔顺")) {
         msg = QString("调姿组件回转当前角度为%1°，步进结束").arg(currentValue, 0, 'f', 1);
     } else {
