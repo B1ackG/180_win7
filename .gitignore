@@ -110,3 +110,6 @@ border_check
 combo_popup_preview
 mapping_check
 support_gauge_preview
+
+# Added by Assistant staging review
+.workbuddy/
