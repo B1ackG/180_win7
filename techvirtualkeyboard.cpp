@@ -18,6 +18,7 @@ TechVirtualKeyboard::TechVirtualKeyboard(QWidget *parent)
     , m_glowIntensity(0.3)
     , m_glowDirection(true)
     , m_isEditing(false)
+    , m_inputCommitted(false)
 {
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
     setWindowModality(Qt::ApplicationModal);
@@ -93,6 +94,9 @@ void TechVirtualKeyboard::setupUI()
     m_buttonEnter = new QPushButton("确定", keyboardWidget);
     m_buttonEnter->setFixedSize(65, 108); // 跨两行
 
+    m_buttonCancel = new QPushButton("取消", keyboardWidget);
+    m_buttonCancel->setFixedSize(actionBtnSize);
+
     // 重新排列布局 (追求逻辑清晰的 4列结构)
     // 第一行: C  清除  ←  /
     m_mainLayout->addWidget(m_buttonClear, 0, 0);
@@ -117,8 +121,9 @@ void TechVirtualKeyboard::setupUI()
     m_mainLayout->addWidget(m_buttons[3], 3, 2);
     m_mainLayout->addWidget(m_buttonDecimal, 3, 3);
 
-    // 第五行: 0 (跨预览逻辑，居中对齐更好看)
-    m_mainLayout->addWidget(m_buttons[0], 4, 0, 1, 3); // 0 占三列宽度
+    // 第五行: 0 跨三列，取消在右侧
+    m_mainLayout->addWidget(m_buttons[0], 4, 0, 1, 3);
+    m_mainLayout->addWidget(m_buttonCancel, 4, 3);
 
     // 将预览框和键盘添加到外层布局
     m_outerLayout->addWidget(previewWidget);
@@ -135,6 +140,7 @@ void TechVirtualKeyboard::setupConnections()
 
     // 连接功能按钮
     connect(m_buttonEnter, &QPushButton::clicked, this, &TechVirtualKeyboard::onEnterClicked);
+    connect(m_buttonCancel, &QPushButton::clicked, this, &TechVirtualKeyboard::onCancelClicked);
     connect(m_buttonDelete, &QPushButton::clicked, this, &TechVirtualKeyboard::onDeleteClicked);
     connect(m_buttonClear, &QPushButton::clicked, this, &TechVirtualKeyboard::onClearClicked);
     connect(m_buttonBackspace, &QPushButton::clicked, this, &TechVirtualKeyboard::onBackspaceClicked);
@@ -240,6 +246,20 @@ void TechVirtualKeyboard::applyTechStyle()
 
     m_buttonEnter->setStyleSheet(enterButtonStyle);
 
+    QString cancelButtonStyle =
+        "QPushButton {"
+        "    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
+        "        stop:0 #C0392B, stop:1 #E74C3C);"
+        "    color: white;"
+        "    border: none;"
+        "    border-radius: 6px;"
+        "    font-size: 16px;"
+        "    font-weight: bold;"
+        "}"
+        "QPushButton:hover { background-color: #E74C3C; }"
+        "QPushButton:pressed { background-color: #C0392B; }";
+    m_buttonCancel->setStyleSheet(cancelButtonStyle);
+
     // 添加阴影效果
     m_shadowEffect = new QGraphicsDropShadowEffect(this);
     m_shadowEffect->setBlurRadius(20);
@@ -299,17 +319,15 @@ void TechVirtualKeyboard::updateAnimation()
 
 void TechVirtualKeyboard::setTargetLineEdit(QLineEdit *lineEdit)
 {
-    m_targetLineEdit = lineEdit;
-    m_isEditing = true;
-
-    // 如果目标LineEdit有内容，初始化为预览框内容
-    if (lineEdit && !lineEdit->text().isEmpty()) {
-        m_currentText = lineEdit->text();
-        updatePreview();
-    } else {
-        m_currentText.clear();
-        updatePreview();
+    if (m_isEditing && m_targetLineEdit && m_targetLineEdit != lineEdit && !m_inputCommitted) {
+        restoreTargetText();
     }
+
+    m_targetLineEdit = lineEdit;
+    m_originalText = lineEdit ? lineEdit->text() : QString();
+    m_isEditing = true;
+    m_inputCommitted = false;
+    resetPreviewToEmpty();
 }
 
 void TechVirtualKeyboard::setInitialText(const QString &text)
@@ -324,8 +342,6 @@ void TechVirtualKeyboard::showAtWidget(QWidget *targetWidget)
 
     // 同一目标重复点击时不重复 show/activate，避免 Wayland 下窗口序列异常。
     if (isVisible() && m_targetLineEdit && targetWidget == m_targetLineEdit) {
-        m_currentText = m_targetLineEdit->text();
-        updatePreview();
         return;
     }
 
@@ -359,13 +375,7 @@ void TechVirtualKeyboard::showAtWidget(QWidget *targetWidget)
         activateWindow();
     }
 
-    // 清空预览框内容
-    if (m_targetLineEdit) {
-        m_currentText = m_targetLineEdit->text();
-    } else {
-        m_currentText.clear();
-    }
-    updatePreview();
+    resetPreviewToEmpty();
 }
 
 bool TechVirtualKeyboard::eventFilter(QObject *watched, QEvent *event)
@@ -382,9 +392,7 @@ bool TechVirtualKeyboard::eventFilter(QObject *watched, QEvent *event)
 
         // 检查点击是否在键盘内部
         if (!geometry().contains(globalPos) && isVisible()) {
-            // 点击键盘外部，取消输入
-            hide();
-            emit inputCancelled();
+            dismissCancelled();
         }
     }
 
@@ -406,8 +414,12 @@ void TechVirtualKeyboard::hideEvent(QHideEvent *event)
     // 保证显示时再次触发刷新
     update();
 
-    // 失去编辑状态
+    if (m_isEditing && !m_inputCommitted) {
+        restoreTargetText();
+        emit inputCancelled();
+    }
     m_isEditing = false;
+    resetPreviewToEmpty();
 
     QWidget::hideEvent(event);
 }
@@ -419,6 +431,39 @@ void TechVirtualKeyboard::updatePreview()
         // 将光标移动到末尾
         m_inputPreview->setCursorPosition(m_currentText.length());
     }
+}
+
+void TechVirtualKeyboard::resetPreviewToEmpty()
+{
+    m_currentText.clear();
+    updatePreview();
+}
+
+void TechVirtualKeyboard::restoreTargetText()
+{
+    if (!m_targetLineEdit) {
+        return;
+    }
+    m_targetLineEdit->blockSignals(true);
+    m_targetLineEdit->setText(m_originalText);
+    m_targetLineEdit->blockSignals(false);
+}
+
+void TechVirtualKeyboard::dismissCancelled()
+{
+    if (!m_isEditing) {
+        hide();
+        return;
+    }
+    restoreTargetText();
+    m_inputCommitted = true;
+    if (m_targetLineEdit) {
+        m_targetLineEdit->blockSignals(true);
+        m_targetLineEdit->clearFocus();
+        m_targetLineEdit->blockSignals(false);
+    }
+    hide();
+    emit inputCancelled();
 }
 
 void TechVirtualKeyboard::applyButtonPressEffect(QPushButton *button)
@@ -466,11 +511,23 @@ void TechVirtualKeyboard::commitPendingInput()
         hide();
         return;
     }
+    // 弹出后未输入就点保存：按取消处理，避免把原值写成空串。
+    if (m_currentText.isEmpty()) {
+        dismissCancelled();
+        return;
+    }
     onEnterClicked();
+}
+
+void TechVirtualKeyboard::onCancelClicked()
+{
+    applyButtonPressEffect(m_buttonCancel);
+    dismissCancelled();
 }
 
 void TechVirtualKeyboard::onEnterClicked()
 {
+    m_inputCommitted = true;
     // 确认输入，将内容传递给目标LineEdit
     if (m_targetLineEdit && m_isEditing) {
         m_targetLineEdit->setText(m_currentText);

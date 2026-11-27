@@ -59,7 +59,7 @@ public:
 
     // 设置目标LineEdit
     /**
-     * 功能: 将虚拟键盘绑定到目标 QLineEdit，以便在确认时把文本写回目标控件。
+     * 功能: 将虚拟键盘绑定到目标 QLineEdit。预览框每次绑定都从空串开始，确认时再写回。
      * 如何使用: 在弹出键盘前调用 setTargetLineEdit(targetLineEdit)。
      * 如何修改: 若需支持 QTextEdit 或自定义输入控件，改为接受通用接口并实现相应写回逻辑。
      */
@@ -104,6 +104,7 @@ protected:
 private slots:
     void onButtonClicked();
     void onEnterClicked();
+    void onCancelClicked();
     void onDeleteClicked();
     void onNegateClicked();
     void onClearClicked();
@@ -116,6 +117,9 @@ private:
     void applyTechStyle();
     void updatePreview();
     void applyButtonPressEffect(QPushButton *button);
+    void resetPreviewToEmpty();
+    void restoreTargetText();
+    void dismissCancelled();
 
 private:
     QLineEdit *m_targetLineEdit;
@@ -127,6 +131,7 @@ private:
     QPushButton *m_buttons[10]; // 数字0-9
     QPushButton *m_buttonDecimal;   // 小数点
     QPushButton *m_buttonEnter;     // 确认/回车
+    QPushButton *m_buttonCancel;    // 取消
     QPushButton *m_buttonDelete;    // 删除
     QPushButton *m_buttonClear;     // 清除所有
     QPushButton *m_buttonBackspace; // 退格
@@ -146,7 +151,9 @@ private:
 
     // 当前输入的文本
     QString m_currentText;
+    QString m_originalText;  // 弹出时目标框原文，取消时写回
     bool m_isEditing;  // 是否正在编辑
+    bool m_inputCommitted;  // 本次已确定，hide 时不再恢复原文
 
 signals:
     /**
