@@ -158,15 +158,72 @@ namespace {
 SteeringMode steeringModeFromRegisterValue(quint16 value)
 {
     switch (value) {
-    case 1: return STEER_FRONT_BACK;
-    case 2: return STEER_FRONT_ONLY;
-    case 3: return STEER_PARALLEL;
-    case 4: return STEER_LATERAL;
-    case 5: return STEER_ROTATE;
-    // 兼容旧控制器枚举（0~4）
     case 0: return STEER_FRONT_BACK;
+    case 1: return STEER_FRONT_ONLY;
+    case 2: return STEER_PARALLEL;
+    case 3: return STEER_LATERAL;
+    case 4: return STEER_ROTATE;
     default: return STEER_FRONT_BACK;
     }
+}
+
+void applyAgvSpeedGaugeObstacleStatus(TechSpeedGauge *gauge, quint16 reg50, quint16 reg155)
+{
+    if (!gauge) {
+        return;
+    }
+
+    auto bitSet = [reg50](int bit) {
+        return ((reg50 >> bit) & 0x01) != 0;
+    };
+
+    const bool touchFront = bitSet(1);
+    const bool touchBack = bitSet(2);
+    const bool touchLeft = bitSet(3);
+    const bool touchRight = bitSet(4);
+    const bool avoidFront = bitSet(6) || bitSet(5);
+    const bool avoidBack = bitSet(8) || bitSet(7);
+
+    if (steeringModeFromRegisterValue(reg155) == STEER_LATERAL) {
+        gauge->setObstacleStatus(touchFront,
+                                 touchBack,
+                                 touchLeft || avoidBack,
+                                 touchRight || avoidFront);
+    } else {
+        gauge->setObstacleStatus(touchFront || avoidFront,
+                                 touchBack || avoidBack,
+                                 touchLeft,
+                                 touchRight);
+    }
+}
+
+QString agvMotionSafetyStopText(int bitPos)
+{
+    switch (bitPos) {
+    case 1: return QStringLiteral("前触边触发");
+    case 2: return QStringLiteral("后触边触发");
+    case 3: return QStringLiteral("左触边触发");
+    case 4: return QStringLiteral("右触边触发");
+    case 5: return QStringLiteral("前避障减速触发");
+    case 6: return QStringLiteral("前避障停止触发");
+    case 7: return QStringLiteral("后避障减速触发");
+    case 8: return QStringLiteral("后避障停止触发");
+    default: return QString();
+    }
+}
+
+QString agvMotionSafetyStopToastText(int bitPos, SteeringMode mode)
+{
+    if (mode == STEER_LATERAL) {
+        switch (bitPos) {
+        case 5: return QStringLiteral("右避障减速触发");
+        case 6: return QStringLiteral("右避障停止触发");
+        case 7: return QStringLiteral("左避障减速触发");
+        case 8: return QStringLiteral("左避障停止触发");
+        default: break;
+        }
+    }
+    return agvMotionSafetyStopText(bitPos);
 }
 
 bool resolveSteeringModeFromStatus50(quint16 value, SteeringMode *mode, QString *modeText)
@@ -7921,40 +7978,30 @@ void MainWindow::onAGVModbusError(const QString &error)
 
 void MainWindow::onAGVBitVariableChanged(int address, int bitPos, bool value)
 {
-    // 处理障碍物传感器数据 (地址50)
-    if (address == 50 && m_speedGaugeWidget) {
-        // 位定义：
-        // 1 前触边, 2 后触边, 3 左触边, 4 右触边
-        // 5 前避障减速, 6 前避障停止, 7 后避障减速, 8 后避障停止
-        static bool touchFront = false, touchBack = false, touchLeft = false, touchRight = false;
-        static bool avoidFrontSlow = false, avoidFrontStop = false;
-        static bool avoidBackSlow = false, avoidBackStop = false;
-
-        if (bitPos == 1) touchFront = value;
-        else if (bitPos == 2) touchBack = value;
-        else if (bitPos == 3) touchLeft = value;
-        else if (bitPos == 4) touchRight = value;
-        else if (bitPos == 5) avoidFrontSlow = value;
-        else if (bitPos == 6) avoidFrontStop = value;
-        else if (bitPos == 7) avoidBackSlow = value;
-        else if (bitPos == 8) avoidBackStop = value;
-
-        const int avoidFrontState = avoidFrontStop ? 2 : (avoidFrontSlow ? 1 : 0);
-        const int avoidBackState = avoidBackStop ? 2 : (avoidBackSlow ? 1 : 0);
-
-        QString statusText = "正常";
-        if (touchFront || touchBack || touchLeft || touchRight) {
-            statusText = "触边触发";
-        } else if (avoidFrontState > 0 || avoidBackState > 0) {
-            statusText = "避障触发";
+    if (address == 50 && value && isChassisViewActive()) {
+        const SteeringMode steeringMode =
+            steeringModeFromRegisterValue(m_agvRegisterShadow.value(155, 0));
+        const QString noticeText = agvMotionSafetyStopToastText(bitPos, steeringMode);
+        if (!noticeText.isEmpty()) {
+            if (m_recorder) {
+                OperationRecord record;
+                record.timestamp = QDateTime::currentDateTime();
+                record.pageName = QStringLiteral("提示系统");
+                record.controlName = QStringLiteral("底盘触边避障运动提示");
+                record.controlType = QStringLiteral("提示窗口");
+                record.operation = QStringLiteral("提示触发");
+                record.oldValue = QString();
+                record.newValue = noticeText;
+                m_recorder->addRecord(record);
+            }
+            showToast(noticeText, ToastKind::Warning);
         }
+    }
 
-        Q_UNUSED(statusText);
-        m_speedGaugeWidget->setObstacleStatus(
-            touchFront || avoidFrontState > 0,
-            touchBack || avoidBackState > 0,
-            touchLeft,
-            touchRight);
+    if (address == 50) {
+        applyAgvSpeedGaugeObstacleStatus(m_speedGaugeWidget,
+                                         m_agvRegisterShadow.value(50, 0),
+                                         m_agvRegisterShadow.value(155, 0));
     }
 }
 
@@ -8247,6 +8294,10 @@ void MainWindow::syncAGVParkingStateFromRegister51(quint16 value)
 
 void MainWindow::syncAGVSteeringModeFromRegister155(quint16 value)
 {
+    applyAgvSpeedGaugeObstacleStatus(m_speedGaugeWidget,
+                                     m_agvRegisterShadow.value(50, 0),
+                                     value);
+
     if (!m_steeringModeSelector) {
         return;
     }
@@ -9228,7 +9279,7 @@ QString MainWindow::currentSteeringModeText() const
         return m_steeringModeSelector->modeText(m_steeringModeSelector->currentMode());
     }
 
-    switch (steeringModeFromRegisterValue(m_agvRegisterShadow.value(155, 1))) {
+    switch (steeringModeFromRegisterValue(m_agvRegisterShadow.value(155, 0))) {
     case STEER_FRONT_BACK: return "前后轮转向";
     case STEER_FRONT_ONLY: return "前轮转向";
     case STEER_PARALLEL: return "平移模式";
@@ -11737,6 +11788,12 @@ bool MainWindow::isSixAxisViewActive() const
 {
     return ui && ui->stackedWidget_RobotStatus && ui->page_sixaxies
            && ui->stackedWidget_RobotStatus->currentWidget() == ui->page_sixaxies;
+}
+
+bool MainWindow::isChassisViewActive() const
+{
+    return ui && ui->stackedWidget_RobotStatus && ui->page_AGV
+           && ui->stackedWidget_RobotStatus->currentWidget() == ui->page_AGV;
 }
 
 QString MainWindow::heightLengthInterlockHint(bool heightLimit) const

@@ -294,6 +294,7 @@ public:
     void dismissSixAxisInitToast();
     bool isRobotArmHomePage() const;
     bool isSixAxisViewActive() const;
+    bool isChassisViewActive() const;
     QString heightLengthInterlockHint(bool heightLimit) const;
     QStringList robotArmTeachPendantEstopFromRegister150(quint16 reg150) const;
     QStringList agvChassisEstopSourcesFromRegister150(quint16 reg150) const;
